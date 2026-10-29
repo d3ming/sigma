@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -115,7 +116,7 @@ def drop_from_edition(ed: dict, gone: set[str]) -> tuple[dict, list[tuple[str, i
 
 def _prune_editions(published: Path, gone: set[str]) -> dict:
     """Edit published/x/editions/*.json; returns {date: [legacy stance keys of the sentences dropped]} and counts."""
-    res = {"editions": 0, "sentences": 0, "posts": 0, "days_removed": 0, "keys": {}}
+    res = {"editions": 0, "sentences": 0, "posts": 0, "days_removed": 0, "keys": {}, "rekeys": {}}
     d = Path(published) / "x" / "editions"
     for f in sorted(d.glob("*.json")) if d.is_dir() else []:
         ed = _read(f)
@@ -129,6 +130,18 @@ def _prune_editions(published: Path, gone: set[str]) -> dict:
         res["sentences"] += len(dropped)
         res["posts"] += removed_posts
         res["keys"][f.stem] = {stance.x_key(f.stem, lens, i, text) for lens, i, text in dropped}
+        dropped_indexes = {i for section, i, _ in dropped if section == "signals"}
+        rekeys, next_index = {}, 0
+        for i, signal in enumerate(ed.get("signals") or []):
+            if i in dropped_indexes:
+                continue
+            old_key = stance.x_key(f.stem, "signals", i, signal.get("text", ""))
+            new_key = stance.x_key(f.stem, "signals", next_index, signal.get("text", ""))
+            if old_key != new_key:
+                rekeys[old_key] = new_key
+            next_index += 1
+        if rekeys:
+            res["rekeys"][f.stem] = rekeys
         if not new.get("signals") and not new.get("posts") and not new.get("more"):
             f.unlink()
             res["days_removed"] += 1
@@ -137,9 +150,9 @@ def _prune_editions(published: Path, gone: set[str]) -> dict:
     return res
 
 
-def _prune_stances(published: Path, gone: set[str], keys: dict[str, set[str]]) -> int:
+def _prune_stances(published: Path, gone: set[str], keys: dict[str, set[str]], rekeys: dict[str, dict[str, str]]) -> tuple[int, set[str]]:
     """Remove the rows of gone posts, take gone ids out of thread lists, drop the legacy sentence rows in `keys`."""
-    n = 0
+    n, changed_days = 0, set()
     d = Path(published) / "x" / "stances"
     for f in sorted(d.glob("*.jsonl")) if d.is_dir() else []:
         lines, out, changed = f.read_text(encoding="utf-8").split("\n"), [], False
@@ -152,6 +165,9 @@ def _prune_stances(published: Path, gone: set[str], keys: dict[str, set[str]]) -
             if str(r.get("id")) in gone or r.get("key") in dead:
                 n, changed = n + 1, True
                 continue
+            if r.get("key") in rekeys.get(f.stem, {}):
+                r["key"] = rekeys[f.stem][r["key"]]
+                line, changed = json.dumps(r, ensure_ascii=False), True
             if isinstance(r.get("thread"), list) and gone & {str(i) for i in r["thread"]}:
                 r["thread"] = [i for i in r["thread"] if str(i) not in gone]
                 if not r["thread"]:
@@ -159,21 +175,26 @@ def _prune_stances(published: Path, gone: set[str], keys: dict[str, set[str]]) -
                 line, changed = json.dumps(r, ensure_ascii=False), True
             out.append(line)
         if changed:
+            changed_days.add(f.stem)
             if any(x.strip() for x in out):
                 _write(f, "\n".join(out))
             else:
                 f.unlink()
-    return n
+    return n, changed_days
 
 
-def _prune_private(gone: set[str]) -> dict:
+def _prune_private(gone: set[str]) -> tuple[dict, set[str]]:
     """The scans and working files under the x dir."""
     res = {"scan_posts": 0, "days_files": 0}
+    affected_days = set()
     xd = xdaily.x_dir()
     # posts that quote a gone post: their prep section and stance item carry its text as the quoted post
     quoting = {str(p["id"]) for f in xd.glob("scan/*/posts.jsonl") for p in xdaily.read_jsonl(f) if str(p.get("quoted_id")) in gone}
     for f in [*xd.glob("scan/*/posts.jsonl"), *xd.glob("scan/*/quoted.jsonl")]:
-        res["scan_posts"] += _filter_lines(f, lambda r: str(r.get("id")) in gone)
+        removed = _filter_lines(f, lambda r: str(r.get("id")) in gone)
+        res["scan_posts"] += removed
+        if removed:
+            affected_days.add(f.parent.name)
     for day in sorted(xd.glob("days/*")):
         ed = _read(day / "edition.json")
         if isinstance(ed, dict):
@@ -181,6 +202,7 @@ def _prune_private(gone: set[str]) -> dict:
             if dropped or any(len(new.get(section) or []) != len(ed.get(section) or []) for section in ("posts", "more")):
                 _write(day / "edition.json", json.dumps(new, indent=1, ensure_ascii=False) + "\n")
                 res["days_files"] += 1
+                affected_days.add(day.name)
         if (prep := day / "prep.md").exists():  # "## <id> @handle ..." opens a post's section
             text = prep.read_text(encoding="utf-8")
             parts = re.split(r"(?m)^(?=## \d)", text)
@@ -207,7 +229,95 @@ def _prune_private(gone: set[str]) -> dict:
             if kept != rows:
                 _write(f, json.dumps(kept, indent=1, ensure_ascii=False) + "\n")
                 res["days_files"] += 1
-    return res
+    return res, affected_days
+
+
+def _edition_sync_days(published: Path, gone: set[str]) -> set[str]:
+    days = set()
+    root = Path(published) / "x" / "editions"
+    for f in sorted(root.glob("*.json")) if root.is_dir() else []:
+        ed = _read(f)
+        if not isinstance(ed, dict):
+            continue
+        new, dropped = drop_from_edition(ed, gone)
+        if dropped or any(len(new.get(section) or []) != len(ed.get(section) or []) for section in ("posts", "more")):
+            days.add(f.stem)
+    xd = xdaily.x_dir()
+    for f in [*xd.glob("scan/*/posts.jsonl"), *xd.glob("scan/*/quoted.jsonl")]:
+        if any(str(row.get("id")) in gone for row in xdaily.read_jsonl(f)):
+            days.add(f.parent.name)
+    for day in sorted(xd.glob("days/*")):
+        ed = _read(day / "edition.json")
+        if isinstance(ed, dict):
+            new, dropped = drop_from_edition(ed, gone)
+            if dropped or any(len(new.get(section) or []) != len(ed.get(section) or []) for section in ("posts", "more")):
+                days.add(day.name)
+    return days
+
+
+def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) -> None:
+    if not days:
+        return
+    original = xdaily.x_dir()
+    with tempfile.TemporaryDirectory(prefix="sigma-x-prune-") as tmp:
+        staged = Path(tmp) / "x"
+        old_x_dir = os.environ.get("SIGMA_X_DIR")
+        os.environ["SIGMA_X_DIR"] = str(staged)
+        try:
+            for day in sorted(days):
+                if not xdaily.edition_path(published, day).is_file():
+                    continue
+                source_path = original / "days" / day / "edition.json"
+                source = _read(source_path)
+                if not isinstance(source, dict):
+                    raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition is missing or unreadable")
+                source, _ = drop_from_edition(source, gone)
+                real_scan, staged_scan = original / "scan" / day, staged / "scan" / day
+                manifest = real_scan / "manifest.json"
+                if not manifest.is_file():
+                    raise SystemExit(f"[x] cannot refresh published X edition {day}: private scan is missing or unreadable")
+                staged_scan.mkdir(parents=True, exist_ok=True)
+                (staged_scan / "manifest.json").write_bytes(manifest.read_bytes())
+                for name in ("posts.jsonl", "quoted.jsonl"):
+                    real_file = real_scan / name
+                    if not real_file.is_file():
+                        raise SystemExit(f"[x] cannot refresh published X edition {day}: private scan is missing or unreadable")
+                    kept = [row for row in xdaily.read_jsonl(real_file) if str(row.get("id")) not in gone]
+                    (staged_scan / name).write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in kept), encoding="utf-8")
+                try:
+                    errors, _ = xdaily.edition_problems(day, source)
+                    if errors:
+                        raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition fails its source check")
+                    xdaily.public_edition(day, source)
+                except (OSError, ValueError, KeyError, TypeError):
+                    raise SystemExit(f"[x] cannot refresh published X edition {day}: private scan is unreadable") from None
+        finally:
+            if old_x_dir is None:
+                os.environ.pop("SIGMA_X_DIR", None)
+            else:
+                os.environ["SIGMA_X_DIR"] = old_x_dir
+
+
+def _sync_public_editions(published: Path, days: set[str]) -> None:
+    for day in sorted(days):
+        public_path = xdaily.edition_path(published, day)
+        source_path = xdaily.day_dir(day) / "edition.json"
+        if not public_path.exists():
+            continue
+        if not source_path.exists():
+            raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition is missing")
+        source = _read(source_path)
+        if not isinstance(source, dict):
+            raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition is unreadable")
+        try:
+            errors, _ = xdaily.edition_problems(day, source)
+            if errors:
+                raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition fails its source check")
+            expected = xdaily.public_edition(day, source)
+        except (OSError, ValueError, KeyError, TypeError):
+            raise SystemExit(f"[x] cannot refresh published X edition {day}: private scan is unreadable") from None
+        if _read(public_path) != expected:
+            _write(public_path, json.dumps(expected, indent=1, ensure_ascii=False) + "\n")
 
 
 def gone_ids(d: str, force: bool = False) -> set[str]:
@@ -229,11 +339,16 @@ def prune(d: str, published: Path, force: bool = False) -> dict:
     gone = gone_ids(d, force)
     res = {"gone": len(gone)}
     if gone:
+        edition_days = _edition_sync_days(published, gone)
+        _preflight_public_editions(Path(published), gone, edition_days)
         ed = _prune_editions(published, gone)
-        res |= {k: v for k, v in ed.items() if k != "keys"}
-        res["stance_rows"] = _prune_stances(published, gone, ed["keys"])
-        res["signals_signals"] = signals_index.prune(published, gone)
-        res |= _prune_private(gone)
+        res |= {k: v for k, v in ed.items() if k not in {"keys", "rekeys"}}
+        res["stance_rows"], stance_days = _prune_stances(published, gone, ed["keys"], ed["rekeys"])
+        private, affected_days = _prune_private(gone)
+        res |= private
+        edition_days |= affected_days | set(ed["keys"])
+        _sync_public_editions(published, edition_days)
+        res["signals_signals"] = signals_index.prune(published, gone, edition_days | stance_days)
     res["check_ids"] = len(published_ids(published, d))
     return res
 

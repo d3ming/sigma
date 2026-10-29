@@ -1,6 +1,7 @@
 """The daily X edition: grounding and what reaches the public file. Rules from AGENTS.md ("every claim is grounded",
 "never commit copied text") and the X edition's stated rules."""
 import json
+from datetime import datetime
 
 
 def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_post_text(monkeypatch, tmp_path):
@@ -52,36 +53,92 @@ def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_p
 
 
 def test_a_post_the_scan_reports_gone_leaves_every_file_sigma_keeps_and_the_next_check_list(monkeypatch, tmp_path):
-    """stated-rule (X developer terms, docs.x.com/developer-terms, 2026-10-27: delete stored X content when the post is
-    deleted on X): after `prune`, the gone id is in no published, scan or working file, the other posts are untouched,
-    and a second run changes nothing."""
-    from sigma import xprune
+    """failure-seen (Codex P1: the publication source-projection gate rejected the stale edition after prune): X's
+    deletion rule removes the gone id everywhere Sigma keeps it, refreshes the surviving public projection, and a second
+    run changes nothing."""
+    import pytest
+
+    from sigma import entities, published, signals_index, stance, xdaily, xprune
 
     gone, kept, thread = "2114775956821061744", "2114752489476309203", "2114881103018574324"
+    unlabelled_gone = "2114775956821061745"
     more_gone, more_kept = "2114999999999999990", "2114999999999999991"
     x, pub = tmp_path / "x", tmp_path / "published"
     monkeypatch.setenv("SIGMA_X_DIR", str(x))
+    local_data = tmp_path / "local-data"
+    local_data.mkdir()
+    accounts = local_data / "x-accounts.json"
+    accounts.write_text(json.dumps({"accounts": [{"handle": "h", "tier": "core", "type": "news"}]}))
+    (local_data / "entities.json").write_text("{}")
+    monkeypatch.setattr(xdaily, "ACCOUNTS", accounts)
+    monkeypatch.setattr(signals_index, "DATA", local_data)
+    monkeypatch.setattr(entities, "ENTITIES_FILE", local_data / "entities.json")
     (x / "scan/2026-10-26").mkdir(parents=True)
     (x / "days/2026-10-26").mkdir(parents=True)
     (pub / "x/editions").mkdir(parents=True)
     (pub / "x/stances").mkdir(parents=True)
-    scan = [{"id": i, "handle": "h", "text": f"text of {i}"} for i in (gone, kept, thread, more_gone, more_kept)]
+    scan = [{"id": i, "handle": "h", "created_at": "2026-10-26T12:00:00Z",
+             "text": "The Fed may change interest rates tomorrow." if i == gone else f"A sufficiently long synthetic source post for {i}",
+             "metrics": {"like": 10}}
+            for i in (gone, kept, thread, more_gone, more_kept)]
+    for post in scan:
+        if post["id"] in {thread, more_gone}:
+            post.update({"in_reply_to_id": kept, "in_reply_to_handle": "h"})
     (x / "scan/2026-10-26/posts.jsonl").write_text("\n".join(json.dumps(p) for p in scan) + "\n")
-    (x / "scan/2026-10-26/manifest.json").write_text(json.dumps({"ids_checked": 5, "ids_gone": [gone, more_gone]}))
+    (x / "scan/2026-10-26/quoted.jsonl").write_text("")
+    (x / "scan/2026-10-26/manifest.json").write_text(json.dumps({"ids_checked": 5, "ids_gone": [gone, more_gone, unlabelled_gone],
+        "date": "2026-10-26", "window_start": "2026-10-25T12:00:00Z", "window_end": "2026-10-26T12:00:00Z",
+        "accounts_ok": 1, "accounts_requested": 1}))
     (x / "days/2026-10-26/prep.md").write_text(f"# scan\n\n## {gone} @h 10-26\ntext of {gone}\n\n## {kept} @h 10-26\ntext of {kept}\n")
     ed = {"date": "2026-10-26", "headline": "h", "signals": [{"text": "Both posts argue for one thing.", "cites": [gone, kept]},
                                                             {"text": "A second point about another thing.", "cites": [kept]}],
-          "posts": [{"id": gone, "handle": "h"}, {"id": kept, "handle": "h"}],
-          "more": [{"id": more_gone, "handle": "h"}, {"id": more_kept, "handle": "h"}]}
-    (pub / "x/editions/2026-10-26.json").write_text(json.dumps(ed))
-    rows = [{"key": f"p-{gone}", "labels": [], "id": gone, "handle": "h", "date": "2026-10-26"},
-            {"key": f"p-{kept}", "labels": [], "id": kept, "handle": "h", "date": "2026-10-26", "thread": [thread, gone]}]
+          "posts": [{"id": gone}, {"id": kept}]}
+    (x / "days/2026-10-26/edition.json").write_text(json.dumps(ed))
+    (pub / "x/editions/2026-10-26.json").write_text(json.dumps(xdaily.public_edition("2026-10-26", ed)))
+    previous, previous_selected = "2026-10-25", "2114666666666666601"
+    previous_more_ids = [str(2114666666666666700 + i) for i in range(31)]
+    previous_more = previous_more_ids[0]
+    previous_scan = x / "scan" / previous
+    previous_scan.mkdir()
+    previous_posts = [
+        {"id": unlabelled_gone, "handle": "h", "created_at": previous + "T12:00:00Z", "text": "The Fed may change interest rates tomorrow.", "metrics": {"like": 0}},
+        {"id": previous_selected, "handle": "h", "created_at": previous + "T12:00:00Z", "text": "A sufficiently long synthetic source post.", "metrics": {"like": 10}},
+        *[{"id": i, "handle": "h", "created_at": previous + "T12:00:00Z", "text": "A sufficiently long synthetic source post.", "metrics": {"like": 100}}
+          for i in previous_more_ids],
+    ]
+    (previous_scan / "posts.jsonl").write_text("".join(json.dumps(p) + "\n" for p in previous_posts))
+    (previous_scan / "quoted.jsonl").write_text("")
+    (previous_scan / "manifest.json").write_text(json.dumps({"date": previous, "window_start": "2026-10-24T12:00:00Z",
+        "window_end": previous + "T12:00:00Z", "accounts_ok": 1, "accounts_requested": 1}))
+    (x / "days" / previous).mkdir()
+    previous_ed = {"date": previous, "signals": [{"text": "Readers discuss a changing market event today.", "cites": [previous_selected]}],
+                   "posts": [{"id": previous_selected}]}
+    (x / "days" / previous / "edition.json").write_text(json.dumps(previous_ed))
+    (pub / "x/editions" / f"{previous}.json").write_text(json.dumps(xdaily.public_edition(previous, previous_ed)))
+    previous_public = json.loads((pub / "x/editions" / f"{previous}.json").read_text())
+    assert previous_public["posts_read"] == 33
+    assert unlabelled_gone not in {p["id"] for p in [*previous_public["posts"], *previous_public["more"]]}
+    assert len(previous_public["more"]) == 30 and previous_more in {p["id"] for p in previous_public["more"]}
+    xlabel = [{"ticker": "@MARKET", "stance": 1, "reason": "Rates remain important"}]
+    neutral = [{"ticker": "@MARKET", "stance": 0, "reason": "No directional call"}]
+    rows = [{"key": f"p-{gone}", "labels": xlabel, "id": gone, "handle": "h", "date": "2026-10-26"},
+            {"key": f"p-{kept}", "labels": xlabel, "id": kept, "handle": "h", "date": "2026-10-26", "thread": [thread, more_gone]},
+            {"key": stance.x_key("2026-10-26", "signals", 1, ed["signals"][1]["text"]), "labels": neutral, "market": True}]
     (pub / "x/stances/2026-10-26.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    previous_stance = {"key": f"p-{previous_selected}", "labels": xlabel, "id": previous_selected, "handle": "h", "date": previous}
+    (pub / "x/stances" / f"{previous}.jsonl").write_text(json.dumps(previous_stance) + "\n")
 
-    (pub / "signals").mkdir()  # the Signals index lists signals by post id: prune takes them out too
-    sig = lambda i: {"source_kind": "x", "source_id": i, "origin": "primary"}
-    (pub / "signals/2026-10-26.json").write_text(json.dumps({"date": "2026-10-26", "generated_at": "t", "complete": True, "missing": [],
-                                                           "counts": {}, "signals": [sig(gone), sig(kept)]}))
+    (pub / "signals").mkdir()
+    generated = datetime.fromisoformat("2026-10-29T12:00:00-07:00")
+    for day in ("2026-10-26", previous):
+        (pub / "signals" / f"{day}.json").write_text(json.dumps(signals_index.build(day, pub, now=generated)))
+    previous_before = json.loads((pub / "signals" / f"{previous}.json").read_text())
+    assert not previous_before["complete"] and [m["source"] for m in previous_before["missing"]] == ["x"]
+
+    def validate_projection():
+        published.validate_publication_outputs(pub, x)
+
+    validate_projection()
 
     def mentions():
         return sorted(str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*") if f.is_file() and gone in f.read_text())
@@ -89,17 +146,47 @@ def test_a_post_the_scan_reports_gone_leaves_every_file_sigma_keeps_and_the_next
     def mentions_more_gone():
         return sorted(str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*") if f.is_file() and more_gone in f.read_text())
 
-    assert len(mentions()) == 6
-    assert len(mentions_more_gone()) == 3
+    assert len(mentions()) == 7
+    assert len(mentions_more_gone()) == 4
     args = type("A", (), {"date": "2026-10-26", "published": str(pub), "force": False})
+    previous_source_path = x / "days" / previous / "edition.json"
+    previous_source_bytes = previous_source_path.read_bytes()
+    previous_source_path.unlink()
+    before_refusal = {f: f.read_bytes() for f in tmp_path.rglob("*") if f.is_file()}
+    with pytest.raises(SystemExit, match="private edition is missing"):
+        xprune.prune_cmd(args)
+    assert before_refusal == {f: f.read_bytes() for f in tmp_path.rglob("*") if f.is_file()}
+    previous_source_path.write_bytes(previous_source_bytes)
     xprune.prune_cmd(args)
     assert mentions() == ["x/scan/2026-10-26/manifest.json"]  # the scanner's own report stays
     after = json.loads((pub / "x/editions/2026-10-26.json").read_text())
     assert [s["cites"] for s in after["signals"]] == [[kept]] and [p["id"] for p in after["posts"]] == [kept]
-    assert [p["id"] for p in after["more"]] == [more_kept]
-    assert json.loads((pub / "x/stances/2026-10-26.jsonl").read_text()) == {**rows[1], "thread": [thread]}
-    assert [r["source_id"] for r in json.loads((pub / "signals/2026-10-26.json").read_text())["signals"]] == [kept]
-    assert json.loads((x / "check-ids.json").read_text())["ids"] == sorted([kept, thread, more_kept])
+    assert [p["id"] for p in after["more"]] == [thread, more_kept]
+    source = json.loads((x / "days/2026-10-26/edition.json").read_text())
+    assert after == xdaily.public_edition("2026-10-26", source)
+    assert after["posts_read"] == 3
+    previous_after = json.loads((pub / "x/editions" / f"{previous}.json").read_text())
+    previous_source = json.loads((x / "days" / previous / "edition.json").read_text())
+    assert previous_after == xdaily.public_edition(previous, previous_source)
+    assert previous_after["posts_read"] == 32
+    assert previous_after["more"] == previous_public["more"]
+    validate_projection()
+    current_stances = [json.loads(line) for line in (pub / "x/stances/2026-10-26.jsonl").read_text().splitlines()]
+    assert current_stances[0] == {**rows[1], "thread": [thread]}
+    assert current_stances[1] == {**rows[2], "key": stance.x_key("2026-10-26", "signals", 0, ed["signals"][1]["text"])}
+    previous_signal = json.loads((pub / "signals" / f"{previous}.json").read_text())
+    assert previous_signal["complete"] and previous_signal["missing"] == []
+    assert current_stances[1]["labels"] == neutral
+    current_signal = json.loads((pub / "signals/2026-10-26.json").read_text())
+    assert [r["source_id"] for r in current_signal["signals"] if r["source_kind"] == "x"] == [kept]
+    assert current_signal["generated_at"] == generated.isoformat(timespec="minutes")
+    assert previous_signal["generated_at"] == generated.isoformat(timespec="minutes")
+    index = json.loads((pub / "signals/index.json").read_text())
+    assert next(r for r in index["days"] if r["date"] == previous)["complete"] is True
+    expected_ids = [kept, thread, more_kept, previous_selected, *[p["id"] for p in previous_public["more"]]]
+    assert json.loads((x / "check-ids.json").read_text())["ids"] == sorted(expected_ids)
+    assert sorted(str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*")
+                  if f.is_file() and unlabelled_gone in f.read_text()) == ["x/scan/2026-10-26/manifest.json"]
     assert mentions_more_gone() == ["x/scan/2026-10-26/manifest.json"]
     before = {f: f.read_bytes() for f in tmp_path.rglob("*") if f.is_file()}
     xprune.prune_cmd(args)

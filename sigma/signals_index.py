@@ -281,22 +281,39 @@ def _counts(signals: list[dict]) -> dict:
             "recap": sum(r["origin"] == "recap" for r in signals)}
 
 
-def prune(published: Path, gone: set[str]) -> int:
-    """Drop the signals of X posts deleted on X (sigma x prune) from every day's file; returns how many."""
-    n = 0
-    for f in sorted(signals_dir(published).glob("????-??-??.json")):
+def prune(published: Path, gone: set[str], affected_days=()) -> int:
+    """Refresh existing Signals docs from surviving labels and scans after X deletion; return confirmed gone X rows."""
+    published = Path(published)
+    days = set(affected_days)
+    docs = sorted(signals_dir(published).glob("????-??-??.json"))
+    for f in docs:
         try:
             doc = json.loads(f.read_text(encoding="utf-8"))
-        except ValueError:
+        except (OSError, ValueError):
             continue
-        keep = [r for r in doc["signals"] if not (r["source_kind"] == "x" and str(r["source_id"]) in gone)]
-        if len(keep) != len(doc["signals"]):
-            n += len(doc["signals"]) - len(keep)
-            was = {r["ticker"]: {f"~{i}" for i in range(r.get("neutral", 0))} for r in doc.get("tickers", [])}  # neutral voters stay as counted
-            f.write_text(json.dumps({**doc, "counts": _counts(keep), **(sentiment(keep, was) if "tickers" in doc else {}), "signals": keep}, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
-    if n:
+        if any(r.get("source_kind") == "x" and str(r.get("source_id")) in gone for r in doc.get("signals") or []):
+            days.add(f.stem)
+    removed, changed = 0, False
+    for day in sorted(days):
+        f = signals_dir(published) / f"{day}.json"
+        if not f.is_file():
+            continue
+        try:
+            old = json.loads(f.read_text(encoding="utf-8"))
+            generated = datetime.fromisoformat(old["generated_at"])
+            current = build(day, published, now=generated)
+        except (KeyError, OSError, TypeError, ValueError):
+            raise SignalsError(f"cannot refresh the existing Signals document for {day}") from None
+        if check(current, published):
+            raise SignalsError(f"the refreshed Signals document for {day} fails validation")
+        removed += sum(1 for r in old.get("signals") or []
+                       if r.get("source_kind") == "x" and str(r.get("source_id")) in gone)
+        if old != current:
+            f.write_text(json.dumps(current, indent=1, ensure_ascii=False) + "\n", encoding="utf-8")
+            changed = True
+    if changed:
         write_index(published)
-    return n
+    return removed
 
 
 def check(doc: dict, published: Path = PUBLISHED) -> list[str]:
