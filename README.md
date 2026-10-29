@@ -30,7 +30,7 @@ Start with `sigma --help` and `sigma doctor`. An agent follows [the daily prompt
 
 Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
 
-The site is built locally and uploaded prebuilt. Pushing code does not deploy it. The static preview does not run the search API; hosted search needs its configured index and a linked preflight check. See `deploy/mac/site-deploy.sh --help` for its local dry run and production path.
+The site is built locally from private data and uploaded prebuilt. Source changes reach `main` through a reviewed PR; merging does not deploy. Run `make publish` on `main` to prepare a version-tagged publication for approval. `scripts/release.sh --help` owns the prepare and publish commands. The static preview does not run the search API; hosted search needs its configured index and a linked preflight check.
 
 ## Contribute
 

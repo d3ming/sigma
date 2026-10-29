@@ -32,3 +32,7 @@ The SI lens published a second feed of AI news and how-tos. Sigma instead focuse
 ## Legacy command and configuration names
 
 The package and command named `wire`, the `podcast-alpha` alias, the `WIRE_*` and `PA_*` settings, and the Alpha index were replaced by `sigma`, `SIGMA_*` and Signals. Keeping aliases would create competing configuration paths. Old public `/alpha` page links redirect to `/signals`; there are no old CLI or environment aliases. The last implementation is `68f6d6c`.
+
+## Merge-and-deploy release commands
+
+`make release` and `make release-land` prepared a release PR and deployed while moving `main`. Source review and publication now have separate approval boundaries: a normal PR promotes source, and `make publish` prepares the immutable version tag and frozen publication plan. Direct unapproved uploads are refused. The last merge-and-deploy implementation is `641fec3:scripts/release.sh`.

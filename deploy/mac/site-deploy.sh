@@ -8,7 +8,10 @@ DATA_ROOT="${SIGMA_DATA_ROOT:-$SIGMA/data}"
 export SIGMA_DATA_ROOT="$DATA_ROOT"
 PYTHON=${SIGMA_PYTHON:-}
 if [[ -z $PYTHON ]]; then
-  if [[ -x "$SIGMA/.venv/bin/python" ]]; then PYTHON="$SIGMA/.venv/bin/python"; else PYTHON=python3; fi
+  COMMON_DIR=$(git -C "$SIGMA" rev-parse --git-common-dir)
+  [[ $COMMON_DIR == /* ]] || COMMON_DIR="$SIGMA/$COMMON_DIR"
+  MAIN_CHECKOUT=$(cd "$COMMON_DIR/.." && pwd)
+  if [[ -x "$SIGMA/.venv/bin/python" ]]; then PYTHON="$SIGMA/.venv/bin/python"; elif [[ -x "$MAIN_CHECKOUT/.venv/bin/python" ]]; then PYTHON="$MAIN_CHECKOUT/.venv/bin/python"; else PYTHON=python3; fi
 fi
 STATE="${SIGMA_DEPLOY_STATE_DIR:-$SIGMA/.vercel}"
 ARTIFACTS="${SIGMA_DEPLOY_ARTIFACT_DIR:-$SIGMA/.vercel}"
@@ -44,32 +47,44 @@ USED=$(grep -c "^$TODAY " "$LOG" 2>/dev/null || true); USED=${USED:-0}
 MODE=${1:-}
 if [[ $MODE == --help || $MODE == -h ]]; then
   cat <<'HELP'
-usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH|--force]
+usage: site-deploy.sh [--site-only|--preflight [SOURCE_SHA]|--dry-run|--deploy-staged HASH PLAN_ID]
 
 Builds a production Vercel output, hashes the generated publication content,
 and deploys the frozen prebuilt output when its content changed. --preflight
 builds and checks quota without upload; --dry-run builds without quota refusal.
 --site-only runs the static site builder without Vercel or an account. Production
-upload requires local main to match origin/main. --force bypasses the content
-and daily quota skips. --deploy-staged uploads the frozen preflight artifact
+upload requires local main to match origin/main and an annotated version tag
+for the current main commit. --deploy-staged requires its exact prepared plan ID and uploads the frozen artifact
 identified by its full content hash, without rebuilding it.
 HELP
   exit 0
 fi
-FORCE=0
-if [[ $MODE == --force ]]; then FORCE=1; fi
-if [[ $MODE == --preflight && ${2:-} == --force ]]; then FORCE=1; fi
-if [[ $MODE == --deploy-staged && ${3:-} == --force ]]; then FORCE=1; fi
-[[ $MODE == --site-only || $MODE == --dry-run || $MODE == --preflight || $MODE == --deploy-staged || $MODE == --force || -z $MODE ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH|--force]" >&2; exit 2; }
-[[ $# -le 1 || ( $MODE == --preflight && $# -eq 2 && ${2:-} == --force ) || ( $MODE == --deploy-staged && ( $# -eq 2 || ( $# -eq 3 && ${3:-} == --force ) ) ) ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH [--force]|--force]" >&2; exit 2; }
-if [[ -z $MODE || $MODE == --force || $MODE == --deploy-staged ]]; then
+[[ $MODE == --site-only || $MODE == --dry-run || $MODE == --preflight || $MODE == --deploy-staged ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [SOURCE_SHA]|--dry-run|--deploy-staged HASH PLAN_ID]" >&2; exit 2; }
+[[ $# -le 1 || ( $MODE == --preflight && $# -eq 2 ) || ( $MODE == --deploy-staged && $# -eq 3 ) ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [SOURCE_SHA]|--dry-run|--deploy-staged HASH PLAN_ID]" >&2; exit 2; }
+SOURCE_SHA=HEAD
+if [[ $MODE == --preflight && $# -eq 2 ]]; then
+  SOURCE_SHA=$(git rev-parse "$2^{commit}") || { echo "[site] refused: preflight source commit does not exist" >&2; exit 1; }
+fi
+if [[ $MODE == --preflight ]]; then echo "[site] source commit: $(git -C "$SIGMA" rev-parse "$SOURCE_SHA")"; fi
+if [[ $MODE == --deploy-staged ]]; then
   BRANCH=$(git branch --show-current)
   if [[ $BRANCH != main ]]; then
     echo "[site] refused: production deploys only from main, and this clone is on '${BRANCH:-detached HEAD}'." >&2
     exit 1
   fi
   git fetch -q origin main
-  [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || { echo "[site] refused: local main is not at origin/main" >&2; exit 1; }
+  HEAD_SHA=$(git rev-parse HEAD)
+  [[ $HEAD_SHA == $(git rev-parse origin/main) ]] || { echo "[site] refused: local main is not at origin/main" >&2; exit 1; }
+  if [[ $MODE == --deploy-staged ]]; then
+    VERSION=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' "$SIGMA/pyproject.toml" | head -1)
+    [[ -n $VERSION ]] || { echo "[site] refused: cannot read version tag from pyproject.toml" >&2; exit 1; }
+    TAG="v$VERSION"
+    TAG_REFS=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}")
+    TAG_OBJECT=$(printf '%s\n' "$TAG_REFS" | awk -v ref="refs/tags/$TAG" '$2 == ref { print $1 }')
+    TAG_COMMIT=$(printf '%s\n' "$TAG_REFS" | awk -v ref="refs/tags/$TAG^{}" '$2 == ref { print $1 }')
+    [[ -n $TAG_OBJECT && -n $TAG_COMMIT && $TAG_OBJECT != "$TAG_COMMIT" && $TAG_COMMIT == "$HEAD_SHA" ]] \
+      || { echo "[site] refused: remote annotated version tag $TAG does not identify current main" >&2; exit 1; }
+  fi
 fi
 BUILD_OUT="$SIGMA/.vercel/build.out"
 BUILD_ERR="$SIGMA/.vercel/build.err"
@@ -106,7 +121,39 @@ fi
 mkdir -p "$SIGMA/.vercel" "$STATE" "$ARTIFACTS"
 if [[ $MODE == --deploy-staged ]]; then
   HASH=$2
+  PLAN_ID=$3
   [[ $HASH =~ '^[0-9a-f]{64}$' ]] || { echo "[site] refused: invalid publication hash" >&2; exit 2; }
+  [[ $PLAN_ID =~ '^[0-9a-f]{64}$' ]] || { echo "[site] refused: an exact prepared plan ID is required" >&2; exit 2; }
+  PLAN_DIR=${SIGMA_RELEASE_PLAN_DIR:-$STATE/release-plans}
+  "$PYTHON" - "$PLAN_DIR/$PLAN_ID.json" "$PLAN_DIR/$PLAN_ID.md" "$PLAN_DIR/$PLAN_ID.manifest.json" "$PLAN_ID" "$HASH" "$HEAD_SHA" "$TAG" "$SIGMA/.vercel/project.json" <<'PY'
+import hashlib
+import json
+import pathlib
+import sys
+
+plan_path, notes_path, manifest_path = map(pathlib.Path, sys.argv[1:4])
+plan_id, artifact_hash, source_sha, tag = sys.argv[4:8]
+project_path = pathlib.Path(sys.argv[8])
+try:
+    plan = json.loads(plan_path.read_text(encoding="utf-8"))
+    notes = notes_path.read_text(encoding="utf-8")
+    manifest = manifest_path.read_bytes()
+    project_hash = hashlib.sha256(project_path.read_bytes()).hexdigest()
+except (OSError, ValueError):
+    raise SystemExit("[site] refused: prepared publication plan or linked project is missing")
+payload = {key: value for key, value in plan.items() if key != "plan_id"}
+expected_id = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+if plan.get("plan_id") != str(plan_id) or expected_id != str(plan_id):
+    raise SystemExit("[site] refused: prepared publication plan does not match its ID")
+if plan.get("artifact_hash") != artifact_hash or plan.get("source_sha") != source_sha or plan.get("tag") != tag:
+    raise SystemExit("[site] refused: prepared plan does not authorize this source and artifact")
+if plan.get("target") != "production" or plan.get("project_hash") != project_hash:
+    raise SystemExit("[site] refused: prepared plan target differs from the linked Vercel project")
+if hashlib.sha256(notes.encode()).hexdigest() != plan.get("notes_sha256"):
+    raise SystemExit("[site] refused: release notes changed after preparation")
+if hashlib.sha256(manifest).hexdigest() != plan.get("manifest_sha256"):
+    raise SystemExit("[site] refused: publication manifest changed after preparation")
+PY
   STAGED="$ARTIFACTS/publication/$HASH"
   [[ -d "$STAGED/.vercel/output" && -f "$STAGED/.vercel/output/config.json" ]] || { echo "[site] refused: staged publication $HASH is missing" >&2; exit 1; }
   if [[ -f "$SIGMA/.vercel/project.json" ]]; then
@@ -133,7 +180,7 @@ PY
   audit_publication "$STAGED/.vercel/output" || { echo "[site] refused: staged publication contains a private path" >&2; exit 1; }
 else
   SOURCE=$(mktemp -d "${TMPDIR:-/tmp}/sigma-vercel-build.XXXXXX")
-  git -C "$SIGMA" archive HEAD | tar -x -C "$SOURCE"
+  git -C "$SIGMA" archive "$SOURCE_SHA" | tar -x -C "$SOURCE"
   mkdir -p "$SOURCE/.vercel"
   [[ ! -f "$SIGMA/.vercel/project.json" ]] || cp "$SIGMA/.vercel/project.json" "$SOURCE/.vercel/project.json"
   if [[ -z $BASE_URL ]]; then
@@ -203,7 +250,7 @@ fi
 if [[ $MODE == --preflight || $MODE == --dry-run ]]; then
   if [[ -f $STAMP && "$(cat "$STAMP")" == "$HASH" ]]; then
     echo "[site] unchanged; no deployment needed"
-  elif [[ $MODE == --preflight && $FORCE == 0 ]] && (( USED >= MAX )); then
+  elif [[ $MODE == --preflight ]] && (( USED >= MAX )); then
     echo "[site] refused: already made today's $MAX deployments ($TODAY); next publication can deploy it" >&2
     exit 1
   else
@@ -211,11 +258,11 @@ if [[ $MODE == --preflight || $MODE == --dry-run ]]; then
   fi
   exit 0
 fi
-if [[ $FORCE == 0 && -f $STAMP && "$(cat "$STAMP")" == "$HASH" ]]; then
+if [[ -f $STAMP && "$(cat "$STAMP")" == "$HASH" ]]; then
   echo "[site] unchanged since last deployment; not deployed"
   exit 0
 fi
-if [[ $FORCE == 0 ]] && (( USED >= MAX )); then
+if (( USED >= MAX )); then
   echo "[site] refused: already made today's $MAX deployments ($TODAY); next publication can deploy it" >&2
   exit 1
 fi
@@ -264,7 +311,7 @@ PY
   return 1
 }
 attempt 1 || {
-  if [[ $FORCE == 0 ]] && (( USED >= MAX )); then
+  if (( USED >= MAX )); then
     echo "[site] not retrying: the failed attempt used the day's last deploy ($USED of $MAX on $TODAY); full output in $FAILLOG" >&2
     exit 1
   fi

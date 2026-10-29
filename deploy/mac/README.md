@@ -47,10 +47,13 @@ Set `SIGMA_DATA_ROOT` to a private data directory before running the jobs. The e
 copied into a new local `data/` directory by `scripts/setup.sh`. The agent tasks save private changes with
 `deploy/mac/data-commit.sh`; that command stages only the configured data directory inside its Git repository.
 
-For a data-only site update, first save the private data, then run `make publish` from the production `main` checkout.
-`make publish DRY_RUN=1` runs the Vercel production build and quota check without upload, and needs the clone linked to its
-Vercel project. `deploy/mac/site-deploy.sh --site-only` builds the site without Vercel or an account. No source-release
-PR is needed for a data-only update. Source changes use the owner-reviewed release PR flow and `make release-land`.
+Promote source to `main` through a reviewed PR. Publication is a separate decision because its private data can
+change without a source commit. `make publish` prepares a version-tagged, frozen publication on `main`; the owner
+approves that exact plan before upload. The command details belong to `scripts/release.sh --help`. Keep automatic
+Git deployments disabled: a cloud build cannot read the private data root.
+
+A data-only publication can reuse the version tag while `main` is unchanged. A new source version needs a reviewed
+version bump. For a local site build without a Vercel account, use `deploy/mac/site-deploy.sh --site-only`.
 
 The launchd labels are `com.sigma.daily` and `com.sigma.weekly`. The scheduled scripts use the repository path passed
 to `deploy/mac/install.sh` through `SIGMA_REPO` or their own location.
