@@ -9,7 +9,6 @@ Use Python 3.10–3.14. The checkout supplies schemas, prompts and assets, so in
 ```bash
 git clone https://github.com/d3ming/sigma
 cd sigma
-git switch seed
 python3.12 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
 export SIGMA_DATA_ROOT="$(mktemp -d)"
