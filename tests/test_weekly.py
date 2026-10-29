@@ -15,6 +15,7 @@ from sigma import library, published, ranked as ranked_mod, report
 from sigma.cli import after_stage, main
 from sigma.fetch import write_episode
 from sigma.ingest import Episode
+from sigma.transcribe import MIN_TRANSCRIPT_CHARS
 
 from tests.helpers import STATUS_SHAPE, sandbox, spoken
 
@@ -111,9 +112,14 @@ def week(tmp_path, monkeypatch):
     rows = []
     for i, (show, tier, _, day, word, claims) in EPISODES.items():
         lines = {**INTRO.get(i, {}), **({300: SAID[i]} if i in SAID else {}), **({300: SAID["a"]} if i == "a2" else {})}
+        times = sorted({0, 60, 120, 180, 240, 300, 310, 320, 1740})
+        segs = [{"start": t, "speaker": None, "text": lines.get(t, f"{word} " * 10).strip()} for t in times if t < 1740]
+        filler_chars = MIN_TRANSCRIPT_CHARS + 1 - sum(len(s["text"]) + 1 for s in segs)
+        filler_words = max(1, (filler_chars + len(word)) // (len(word) + 1))
+        segs.append({"start": 1740, "speaker": None, "text": f"{word} " * filler_words})
         ep = Episode(id=f"rss:{i}", source_id=show.lower().replace(" ", "-"), source_name=show, tier=tier, title=f"Episode {i}", url=url(i),
                      published_at=datetime.fromisoformat(day).replace(tzinfo=timezone.utc))
-        rows.append(write_episode(run, ep, spoken(lines, filler=word, every=10), "podcast:transcript"))
+        rows.append(write_episode(run, ep, segs, "podcast:transcript"))
     ep = Episode(id="rss:x", source_id="show-x", source_name="Show X", tier=1, title="Episode x", url=url("x"),
                  published_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
     rows.append(write_episode(run, ep, None, None))
