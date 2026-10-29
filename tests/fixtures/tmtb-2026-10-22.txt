@@ -1,0 +1,14 @@
+Today’s Essential Episodes:
+Helix Dynamics CEO Orrin Vance on Funding New Plants, Order Backlogs and the Wafer Supply Squeeze
+Bayview Business’s Morning Desk: Mara Lindqvist interviews Orrin Vance, founder and CEO of Helix Dynamics, at a Hamburg summit
+Meridian CTO Pavel Ostrander on Equipment Limits, Lithography Roadmaps and the Next Decade of Chip Design
+Deep Silicon Podcast, with Dana Whitfield, Meridian CTO Pavel Ostrander, process-development lead Lena Brauer, Tomas Ilves and Rhea Okonkwo
+Vireo Security CEO Gideon Marsh on Autonomous Attackers, Faster Intrusions and a Joint Research Lab
+Signal Hour, with Priya Raman, Tomas Weller and Gideon Marsh, president and CEO of Vireo Security
+Corvane’s Hollis Brandt and Northgate’s Selene Park on Post-Quantum Planning, Model Licensing and Software Roll-ups
+Fourth Quarter Podcast, with Hollis Brandt, chairman and CEO of Corvane, and Selene Park, chairman and CEO of Northgate Systems
+Northgate Systems CEO Selene Park on a New Protocol Bug, Automated Bug Hunting and Datacenter Appetite
+Tech Brunch Live, with Marcus Hale and Selene Park, chairman and CEO of Northgate Systems
+Edith Marlowe on Two Decades of Platform Change, Industry Self-Policing and an Independent Review Layer
+Open Channel with Jonas Reid, with Edith Marlowe, co-founder of Lumen Systems and chair of the Marlowe Foundation
+Produced by Example Media: synthetic fixture for tests.

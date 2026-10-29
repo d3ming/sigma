@@ -1,0 +1,228 @@
+"""The daily X edition: grounding and what reaches the public file. Rules from AGENTS.md ("every claim is grounded",
+"never commit copied text") and the X edition's stated rules."""
+import json
+
+
+def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_post_text(monkeypatch, tmp_path):
+    """stated-rule (AGENTS.md "every claim is grounded"): a figure must be in the cited post's text,
+    and the public file carries ids and Wire's sentences, never the authors' text. The raw U+2028 in the text is
+    failure-seen: the scanner's first scan reported that it broke the scan reader."""
+    from wire import xdaily
+
+    monkeypatch.setenv("WIRE_X_DIR", str(tmp_path))
+    (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "lens": "alpha", "tier": "core", "type": "news"}]}))
+    monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
+    sd = tmp_path / "scan" / "2026-10-26"
+    sd.mkdir(parents=True)
+    text = "Anthropic S-1: H1 revenue $16.3B, compute commitments of $265.6B with Google, Amazon and Microsoft."
+    post = {"id": "2114705686513033360", "handle": "someanalyst", "created_at": "2026-10-26T13:08:00Z", "text": text,
+            "metrics": {"like": 10, "repost": 1}, "media": [{"type": "photo"}]}
+    nulls = {**post, "id": "2114705686513033361", "lang": None, "conversation_id": None}  # X sometimes returns neither: both are optional
+    (sd / "posts.jsonl").write_text("\n".join(json.dumps(p, ensure_ascii=False) for p in (post, nulls)) + "\n", encoding="utf-8")
+    (sd / "quoted.jsonl").write_text("")
+    (sd / "manifest.json").write_text(json.dumps({"date": "2026-10-26", "window_start": "2026-10-25T14:00:00Z",
+        "window_end": "2026-10-26T14:00:00Z", "accounts_requested": 1, "accounts_ok": 1, "accounts_failed": [], "calls": 1,
+        "rate_limited": False, "complete": True, "scanner": "test", "tool": "test"}))
+    assert xdaily.scan_problems("2026-10-26") == []
+    # stated-rule: the delivery check refuses a manifest at another contract_version
+    # (a scanner on a stale skills/x-scan/SKILL.md); readers (status, prep) still accept an older scan
+    man_p = sd / "manifest.json"
+    man = json.loads(man_p.read_text())
+    assert any("contract_version" in p for p in xdaily.scan_problems("2026-10-26", contract=True))
+    man_p.write_text(json.dumps({**man, "contract_version": xdaily.contract_version() + 1}))
+    assert any("contract_version" in p for p in xdaily.scan_problems("2026-10-26", contract=True))
+    man_p.write_text(json.dumps({**man, "contract_version": xdaily.contract_version()}))
+    assert xdaily.scan_problems("2026-10-26", contract=True) == []
+    man_p.write_text(json.dumps(man))
+    # stated-rule: an account's type is one of a fixed set per lens; a list with any other is refused
+    for bad in ({"type": "views"}, {"type": "howto"}, {}, {"type": "news", "type2": "news"}):
+        (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "lens": "alpha", "tier": "core", **bad}]}))
+        assert any("@someanalyst" in p for p in xdaily.scan_problems("2026-10-26")), bad
+    (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "lens": "alpha", "tier": "core", "type": "news"}]}))
+    ed = {"date": "2026-10-26", "alpha": [{"text": "Posters fixed on $300B of compute commitments in the S-1.", "cites": [post["id"]]}],
+          "posts": [{"id": post["id"], "lens": "alpha"}]}
+    errs, _ = xdaily.edition_problems("2026-10-26", ed)
+    assert len(errs) == 1 and "$300B" in errs[0]  # the chart-free text says 265.6B, so 300B has no source
+    ed["alpha"][0]["text"] = "Posters fixed on $265.6B of compute commitments and $16.3B of first-half revenue."
+    assert xdaily.edition_problems("2026-10-26", ed) == ([], [])
+    out = json.dumps(xdaily.public_edition("2026-10-26", ed))
+    assert "Microsoft" not in out and post["id"] in out
+
+
+def test_a_post_the_scan_reports_gone_leaves_every_file_wire_keeps_and_the_next_check_list(monkeypatch, tmp_path):
+    """stated-rule (X developer terms, docs.x.com/developer-terms, 2026-10-27: delete stored X content when the post is
+    deleted on X): after `prune`, the gone id is in no published, scan or working file, the other posts are untouched,
+    and a second run changes nothing."""
+    from wire import xprune
+
+    gone, kept, thread = "2114775956821061744", "2114752489476309203", "2114881103018574324"
+    x, pub = tmp_path / "x", tmp_path / "published"
+    monkeypatch.setenv("WIRE_X_DIR", str(x))
+    (x / "scan/2026-10-26").mkdir(parents=True)
+    (x / "days/2026-10-26").mkdir(parents=True)
+    (pub / "x/editions").mkdir(parents=True)
+    (pub / "x/stances").mkdir(parents=True)
+    scan = [{"id": i, "handle": "h", "text": f"text of {i}"} for i in (gone, kept, thread)]
+    (x / "scan/2026-10-26/posts.jsonl").write_text("\n".join(json.dumps(p) for p in scan) + "\n")
+    (x / "scan/2026-10-26/manifest.json").write_text(json.dumps({"ids_checked": 3, "ids_gone": [gone]}))
+    (x / "days/2026-10-26/prep.md").write_text(f"# scan\n\n## {gone} @h 10-26\ntext of {gone}\n\n## {kept} @h 10-26\ntext of {kept}\n")
+    ed = {"date": "2026-10-26", "headline": "h", "alpha": [{"text": "Both posts argue for one thing.", "cites": [gone, kept]},
+                                                            {"text": "A second point about another thing.", "cites": [kept]}],
+          "si": [], "posts": [{"id": gone, "handle": "h"}, {"id": kept, "handle": "h"}]}
+    (pub / "x/editions/2026-10-26.json").write_text(json.dumps(ed))
+    rows = [{"key": f"p-{gone}", "labels": [], "id": gone, "handle": "h", "date": "2026-10-26"},
+            {"key": f"p-{kept}", "labels": [], "id": kept, "handle": "h", "date": "2026-10-26", "thread": [thread, gone]}]
+    (pub / "x/stances/2026-10-26.jsonl").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    (pub / "alpha").mkdir()  # the Alpha index lists signals by post id: prune takes them out too
+    sig = lambda i: {"source_kind": "x", "source_id": i, "origin": "primary"}
+    (pub / "alpha/2026-10-26.json").write_text(json.dumps({"date": "2026-10-26", "generated_at": "t", "complete": True, "missing": [],
+                                                           "counts": {}, "signals": [sig(gone), sig(kept)]}))
+
+    def mentions():
+        return sorted(str(f.relative_to(tmp_path)) for f in tmp_path.rglob("*") if f.is_file() and gone in f.read_text())
+
+    assert len(mentions()) == 6
+    args = type("A", (), {"date": "2026-10-26", "published": str(pub), "force": False})
+    xprune.prune_cmd(args)
+    assert mentions() == ["x/scan/2026-10-26/manifest.json"]  # the scanner's own report stays
+    after = json.loads((pub / "x/editions/2026-10-26.json").read_text())
+    assert [s["cites"] for s in after["alpha"]] == [[kept]] and [p["id"] for p in after["posts"]] == [kept]
+    assert json.loads((pub / "x/stances/2026-10-26.jsonl").read_text()) == {**rows[1], "thread": [thread]}
+    assert [r["source_id"] for r in json.loads((pub / "alpha/2026-10-26.json").read_text())["signals"]] == [kept]
+    assert json.loads((x / "check-ids.json").read_text())["ids"] == sorted([kept, thread])
+    before = {f: f.read_bytes() for f in tmp_path.rglob("*") if f.is_file()}
+    xprune.prune_cmd(args)
+    assert before == {f: f.read_bytes() for f in tmp_path.rglob("*") if f.is_file()}
+
+
+def test_a_day_is_rebuilt_when_the_scan_grows_after_its_edition_and_done_again_once_republished(monkeypatch, tmp_path):
+    """stated-rule (AGENTS.md "any step runs by hand, any time", on-demand X updates): a second scan of
+    a day moves the manifest's window_end on; status must then say prep, not done, and say done again once the new
+    edition replaces the published one."""
+    from argparse import Namespace
+
+    from wire import xdaily
+
+    x, pub = tmp_path / "x", tmp_path / "pub"
+    monkeypatch.setenv("WIRE_X_DIR", str(x))
+    (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "lens": "alpha", "tier": "core", "type": "news"}]}))
+    monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
+    d, sd = "2026-10-26", x / "scan" / "2026-10-26"
+    sd.mkdir(parents=True)
+    posts = [{"id": "2114705686513033360", "handle": "someanalyst", "created_at": "2026-10-26T13:08:00Z",
+              "text": "Plain words about the market today and nothing else here.", "metrics": {"like": 3}},
+             {"id": "2114705686513033361", "handle": "someanalyst", "created_at": "2026-10-26T15:30:00Z",
+              "text": "A later post about rates and what the desk is watching.", "metrics": {"like": 4}}]
+
+    def scan(n, end):
+        # failure-seen (coordinator, 2026-10-27): a scan holding posts by an account since cut from the list must still prep
+        cut = {"id": "2114705686513033399", "handle": "cutlater", "created_at": "2026-10-26T14:00:00Z",
+               "text": "A post by an account that is no longer listed, long enough to count.", "metrics": {"like": 1}}
+        (sd / "posts.jsonl").write_text("".join(json.dumps(p) + "\n" for p in [*posts[:n], cut]))
+        (sd / "quoted.jsonl").write_text("")
+        (sd / "manifest.json").write_text(json.dumps({"date": d, "window_start": "2026-10-25T14:00:00Z", "window_end": end,
+            "accounts_requested": 1, "accounts_ok": 1, "accounts_failed": [], "calls": 1, "rate_limited": False,
+            "complete": True, "scanner": "test", "tool": "test"}))
+
+    def build():
+        args = Namespace(date=d, keep=250, published=str(pub))
+        xdaily.prep_cmd(args)
+        ed = {"date": d, "alpha": [{"text": "Posters talked about the market.", "cites": [posts[0]["id"]]}],
+              "posts": [{"id": posts[0]["id"], "lens": "alpha"}]}
+        (x / "days" / d / "edition.json").write_text(json.dumps(ed))
+        xdaily.publish_cmd(args)
+
+    scan(1, "2026-10-26T14:00:00Z")
+    build()
+    assert "2114705686513033399" not in (x / "days" / d / "prep.md").read_text()
+    assert xdaily.status(d, pub)["next"]["type"] == "done"
+    scan(2, "2026-10-26T17:00:00Z")  # the on-demand scan found one more post
+    assert xdaily.status(d, pub)["next"]["command"] == f"wire x prep {d}"
+    build()
+    assert xdaily.status(d, pub)["next"]["type"] == "done"
+    assert json.loads((pub / "x/editions" / f"{d}.json").read_text())["window"][1] == "2026-10-26T17:00:00Z"
+
+
+def test_the_x_dir_defaults_to_a_darkroom_clone_beside_the_repo_when_wire_x_dir_is_unset(monkeypatch, tmp_path):
+    """stated-rule (owner; xdaily.x_dir docstring): $WIRE_X_DIR wins, then data/x, then ../darkroom/wire/x, else data/x. The scanner
+    keeps its wire and darkroom clones side by side (skills/x-scan), so it should not have to export the path to run a check."""
+    from wire import xdaily
+
+    monkeypatch.delenv("WIRE_X_DIR")
+    monkeypatch.setattr(xdaily, "ROOT", tmp_path / "wire")
+    assert xdaily.x_dir() == tmp_path / "wire" / "data" / "x"
+    (tmp_path / "darkroom" / "wire" / "x").mkdir(parents=True)
+    assert xdaily.x_dir() == tmp_path / "darkroom" / "wire" / "x"
+    (tmp_path / "wire" / "data" / "x").mkdir(parents=True)
+    assert xdaily.x_dir() == tmp_path / "wire" / "data" / "x"
+    monkeypatch.setenv("WIRE_X_DIR", str(tmp_path / "elsewhere"))
+    assert xdaily.x_dir() == tmp_path / "elsewhere"
+
+
+def test_scan_check_warns_about_accounts_the_scan_missed_but_still_passes(monkeypatch, tmp_path, capsys):
+    """stated-rule (skills/x-scan step 3: own posts and self-replies only; replies to others are dropped): a scan that is complete
+    can still have an account with no posts, or one whose posts are all replies to others (the search matched the word `bot`,
+    not the author). Counts here are worked by hand from the three accounts below."""
+    from types import SimpleNamespace
+
+    from wire import xdaily
+
+    monkeypatch.setenv("WIRE_X_DIR", str(tmp_path))
+    rows = [{"handle": h, "lens": "alpha", "tier": "core", "type": "news"} for h in ("Active", "Quiet", "bot")]
+    (tmp_path / "accounts.json").write_text(json.dumps({"accounts": rows}))
+    monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
+    sd = tmp_path / "scan" / "2026-10-26"
+    sd.mkdir(parents=True)
+    base = {"created_at": "2026-10-26T13:08:00Z", "text": "x" * 50, "metrics": {}}
+    posts = [{**base, "id": "2114705686513033360", "handle": "active"},
+             {**base, "id": "2114705686513033361", "handle": "active", "in_reply_to_id": "2114705686513033360", "in_reply_to_handle": "active"},
+             {**base, "id": "2114705686513033362", "handle": "bot", "in_reply_to_id": "2114705686513033399", "in_reply_to_handle": "someoneelse"}]
+    (sd / "posts.jsonl").write_text("\n".join(json.dumps(p) for p in posts) + "\n")
+    (sd / "quoted.jsonl").write_text("")
+    (sd / "manifest.json").write_text(json.dumps({"date": "2026-10-26", "window_start": "2026-10-25T14:00:00Z",
+        "window_end": "2026-10-26T14:00:00Z", "accounts_requested": 2, "accounts_ok": 2, "accounts_failed": [], "calls": 1,
+        "rate_limited": False, "complete": True, "scanner": "test", "tool": "test", "contract_version": xdaily.contract_version()}))
+    xdaily.scan_check_cmd(SimpleNamespace(date="2026-10-26"))  # raises SystemExit on a problem; warnings do not
+    out = capsys.readouterr().out
+    assert "requested 2 accounts; x-accounts.json lists 3" in out
+    assert "1 of 3 core accounts have no post in the window: @quiet" in out
+    assert "@bot: all 1 posts are replies to other people" in out
+    assert "@active" not in out and "scan 2026-10-26 ok: 3 posts" in out
+
+
+def test_today_is_the_pacific_date_even_when_the_machine_clock_is_utc(monkeypatch):
+    """stated-rule (AGENTS.md: Wire dates everything in Pacific time): 02:30 UTC on Oct 28 is 19:30 PDT on Oct 27, hand-worked."""
+    from datetime import datetime, timezone
+
+    from wire import xdaily
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 28, 2, 30, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(xdaily, "datetime", Clock)
+    assert xdaily.today() == "2026-10-27"
+
+
+def test_health_says_which_stage_went_quiet_from_the_x_dir_alone(monkeypatch, tmp_path):
+    """stated-rule (the scan is nightly, the edition follows it): a stage with no signal for over the limit is stale, and a
+    scan's own manifest counts as a signal, so the check works before the scanner ever writes a heartbeat. Hours worked by hand."""
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    from wire import xdaily
+
+    monkeypatch.setenv("WIRE_X_DIR", str(tmp_path))
+    now = datetime(2026, 10, 28, 12, 0, tzinfo=timezone.utc)
+    assert len(xdaily.health(now)[1]) == 2  # nothing written yet: both stages report no heartbeat
+    sd = tmp_path / "scan" / "2026-10-27"
+    sd.mkdir(parents=True)
+    (sd / "manifest.json").write_text(json.dumps({"window_end": "2026-10-28T04:00:00Z"}))  # 8 h ago
+    xdaily.heartbeat_cmd(SimpleNamespace(stage="edition", by="editor", date="2026-10-27"))
+    hb = tmp_path / "heartbeat" / "edition.json"
+    hb.write_text(json.dumps({**json.loads(hb.read_text()), "at": "2026-10-27T08:00:00Z"}))  # 28 h ago
+    lines, probs = xdaily.health(now)
+    assert len(probs) == 1 and probs[0].startswith("edition: nothing for 28 h") and lines[0].startswith("scan: last signal 8.0 h ago")
+    assert xdaily.health(now, max_hours=30)[1] == []

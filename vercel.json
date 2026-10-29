@@ -1,0 +1,14 @@
+{
+  "buildCommand": "python3 -m wire.site --out dist",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "git": {
+    "deploymentEnabled": false
+  },
+  "functions": {
+    "api/search.py": {
+      "excludeFiles": "{dist,published,wire,docs,tests,prompts,schema,deploy,web,site-assets,skills,.github,.pytest_cache}/**"
+    }
+  }
+}

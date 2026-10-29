@@ -1,0 +1,31 @@
+[project]
+name = "wire-signals"
+version = "0.2.0"
+description = "Turns public signals (podcasts today) into short, cited claims checked against the source, for investors and their agents"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.15"  # youtube-transcript-api has no release for 3.15 yet; the Mac venv uses python3.14
+keywords = ["signals", "podcasts", "transcription", "whisper", "investing", "llm-agents"]
+dependencies = ["feedparser>=6", "youtube-transcript-api>=1.0", "yt-dlp", "pyyaml", "requests", "jsonschema"]
+
+[project.urls]
+Homepage = "https://github.com/d3ming/wire"
+Documentation = "https://github.com/d3ming/wire/blob/main/docs/architecture.md"
+
+[project.optional-dependencies]
+whisper = ["faster-whisper>=1.2", "av<16"]
+mac = ["mlx-whisper"]  # Apple-silicon GPU backend; combine with whisper: .[dev,whisper,mac]
+dev = ["pytest"]
+
+[project.scripts]
+wire = "wire.cli:main"
+podcast-alpha = "wire.cli:main"  # backwards-compatible alias
+
+[tool.setuptools]
+# Editable installs only (`pip install -e .`): the code reads schema/, prompts/ and skills/ from the repo checkout, which a
+# built wheel does not carry. Every agent works from a clone.
+packages = ["wire"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning:feedparser"]

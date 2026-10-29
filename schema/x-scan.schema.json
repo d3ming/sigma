@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "X scan: manifest.json and one line of posts.jsonl / quoted.jsonl (see skills/x-scan/SKILL.md)",
+  "$defs": {
+    "manifest": {
+      "type": "object",
+      "required": ["date", "window_start", "window_end", "accounts_requested", "accounts_ok", "accounts_failed", "calls",
+                   "rate_limited", "complete", "scanner", "tool"],
+      "properties": {
+        "date": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"},
+        "window_start": {"type": "string", "format": "date-time"},
+        "window_end": {"type": "string", "format": "date-time"},
+        "accounts_requested": {"type": "integer", "minimum": 0},
+        "accounts_ok": {"type": "integer", "minimum": 0},
+        "accounts_failed": {"type": "array", "items": {"type": "object", "required": ["handle", "error"],
+                            "properties": {"handle": {"type": "string"}, "error": {"type": "string"}}}},
+        "calls": {"type": "integer", "minimum": 0},
+        "rate_limited": {"type": "boolean"},
+        "complete": {"type": "boolean"},
+        "contract_version": {"type": "integer", "minimum": 1, "description": "the contract_version in skills/x-scan/SKILL.md the scanner followed; wire x scan-check requires it to equal the skill's"},
+        "scanner": {"type": "string", "description": "who ran it"},
+        "tool": {"type": "string", "description": "e.g. x api v2"},
+        "notes": {"type": "string"},
+        "ids_requested": {"type": "integer", "minimum": 0, "description": "ids in <x dir>/check-ids.json when the scan ran (0 or absent when there is no file)"},
+        "ids_checked": {"type": "integer", "minimum": 0, "description": "of those, ids the API answered for: returned, or reported not found / not authorized"},
+        "ids_gone": {"type": "array", "items": {"type": "string", "pattern": "^\\d{5,25}$"},
+                     "description": "checked ids whose post no longer exists or is not visible (deleted, protected, account gone); wire x prune removes them"}
+      }
+    },
+    "check_ids": {
+      "type": "object", "description": "<x dir>/check-ids.json, written by wire x prune; the scanner reads it, never writes it",
+      "required": ["through", "ids"],
+      "properties": {"through": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$"}, "days": {"type": "integer"},
+                     "ids": {"type": "array", "items": {"type": "string", "pattern": "^\\d{5,25}$"}}}
+    },
+    "post": {
+      "type": "object",
+      "required": ["id", "handle", "created_at", "text", "metrics"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^\\d{5,25}$"},
+        "handle": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,15}$"},
+        "created_at": {"type": "string", "format": "date-time"},
+        "text": {"type": "string", "description": "full text; the long-post (note_tweet) text when there is one"},
+        "lang": {"type": ["string", "null"]},
+        "conversation_id": {"type": ["string", "null"]},
+        "in_reply_to_id": {"type": ["string", "null"]},
+        "in_reply_to_handle": {"type": ["string", "null"]},
+        "quoted_id": {"type": ["string", "null"]},
+        "is_repost": {"type": "boolean"},
+        "cashtags": {"type": "array", "items": {"type": "string"}},
+        "urls": {"type": "array", "items": {"type": "string"}},
+        "media": {"type": "array", "items": {"type": "object", "required": ["type"],
+                  "properties": {"type": {"type": "string"}, "url": {"type": "string"}, "alt": {"type": ["string", "null"]}}}},
+        "metrics": {"type": "object", "properties": {"like": {"type": "integer"}, "repost": {"type": "integer"},
+                    "reply": {"type": "integer"}, "quote": {"type": "integer"}, "view": {"type": ["integer", "null"]},
+                    "bookmark": {"type": ["integer", "null"]}}}
+      }
+    }
+  }
+}
