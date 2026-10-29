@@ -1,15 +1,4 @@
-"""Build the static website from published/<run>/ (standard library only; no network, no LLM).
-
-    python3 -m sigma.site --out dist
-
-Vercel runs this as the build (vercel.json: buildCommand, output `dist`, which is ignored by version control); a push does not
-deploy, a release does (make release-land, then deploy/mac/site-deploy.sh, two a day). The build reads only files in the repository, never a transcript: an
-episode links the publisher's own `transcript_url`, and each claim links the episode at its timestamp. Every HTML page has a
-Markdown twin (the `.md` of its path), and agents start at /llms.txt. Influencer episodes (creators who pick stocks) are built apart
-from interviews (`ireg`, against `reg`): they are the YouTube side of Social and never in the Top list, shows, companies, people,
-claims.jsonl, episodes.json or llms-full.txt (a ticker page lists their claims under a Social heading); their pages say "Rated as
-social commentary".
-"""
+"""Build static pages from checked publication data without reading transcripts."""
 from __future__ import annotations
 
 import argparse
@@ -54,9 +43,6 @@ FONTS = ("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-MARK = (
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="5 11 54 38"><defs><linearGradient id="w" gradientUnits="userSpaceOnUse" x1="15.6" y1="0" x2="43.3" y2="0"><stop offset="0" stop-color="#eaa21f"/><stop offset=".5" stop-color="#8cc063"/><stop offset="1" stop-color="#14b5a8"/></linearGradient></defs><path d="M56.5 32.0 L56.3 34.5 L55.8 36.8 L55.0 38.9 L53.9 40.7 L52.6 42.2 L51.2 43.3 L49.7 44.1 L48.2 44.5 L46.7 44.6 L45.3 44.4 L43.9 44.0 L42.6 43.4 L41.3 42.6 L40.1 41.8 L39.0 40.8 L37.9 39.7 L36.9 38.6 L36.0 37.5 L35.1 36.3 L34.2 35.1 L33.3 33.9 L32.4 32.6 L31.6 31.4 L30.7 30.1 L29.8 28.9 L28.9 27.7 L28.0 26.5 L27.1 25.4 L26.1 24.3 L25.0 23.2 L23.9 22.2 L22.7 21.4 L21.4 20.6 L20.1 20.0 L18.7 19.6 L17.3 19.4 L15.8 19.5 L14.3 19.9 L12.8 20.7 L11.4 21.8 L10.1 23.3 L9.0 25.1 L8.2 27.2 L7.7 29.5 L7.5 32.0 L7.7 34.5 L8.2 36.8 L9.0 38.9 L10.1 40.7 L11.4 42.2 L12.8 43.3 L14.3 44.1 L15.8 44.5 L17.3 44.6 L18.7 44.4 L20.1 44.0 L21.4 43.4 L22.7 42.6 L23.9 41.8 L25.0 40.8 L26.1 39.7 L27.1 38.6 L28.0 37.5 L28.9 36.3 L29.8 35.1 L30.7 33.9 L31.6 32.6 L32.4 31.4 L33.3 30.1 L34.2 28.9 L35.1 27.7 L36.0 26.5 L36.9 25.4 L37.9 24.3 L39.0 23.2 L40.1 22.2 L41.3 21.4 L42.6 20.6 L43.9 20.0 L45.3 19.6 L46.7 19.4 L48.2 19.5 L49.7 19.9 L51.2 20.7 L52.6 21.8 L53.9 23.3 L55.0 25.1 L55.8 27.2 L56.3 29.5 L56.5 32.0z" fill="none" stroke="#7f8cab" stroke-width="3.6" stroke-linejoin="round"/><path d="M15.6 44.4 L16.4 44.5 L17.1 44.6 L17.9 44.5 L18.6 44.4 L19.3 44.2 L20.1 44.0 L20.7 43.7 L21.4 43.4 L22.1 43.0 L22.7 42.6 L23.3 42.2 L23.9 41.7 L24.5 41.2 L25.1 40.7 L25.6 40.2 L26.2 39.6 L26.7 39.1 L27.2 38.5 L27.7 37.9 L28.2 37.3 L28.6 36.7 L29.1 36.1 L29.6 35.5 L30.0 34.8 L30.5 34.2 L30.9 33.6 L31.3 32.9 L31.8 32.3 L32.2 31.7 L32.7 31.0 L33.1 30.4 L33.5 29.8 L34.0 29.1 L34.5 28.5 L34.9 27.9 L35.4 27.3 L35.9 26.7 L36.3 26.1 L36.8 25.5 L37.3 24.9 L37.9 24.3 L38.4 23.8 L38.9 23.3 L39.5 22.8 L40.1 22.3 L40.7 21.8 L41.3 21.4" fill="none" stroke="url(#w)" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M45.3 19.1L41.2 25.8 37.4 19.4z" fill="#14b5a8" stroke="#14b5a8" stroke-width="1.2" stroke-linejoin="round"/></svg>')
-
 CSS = """\
 /* Sigma: a signal board. Colors, fonts, type, spacing, radii and line weights come from web/tokens.css (prepended at build);
    this file is Sigma's own layout and components, and the lens and platform hues that only Sigma uses. */
@@ -77,7 +63,7 @@ header.site .wrap{display:flex;align-items:center;justify-content:space-between;
 .maker svg{width:11px;height:11px;display:block}
 .maker:hover{color:var(--accent)}
 .brand{display:inline-flex;align-items:center;gap:11px;font:600 1.3rem/1 var(--font-display);letter-spacing:-.01em;color:var(--text);text-decoration:none}
-.brand::before{content:"";width:32px;height:17px;background:url("__MARK__") center/contain no-repeat}
+.brand::before{content:"";width:24px;height:24px;background:url("__MARK__") center/contain no-repeat}
 .bar{display:flex;align-items:center;gap:18px}
 nav{display:flex;flex-wrap:wrap;gap:6px 14px}
 nav a{font:500 var(--text-caption) var(--font-mono);color:var(--text-muted);text-decoration:none;letter-spacing:.06em;text-transform:uppercase}
@@ -2628,7 +2614,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         write(out / file_of(md_of(path)), md_s)
         sm.extend([(path, last or newest), (md_of(path), last or newest)])
 
-    write(out / "style.css", TOKENS.read_text(encoding="utf-8") + CSS.replace("__MARK__", "data:image/svg+xml," + quote(MARK, safe="/:=,;")) + BOARD_CSS + (signals_site.CSS if signals else ""))
+    write(out / "style.css", TOKENS.read_text(encoding="utf-8") + CSS.replace("__MARK__", "/logo.svg") + BOARD_CSS + (signals_site.CSS if signals else ""))
     if ASSETS.is_dir():
         for f in ASSETS.iterdir():
             shutil.copy(f, out / f.name)
