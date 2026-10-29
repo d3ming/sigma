@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import jsonschema
 
-from wire import cli, fetch as fetch_mod
-from wire.ingest import Episode
+from sigma import cli, fetch as fetch_mod
+from sigma.ingest import Episode
 
 NOW = datetime(2026, 10, 22, 12, tzinfo=timezone.utc)
 LONG = [{"start": i * 10, "speaker": None, "text": "word " * 100} for i in range(20)]
@@ -45,14 +45,29 @@ def make_run(d, eps, segs=None, **extra):
 
 
 def sandbox(tmp_path, monkeypatch):
-    """A throwaway repo root for CLI journeys. wire.cli reads sources.yaml, people.yaml, show_links.yaml, runs/ and data/
-    from its ROOT, so pointing ROOT at tmp_path keeps `main([...])` away from the real files."""
-    (tmp_path / "sources.yaml").write_text("sources:\n  - {id: widget, name: Widget Show, tier: 1, rss: 'https://feed.invalid/w'}\n"
+    """A throwaway repo and data root for CLI journeys."""
+    data = tmp_path / "data"
+    data.mkdir(exist_ok=True)
+    (data / "sources.yaml").write_text("sources:\n  - {id: widget, name: Widget Show, tier: 1, rss: 'https://feed.invalid/w'}\n"
                                           "  - {id: gadget, name: Gadget Hour, tier: 1, rss: 'https://feed.invalid/g'}\n")
-    (tmp_path / "data").mkdir(exist_ok=True)
-    (tmp_path / "people.yaml").write_text("people:\n  - {name: Jane Placeholder, role: CEO, priority: core}\n")
-    (tmp_path / "show_links.yaml").write_text("{}\n")
+    (data / "people.yaml").write_text("people:\n  - {name: Jane Placeholder, role: CEO, priority: core}\n")
+    (data / "show_links.yaml").write_text("{}\n")
     monkeypatch.setattr(cli, "ROOT", tmp_path)
+    monkeypatch.setattr(cli, "DATA", data)
+    monkeypatch.setenv("SIGMA_DATA_ROOT", str(data))
+    from sigma import creators, entities, library, published, signals_index, stance
+
+    monkeypatch.setattr(creators, "DATA", data)
+    monkeypatch.setattr(creators, "CREATORS_FILE", data / "creators.json")
+    monkeypatch.setattr(creators, "SOURCES_FILE", data / "sources.yaml")
+    monkeypatch.setattr(creators, "X_ACCOUNTS_FILE", data / "x-accounts.json")
+    monkeypatch.setattr(entities, "ENTITIES_FILE", data / "entities.json")
+    monkeypatch.setattr(library, "DEFAULT_DB", data / "library.sqlite")
+    monkeypatch.setattr(published, "ROOT", data / "published")
+    monkeypatch.setattr(published, "DATA", data)
+    monkeypatch.setattr(stance, "PUBLISHED", data / "published")
+    monkeypatch.setattr(signals_index, "DATA", data)
+    monkeypatch.setattr(signals_index, "PUBLISHED", data / "published")
     return tmp_path
 
 

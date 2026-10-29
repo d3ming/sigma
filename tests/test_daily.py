@@ -1,6 +1,6 @@
-"""The daily loop as an agent runs it (prompts/daily.md): today -> status -> check selected -> links -> report -> tmtb-import.
+"""The daily loop as an agent runs it (prompts/daily.md): today -> status -> check selected -> links -> report.
 
-Every step goes through wire.cli.main on a sandboxed repo root. Faked: the feed and iTunes finders, the transcript lookup,
+Every step goes through sigma.cli.main on a sandboxed repo root. Faked: the feed and iTunes finders, the transcript lookup,
 the background transcribe process, YouTube captions and the web."""
 import copy
 import fcntl
@@ -16,17 +16,15 @@ from pathlib import Path
 import pytest
 import requests
 
-from wire import fetch as fetch_mod, people, transcribe
-from wire import ingest, library, published
-from wire.ingest import Episode
-from wire.cli import main
+from sigma import fetch as fetch_mod, people, transcribe
+from sigma import ingest, library, published
+from sigma.ingest import Episode
+from sigma.cli import main
 
 from tests.helpers import STATUS_SHAPE, no_web, sandbox, spoken
 
-EMAIL = Path(__file__).parent / "fixtures" / "reference_email.txt"
-TWO_LINE_EMAIL = Path(__file__).parent / "fixtures" / "tmtb-2026-10-22.txt"
 YESTERDAY = (date.today() - timedelta(days=1)).isoformat()
-RUN = "runs/" + YESTERDAY
+RUN = "data/runs/" + YESTERDAY
 
 # What the two full transcripts say, by second (one segment a minute; each ends at 29:00).
 JANE = spoken({600: "our capex is 450 billion dollars next year and we keep building",
@@ -47,7 +45,7 @@ def episode(id, title, hours_old, source="widget", desc="", **kw):
 
 @pytest.fixture
 def day(tmp_path, monkeypatch):
-    """`wire today --run-name <yesterday>` has run. The feed has Jane (also found by the people search), Omar, a
+    """`sigma today --run-name <yesterday>` has run. The feed has Jane (also found by the people search), Omar, a
     description-only episode, a three-day-old one and a replay."""
     root = sandbox(tmp_path, monkeypatch)
     jane = episode("rss:jane", "Jane Placeholder on robots", 3, source="person:Jane Placeholder", youtube_id="abcdefghijk")
@@ -159,7 +157,7 @@ def test_today_through_report(day, capsys, monkeypatch):
     assert (d["stage"], d["next"]["type"]) == ("transcribe", "wait")  # a transcribe was just queued: do not start another
     transcribe_finished(root)
     d = status(root)
-    assert (d["stage"], d["next"]["command"]) == ("rank_prep", f"wire rank-prep {root / RUN}")  # every transcript is scored once, before select
+    assert (d["stage"], d["next"]["command"]) == ("rank_prep", f"sigma rank-prep {root / RUN}")  # every transcript is scored once, before select
     main(["rank-prep", str(root / RUN)])
     assert status(root)["stage"] == "readers"
     scored(root)
@@ -181,7 +179,7 @@ def test_today_through_report(day, capsys, monkeypatch):
         assert status(root)["blockers"], why
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     d = status(root)
-    assert d["stage"] == "links" and d["next"]["command"].startswith("wire links")
+    assert d["stage"] == "links" and d["next"]["command"].startswith("sigma links")
 
     # links: offline, so Jane's known YouTube id and Omar's Apple page (tracking suffix cut) are what is found
     capsys.readouterr()
@@ -192,9 +190,18 @@ def test_today_through_report(day, capsys, monkeypatch):
     assert sel["rss:pat"]["listen_url"] == "https://show.example/rss:pat"
     assert (d := status(root))["stage"] == "report" and d["next"]["prompt"] == "prompts/report.md"
 
+    selected_path = root / RUN / "selected.json"
+    selected_data = json.loads(selected_path.read_text())
+    selected_data["episodes"] = [e for e in selected_data["episodes"] if e["episode_id"] != "rss:pat"]
+    selected_path.write_text(json.dumps(selected_data))
+
     # report.json: nothing that breaks the grounding rules reaches report.md
+    base_report = report_json()
+    base_report["essential"] = [e for e in base_report["essential"] if e["episode_id"] != "rss:pat"]
+    base_report["episodes"] = [e for e in base_report["episodes"] if e["episode_id"] != "rss:pat"]
+
     def broken(edit):
-        r = copy.deepcopy(report_json())
+        r = copy.deepcopy(base_report)
         edit(r)
         return r
 
@@ -206,7 +213,6 @@ def test_today_through_report(day, capsys, monkeypatch):
         "a listen_url that is a tracking redirect": broken(lambda r: r["essential"][0].update(listen_url="https://chrt.fm/track/x")),
         "a timestamp past the end of the transcript": broken(lambda r: jane(r)["signal"][0].update(timestamp=4000)),
         "no timestamp on a real transcript": broken(lambda r: jane(r)["signal"][0].update(timestamp=None)),
-        "a timestamp on a description-only episode": broken(lambda r: r["episodes"][2]["signal"][0].update(timestamp=5)),
         "12 words copied from the transcript": broken(lambda r: jane(r)["sections"][0].update(
             body="Management said the supply chain for advanced packaging will stay tight through the end soon")),
         "a pick missing from the report": broken(lambda r: [r["essential"].pop(), r["episodes"].pop()]),
@@ -215,31 +221,34 @@ def test_today_through_report(day, capsys, monkeypatch):
         with pytest.raises(SystemExit):
             main(["report", write(root, "report.json", data)])
         assert not (root / RUN / "report.md").exists(), why
-        assert status(root)["stage"] == "report" and status(root)["blockers"], why
-    # 11 copied words are a paraphrase; the one number spoken 300 s after its timestamp is a warning, not a refusal
+    assert status(root)["stage"] == "report" and status(root)["blockers"]
+    with pytest.raises(SystemExit, match="cannot be grounded because the manifest says there is no real transcript"):
+        main(["report", write(root, "report.json", report_json())])
+    assert not (root / RUN / "report.md").exists()
     eleven = broken(lambda r: jane(r)["sections"][0].update(body="Management said the supply chain for advanced packaging will stay tight through the"))
     path = write(root, "report.json", eleven)
-    monkeypatch.setattr(published, "ROOT", root / "published")
-    monkeypatch.delenv("PA_NO_PUBLISHED")
-    monkeypatch.delenv("PA_NO_LIBRARY")
+    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
+    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
+    monkeypatch.delenv("SIGMA_NO_LIBRARY")
     monkeypatch.setattr(library, "DEFAULT_DB", root / "lib.sqlite")
-    main(["tmtb-import", str(EMAIL)])  # writes missed.md and seeds.json beside the report: they quote the reference newsletter
-    capsys.readouterr()
+    with pytest.raises(SystemExit, match="number 38 not spoken within"):
+        main(["report", path])
+    assert not (root / RUN / "report.md").exists()
+    eleven["episodes"][0]["sections"][0]["claims"][0]["timestamp"] = 1200
+    eleven["episodes"][0]["sections"][0]["claims"][1]["text"] = "Opens additional sites."
+    path = write(root, "report.json", eleven)
     main(["report", path])
     out = capsys.readouterr().out
     warnings = [l for l in out.splitlines() if "warning:" in l]
-    assert len(warnings) == 2 and "number 38 not spoken within 120s of 0:15:00 (ts 900s)" in warnings[0] and "nearest mention 0:20:00 (300s later)" in warnings[0]
-    assert "sections[0].claims[1]: number 777" in warnings[1] and "not spoken anywhere in the transcript" in warnings[1]
+    assert warnings == []
     md = (root / RUN / "report.md").read_text()
     assert "1. **[Jane on robots](https://www.youtube.com/watch?v=abcdefghijk)**" in md  # YouTube first
     assert "2. **[Omar on rates](https://www.youtube.com/watch?v=ddddddddddd)**" in md
-    assert "3. **[Pat on chips](https://show.example/rss:pat)**" in md and ".mp3" not in md  # never the audio file
+    assert "Pat on chips" not in md and ".mp3" not in md  # never the audio file
     assert "[Jane Placeholder, [0:10:00](https://www.youtube.com/watch?v=abcdefghijk&t=600s)]" in md
-    assert "- Chips are tight [unknown]" in md  # no transcript, no timestamp
     assert "(our read: Demand is real.)" in md and "**Interests to note:** Early investor in Acme." in md
 
-    # published/<run>: our own writing and slim metadata only
-    pub = root / "published" / YESTERDAY
+    pub = root / "data" / "published" / YESTERDAY
     assert sorted(p.name for p in pub.iterdir()) == ["claims.jsonl", "episodes.json", "report.json", "report.md", "scores.json", "selected.json"]
     ep_rows = json.loads((pub / "episodes.json").read_text())
     assert [e["episode_id"] for e in ep_rows] == ["rss:jane", "rss:omar", "rss:pat"]
@@ -247,7 +256,7 @@ def test_today_through_report(day, capsys, monkeypatch):
 
     os.utime(root / RUN / "report.md", (os.path.getmtime(root / RUN / "report.json") - 60,) * 2)  # report.json edited after rendering
     d = status(root)
-    assert d["stage"] == "render" and d["next"]["command"] == f"wire report {root / RUN}/report.json"
+    assert d["stage"] == "render" and d["next"]["command"] == f"sigma report {root / RUN}/report.json"
     main(["report", path])
 
     # the report is in the library the moment it renders
@@ -256,15 +265,14 @@ def test_today_through_report(day, capsys, monkeypatch):
     claim, = json.loads(capsys.readouterr().out)
     assert claim["link"] == "https://www.youtube.com/watch?v=abcdefghijk&t=600s" and claim["speaker"] == "Jane Placeholder"
 
-    # done: the agent commits published/ and records it
     d = status(root)
-    assert d["stage"] == "publish" and d["next"]["command"] == f"wire mark publish end --run {root / RUN}"
+    assert d["stage"] == "publish" and d["next"]["command"] == f"sigma mark publish end --run {root / RUN}"
     main(["mark", "publish", "end", "--run", str(root / RUN)])
     assert status(root)["stage"] == "done"
     t = manifest(root)["timing"]
     assert t["select"]["end"] and t["report"]["start"] and t["report"]["end"] and t["publish"]["end"]  # stamped by status --record / report
     capsys.readouterr()
-    main(["stats", "--runs", str(root / "runs")])
+    main(["stats", "--runs", str(root / "data" / "runs")])
     assert YESTERDAY in capsys.readouterr().out
 
 
@@ -278,7 +286,8 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     monkeypatch.setattr(transcribe, "from_youtube", lambda vid: [{"start": t, "speaker": None, "text": x} for t, x in captions[vid]])
     main(["links", str(root / RUN)])
     capsys.readouterr()
-    main(["check", "report", path, "--captions"])
+    with pytest.raises(SystemExit):
+        main(["check", "report", path, "--captions"])
     lines = [l for l in capsys.readouterr().out.splitlines() if "warning:" in l]
     jane = [l for l in lines if "rss:jane" in l]
     assert len(jane) == 2 and all("[transcript, captions]" in l for l in jane)  # each wrong cite is reported once, naming both sources
@@ -289,34 +298,10 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     # a video whose captions cannot be had is one "skipped" line, never a crash or a pass
     for fetch in (lambda vid: (_ for _ in ()).throw(OSError("network down")), lambda vid: [], lambda vid: [{"nope": 1}]):
         monkeypatch.setattr(transcribe, "from_youtube", fetch)
-        main(["check", "report", path, "--captions"])
+        with pytest.raises(SystemExit):
+            main(["check", "report", path, "--captions"])
         skipped = [l for l in capsys.readouterr().out.splitlines() if "skipped" in l]
         assert len(skipped) == 2 and {"rss:jane", "rss:omar"} == {w for l in skipped for w in ("rss:jane", "rss:omar") if w in l}
-
-
-def test_tmtb_import_measures_recall_on_yesterdays_run(day, capsys, monkeypatch):
-    """AGENTS.md: the reference newsletter arrives after the report, so tmtb-import checks yesterday's run by default."""
-    root = day
-    main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
-    capsys.readouterr()
-    main(["tmtb-import", str(EMAIL)])
-    # Jane and Omar are in the run and picked; the third episode (Pat Roe and Leo Test) has no match anywhere
-    rec = manifest(root)["recall"]
-    assert (rec["tmtb"], rec["hits"], rec["found_in_run"], rec["picks"]) == (3, 2, 2, 3) and rec["recall"] == 0.667
-    assert (root / RUN / "missed.md").read_text().startswith("# Missed vs reference: 1 of 3")
-    assert "recall: our picks hit 2/3 (67%)" in capsys.readouterr().out
-    transcribe_finished(root)
-    assert "missed.md exists" in " ".join(status(root)["notes"])  # the agent is told to read it before selecting
-    # the unnumbered two-line email format: six episodes, and only the one whose guest is in the run counts as found
-    other = root / "runs" / "other"
-    other.mkdir()
-    (other / "manifest.json").write_text(json.dumps({"episodes": [
-        {"episode_id": "rss:o", "title": "Orrin Vance: Factory Financing and the Substrate Bottleneck", "source": "Morning Desk"}]}))
-    main(["tmtb-import", str(TWO_LINE_EMAIL), "--run", str(other)])
-    assert (other / "missed.md").read_text().startswith("# Missed vs reference: 5 of 6")
-    with pytest.raises(SystemExit):  # an email in an unknown format must not overwrite missed.md with an empty list
-        main(["tmtb-import", str(root / "people.yaml"), "--run", str(other)])
-    assert (other / "missed.md").read_text().startswith("# Missed vs reference: 5 of 6")
 
 
 def test_status_follows_a_stuck_transcribe(day, monkeypatch):
@@ -328,7 +313,7 @@ def test_status_follows_a_stuck_transcribe(day, monkeypatch):
     (run / "manifest.json").write_text(json.dumps(m))
     (run / "transcribe.queued").write_text("999999999")  # the queued process died before starting
     d = status(root)
-    assert d["stage"] == "transcribe" and d["next"]["type"] == "command" and d["next"]["command"].startswith("nohup '/Users/me/My Venv/bin/python' -m wire.cli transcribe ")
+    assert d["stage"] == "transcribe" and d["next"]["type"] == "command" and d["next"]["command"].startswith("nohup '/Users/me/My Venv/bin/python' -m sigma.cli transcribe ")
     assert " >> " in d["next"]["command"]  # appends: the first attempt's log survives
     (run / "transcribe.lock").write_text(str(os.getpid()))
     assert status(root)["next"]["type"] == "wait" and status(root)["stages"]["transcribe"] == "running"
@@ -347,7 +332,7 @@ def test_status_follows_a_stuck_transcribe(day, monkeypatch):
     assert status(root)["next"]["type"] == "command"
     # a run that does not exist: status says how to start it and creates nothing
     d = json.loads(subprocess_free_status(root / "runs" / "nothing-yet"))
-    assert d["exists"] is False and d["stage"] == "fetch" and d["next"]["command"] == "wire daily --hours 48 --run-name nothing-yet"
+    assert d["exists"] is False and d["stage"] == "fetch" and d["next"]["command"] == "sigma daily --hours 48 --run-name nothing-yet"
     assert not (root / "runs" / "nothing-yet").exists()
     # today on a run that exists shows its status and does not fetch again
     before = (run / "manifest.json").read_text()
@@ -379,13 +364,13 @@ def test_status_stamps_stage_times_once(day):
 
 
 def test_commands_that_edit_the_manifest_wait_for_the_lock(day):
-    """AGENTS.md: manifest.json is written only through wire.manifest.update, because transcribe runs for hours while
+    """AGENTS.md: manifest.json is written only through sigma.manifest.update, because transcribe runs for hours while
     other commands edit the same file. Hold the lock and every writer must wait, then still land its edit."""
     root, run = day, day / RUN
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     commands = {"mark": (["mark", "select", "start", "--run", str(run)], lambda m: m["timing"]["select"]["start"]),
                 "links": (["links", str(run)], lambda m: m["episodes"][0]["youtube_url"]),
-                "tmtb-import": (["tmtb-import", str(EMAIL), "--run", str(run)], lambda m: m["recall"])}
+                }
     for name, (argv, landed) in commands.items():
         before = json.dumps(manifest(root))
         with open(run / "manifest.json.lock", "a") as lock:
@@ -407,8 +392,8 @@ def test_any_number_of_picks_is_valid(tmp_path, n):
 
 
 def test_doctor_exits_nonzero_only_when_a_check_fails(monkeypatch):
-    """prompts/daily.md: `wire doctor` names what is missing and exits 1; a warning alone is not a failure."""
-    from wire import doctor
+    """prompts/daily.md: `sigma doctor` names what is missing and exits 1; a warning alone is not a failure."""
+    from sigma import doctor
 
     monkeypatch.setattr(doctor, "CHECKS", [("a", lambda: ("ok", "fine")), ("b", lambda: ("warn", "meh"))])
     main(["doctor"])
@@ -419,10 +404,10 @@ def test_doctor_exits_nonzero_only_when_a_check_fails(monkeypatch):
 
 
 def test_doctor_warns_until_the_pre_push_hook_is_set_up(monkeypatch, tmp_path):
-    """AGENTS.md (run scripts/setup.sh once per clone): `wire doctor` is where an agent on a fresh clone finds out it has not."""
+    """AGENTS.md (run scripts/setup.sh once per clone): `sigma doctor` is where an agent on a fresh clone finds out it has not."""
     import subprocess
 
-    from wire import doctor
+    from sigma import doctor
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     monkeypatch.setattr(doctor, "ROOT", tmp_path)
@@ -431,15 +416,9 @@ def test_doctor_warns_until_the_pre_push_hook_is_set_up(monkeypatch, tmp_path):
     assert doctor.check_hooks()[0] == "ok"
 
 
-def test_doctor_checks_that_data_links_to_darkroom(monkeypatch, tmp_path):
-    """scripts/setup.sh links data/ to darkroom/wire; a real folder or a dead link is something `wire doctor` names."""
-    from wire import doctor
+def test_doctor_checks_the_configured_data_root(monkeypatch, tmp_path):
+    from sigma import doctor
 
-    monkeypatch.setattr(doctor, "ROOT", tmp_path)
-    (tmp_path / "data").mkdir()
-    assert doctor.check_data_link()[0] == "warn"
-    (tmp_path / "data").rmdir()
-    (tmp_path / "data").symlink_to(tmp_path / "darkroom-wire")
-    assert doctor.check_data_link()[0] == "fail"
-    (tmp_path / "darkroom-wire").mkdir()
-    assert doctor.check_data_link()[0] == "ok"
+    monkeypatch.setenv("SIGMA_DATA_ROOT", str(tmp_path / "private-data"))
+    assert doctor.check_data_dir()[0] == "ok"
+    assert (tmp_path / "private-data").is_dir()

@@ -6,13 +6,33 @@ from pathlib import Path
 
 import pytest
 
-from wire import claimdedupe, library, published, site
+from sigma import claimdedupe, library, published, site
 
 EP = "rss:example-guest"
 G = "Guest Placeholder"
 RANKED = "Anthropic's S-1 lists future compute and capital commitments of roughly $800 to $900 billion that are not yet in the income statement."
 REPORT = "The S-1 lists future capital and compute commitments of roughly $800 to $900 billion, shown as a footnote and not yet in the income statement."
 SHORT = "Future commitments total roughly $800 to $900 billion."
+
+
+def publishable_run(root):
+    from tests.test_library import make_run
+
+    run = make_run(root, claim="Oracle capex doubles next year, driven by AI leases.")
+    ranked = json.loads((run / "ranked.json").read_text())
+    ranked["episodes"][1]["claims"] = []
+    (run / "ranked.json").write_text(json.dumps(ranked))
+    data = json.loads((run / "report.json").read_text())
+    data.update(key_insights=["One.", "Two.", "Three."])
+    data["essential"] = [{"episode_id": "ep1", "headline": "Jensen on HBM", "show": "Show A", "guests": "Jensen Huang"}]
+    data["episodes"][0]["signal"] = [
+        {"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30},
+        {"text": "Cloud demand remains strong.", "speaker": "Jensen Huang", "timestamp": 40},
+        {"text": "New capacity comes online.", "speaker": "Jensen Huang", "timestamp": 50},
+    ]
+    data["episodes"][0]["sections"][0]["claims"][1]["timestamp"] = 60
+    (run / "report.json").write_text(json.dumps(data))
+    return run
 
 
 def claim(text, ts, speaker=G, tickers=(), ep=EP, **kw):
@@ -127,12 +147,10 @@ def test_the_data_check_names_every_pair_that_restates_a_point_and_passes_clean_
 
 
 def test_an_export_that_would_list_a_point_twice_is_refused_and_leaves_nothing_behind(tmp_path, monkeypatch):
-    from tests.test_library import make_run
-
-    run = make_run(tmp_path / "runs", claim="Oracle capex doubles next year, driven by AI leases.")
+    run = publishable_run(tmp_path / "runs")
     rep = json.loads((run / "report.json").read_text())
     SPK = rep["episodes"][0]["signal"][0]["speaker"]
-    rep["episodes"][0]["signal"] = [{"text": "Oracle doubles capex next year on AI leases.", "speaker": SPK, "timestamp": 70}]
+    rep["episodes"][0]["signal"][0] = {"text": "Oracle doubles capex next year on AI leases.", "speaker": SPK, "timestamp": 70}
     (run / "report.json").write_text(json.dumps(rep))
     root = tmp_path / "published"
     published.export(run, root=root, resolver=lambda *a, **k: {})  # merged at ingest: exports fine
@@ -145,6 +163,78 @@ def test_an_export_that_would_list_a_point_twice_is_refused_and_leaves_nothing_b
     with pytest.raises(ValueError, match="listed twice"):  # a refusal for a name that exists keeps the old export too
         published.export(run, root=root, name=run.name, resolver=lambda *a, **k: {})
     assert (root / run.name / "claims.jsonl").read_bytes() == before
+
+
+def test_export_rejects_ungrounded_claims_without_replacing_the_previous_publication(tmp_path):
+    run = publishable_run(tmp_path / "runs")
+    root = tmp_path / "published"
+    dest, _ = published.export(run, root=root, resolver=False)
+    before = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
+    ranked = json.loads((run / "ranked.json").read_text())
+    ranked["episodes"][0]["claims"][0]["claim"] = "Revenue increased 91%."
+    (run / "ranked.json").write_text(json.dumps(ranked))
+    with pytest.raises(ValueError, match="ranked.json failed claim grounding"):
+        published.export(run, root=root, resolver=False)
+    assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+
+
+@pytest.mark.parametrize("filename", ["scores.json", "scores-influencer.json"])
+def test_export_checks_every_claim_bearing_score_file_before_replacing_publication(tmp_path, filename):
+    run = publishable_run(tmp_path / filename.replace(".json", ""))
+    root = tmp_path / "published"
+    dest, _ = published.export(run, root=root, resolver=False)
+    before = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
+    ranked = json.loads((run / "ranked.json").read_text())
+    ranked["episodes"][0]["claims"][0]["claim"] = "Revenue increased 91%."
+    (run / filename).write_text(json.dumps(ranked))
+    with pytest.raises(ValueError, match=f"{filename} failed claim grounding"):
+        published.export(run, root=root, resolver=False)
+    assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+
+
+def test_export_includes_reused_score_claims_without_assigning_them_to_a_new_library_run(tmp_path):
+    run = publishable_run(tmp_path / "runs")
+    ranked = json.loads((run / "ranked.json").read_text())
+    ranked["episodes"][0]["scored_in"] = "2026-10-19"
+    (run / "ranked.json").write_text(json.dumps(ranked))
+    dest, _ = published.export(run, root=tmp_path / "published", resolver=False)
+    exported = [json.loads(line) for line in (dest / "claims.jsonl").read_text().splitlines()]
+    assert any(c["episode_id"] == "ep1" and "NVDA" in c["tickers"] for c in exported)
+    db = tmp_path / "persistent.sqlite"
+    library.ingest_run(run, db=db, transcripts=False)
+    stored = library.query_claims(db, limit=0)
+    assert not any(c["episode_id"] == "ep1" and "NVDA" in c["tickers"] for c in stored)
+
+
+def test_report_command_refuses_a_number_not_supported_by_its_transcript(tmp_path, monkeypatch):
+    from sigma.cli import main
+
+    run = publishable_run(tmp_path / "runs")
+    data = json.loads((run / "report.json").read_text())
+    data["episodes"][0]["signal"][0]["text"] = "Revenue increased 91%."
+    (run / "report.json").write_text(json.dumps(data))
+    monkeypatch.setenv("SIGMA_NO_PUBLISHED", "1")
+    monkeypatch.setenv("SIGMA_NO_LIBRARY", "1")
+    with pytest.raises(SystemExit, match="number 91 not spoken"):
+        main(["report", str(run / "report.json")])
+    assert not (run / "report.md").exists()
+
+
+def test_report_command_refuses_a_speaker_that_conflicts_with_the_cited_transcript_segment(tmp_path, monkeypatch):
+    from sigma.cli import main
+
+    run = publishable_run(tmp_path / "runs")
+    transcript = run / "ep1.md"
+    transcript.write_text(transcript.read_text().replace(
+        "[0:00:30] filler talk number 030", "[0:00:30] Actual speaker: Cloud demand continues."))
+    data = json.loads((run / "report.json").read_text())
+    data["episodes"][0]["signal"][0]["speaker"] = "Wrong speaker"
+    (run / "report.json").write_text(json.dumps(data))
+    monkeypatch.setenv("SIGMA_NO_PUBLISHED", "1")
+    monkeypatch.setenv("SIGMA_NO_LIBRARY", "1")
+    with pytest.raises(SystemExit, match="speaker 'Wrong speaker' does not match transcript label 'Actual speaker'"):
+        main(["report", str(run / "report.json")])
+    assert not (run / "report.md").exists()
 
 
 @pytest.mark.parametrize("a, b", [
@@ -204,7 +294,7 @@ def test_a_merged_claim_stays_a_ranked_claim_and_copies_share_nothing_with_the_i
 def test_the_verdict_does_not_depend_on_the_hash_seed():
     import subprocess
     import sys
-    code = ("from wire import claimdedupe as c;"
+    code = ("from sigma import claimdedupe as c;"
             "a='Acme said it will not license the new model to partners in 2027 after talks.';"
             "b='Acme said it will not license the new model to partners in 2027 after long talks.';"
             "print(c.same_point({'timestamp':1,'text':a},{'timestamp':1,'text':b}))")

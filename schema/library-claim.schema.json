@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/d3ming/wire/schema/library-claim.schema.json",
-  "title": "Wire library query output",
+  "$id": "https://github.com/d3ming/sigma/schema/library-claim.schema.json",
+  "title": "Sigma library query output",
   "description": "`library query --json` prints an array of claims (this schema's root). `library query --transcripts --json` prints an array of #/$defs/transcript_hit. `library export` writes one claim per line.",
   "type": "array",
   "items": {"$ref": "#/$defs/claim"},

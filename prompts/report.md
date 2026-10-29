@@ -1,7 +1,7 @@
 # Daily report (for the agent writing report.json)
 
 Input: `selected.json` and the episode `.md` files it points to.
-Output: `report.json` valid against `schema/report.schema.json`, then `wire report runs/<name>/report.json`.
+Output: `report.json` valid against `schema/report.schema.json`, then `sigma report runs/<name>/report.json`.
 
 Shape:
 - `title`: "Podcast Intel: " plus the main guests and topics, comma separated.
@@ -34,7 +34,7 @@ Links (YouTube preferred): after `selected.json` is written, web-search each pic
 (e.g. "<show> <guest> youtube"). Set `youtube_url` (a youtube.com/watch URL) and `youtube_published` (upload date)
 only when the video title or guest matches AND the upload date is within a few days of the episode. Clips, other
 channels' interviews and older episodes with the same guest are wrong: leave `youtube_url` out rather than guess.
-Then run `wire links runs/<name>`: it re-checks every `youtube_url` via YouTube oEmbed (title/channel; drops
+Then run `sigma links runs/<name>`: it re-checks every `youtube_url` via YouTube oEmbed (title/channel; drops
 mismatches), tries the show's YouTube channel RSS (`youtube_channel_id` in sources.yaml) and a free DuckDuckGo search
 (often rate-limited), and sets `listen_url` to the Apple/Spotify episode page (iTunes Search, free) or the feed's episode
 page. Never an mp3 or tracking link (podtrac, chrt.fm, pdst.fm, megaphone/libsyn traffic). Manual-only option: a

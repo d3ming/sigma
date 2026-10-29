@@ -4,11 +4,11 @@ import json
 
 import pytest
 
-from wire import fetch as fetch_mod, report, whisper
-from wire import cli
-from wire.cli import main
-from wire.triage import DEFAULT_TOP
-from wire.whisper import Budget
+from sigma import fetch as fetch_mod, report, whisper
+from sigma import cli
+from sigma.cli import main
+from sigma.triage import DEFAULT_TOP
+from sigma.whisper import Budget
 
 from tests.helpers import LONG, ep, make_run, targs
 

@@ -1,42 +1,39 @@
 # Mac setup
 
-The Mac (Apple silicon) does the slow, mechanical part of each run with launchd, and a scheduled agent does the
-judgment part an hour later. Weekdays it publishes twice:
+On macOS, launchd can fetch and transcribe source material before a scheduled agent prepares the daily and weekly
+editions. The site is built separately from the configured private data root.
 
-| When | launchd job | Then the agent |
+| When | launchd job | Scheduled agent |
 |---|---|---|
-| Weekdays 07:15 | (none) | `skills/x-daily`: the X edition alone, released and live by 08:00 (intraday) |
-| Weekdays 14:30 | `run-daily.sh`: fetch 72 h (Monday 96 h), transcribe (MLX) | 15:30: `prompts/daily.md` (select, report, commit `published/`) and `skills/x-daily`, released together, live by 17:00 (canonical) |
-| Sundays 14:30 | `run-weekly.sh`: fetch 7 days (`--refetch`), transcribe everything | 15:30: `prompts/weekly.md` (rank, themes, publish, commit `published/`), released, live by 17:00 |
+| Weekdays 07:15 | (none) | `skills/x-daily`: prepare the X edition and save private data |
+| Weekdays 14:30 | `run-daily.sh`: fetch 72 h (Monday 96 h), transcribe (MLX) | 15:30: `prompts/daily.md` and `skills/x-daily` |
+| Sundays 14:30 | `run-weekly.sh`: fetch 7 days (`--refetch`), transcribe | 15:30: `prompts/weekly.md` |
 
-All times are Pacific. An edition's date is the Pacific day it covers: the 17:00 publish is the canonical one for its
-date, and the 08:00 X edition is intraday, replaced when the 17:00 run rebuilds the same date. The scanner delivers
-the X scan before each X run (its routine sets when). Each publish is one deploy: two a weekday.
+Times are Pacific. An edition's date is the Pacific day it covers. The scanner delivers the X scan before each X run.
 
 ## One-time steps
 
 ```bash
 # 1. Clone or update
 mkdir -p ~/projects && cd ~/projects
-# The scripts and plists expect the folder ~/projects/wire (PA_REPO overrides it in the run scripts)
-[ -d wire ] || git clone https://github.com/d3ming/wire.git
-cd wire && git checkout develop && git pull --ff-only   # daily work is on develop; main is the release branch
+[ -d sigma ] || git clone <public-repository-url> sigma
+cd sigma
 
 # 2. Venv + deps (ffmpeg via Homebrew: brew install ffmpeg). Python 3.10 to 3.14: if `python3` is 3.15+, use
 #    /opt/homebrew/bin/python3.14 -m venv .venv (youtube-transcript-api has no 3.15 release)
 python3 -m venv .venv
 .venv/bin/pip install -U pip
 .venv/bin/pip install -e '.[dev,whisper,mac]'
-PA_WHISPER_BACKEND=mlx .venv/bin/wire doctor   # whisper line should say: backend mlx
+SIGMA_WHISPER_BACKEND=mlx .venv/bin/sigma doctor
 
-# 3. Install both launchd agents (logs in ~/projects/wire/logs)
+# 3. Install both launchd agents (logs in ~/projects/sigma/logs)
 bash deploy/mac/install.sh
 
-# 4. The jobs run in the afternoon, when the Mac is in use, so Wire needs no scheduled wake. If an earlier setup
+# 4. The jobs run in the afternoon, when the Mac is in use, so Sigma needs no scheduled wake. If an earlier setup
 #    scheduled an early-morning wake (check: pmset -g sched), `sudo pmset repeat cancel` removes it; it needs your password
 
 # 5. Test the daily job now
-launchctl kickstart -k gui/$(id -u)/com.dming.podcast-alpha
+launchctl kickstart -k gui/$(id -u)/com.sigma.daily
 tail -f logs/run-$(date +%F).log            # ends with "done"
 ```
 
@@ -46,12 +43,17 @@ transcribe ends. Both scripts are safe to rerun: fetch is skipped when the run e
 `run-weekly.sh` passes `--refetch` because the weekday runs already marked most of the week's episodes as seen.
 transcribe reuses those runs' transcripts, so it only whispers what the weekday runs skipped.
 
-Each agent run ends with `darkroom-commit.sh`: it refreshes the call ledger and the search index and commits `data/` to
-darkroom. The site deploys once per publish, two a weekday, through `make release-land` (`site-deploy.sh`; pushes do not
-deploy, and it refuses a third deploy in a Pacific day without `--force`, which is for a deploy the owner asked for). The scripts log
-their outcome to the event log with `wire event` (`wire/events.py`).
+Set `SIGMA_DATA_ROOT` to a private data directory before running the jobs. The example data in `examples/data` can be
+copied into a new local `data/` directory by `scripts/setup.sh`. The agent tasks save private changes with
+`deploy/mac/data-commit.sh`; that command stages only the configured data directory inside its Git repository.
 
-The launchd labels `com.dming.podcast-alpha*` are the maintainer's. Rename them (in the plists, `install.sh` and the
-commands here) to your own.
+For a data-only site update, first save the private data, then run `make publish` from the production `main` checkout.
+`make publish DRY_RUN=1` runs the Vercel production build and quota check without upload, and needs the clone linked to its
+Vercel project. `deploy/mac/site-deploy.sh --site-only` builds the site without Vercel or an account. No source-release
+PR is needed for a data-only update. Source changes use the owner-reviewed release PR flow and `make release-land`.
 
-Rollback: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.dming.podcast-alpha.plist` (and `.weekly.plist`).
+The launchd labels are `com.sigma.daily` and `com.sigma.weekly`. The scheduled scripts use the repository path passed
+to `deploy/mac/install.sh` through `SIGMA_REPO` or their own location.
+
+Rollback: `launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.sigma.daily.plist` and
+`launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.sigma.weekly.plist`.

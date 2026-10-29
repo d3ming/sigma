@@ -1,39 +1,42 @@
 # Sigma
 
-Sigma turns public podcast and X signals into short, cited claims checked against their sources. Its scope is a Signals desk and public research about methods and tooling.
+Sigma finds evidence-backed signals for the US stock market. Its checked podcast and X pipeline publishes cited claims; source-reading skills extend discovery to issuer disclosures, filings, news and public communities. It also publishes research about methods and tooling. Code handles collection, validation and publishing; an agent follows the prompts to score and summarize.
 
-The initial code import is reviewed in the `seed` → `develop` pull request. It still uses the `wire` package and command. Private follow lists, published output and migration notes are excluded from this repository.
+## Run your own
 
-## Run the tools
-
-Requires Python 3.10–3.14. Transcription also needs `ffmpeg` and the optional Whisper dependencies.
+Use Python 3.10–3.14. The checkout supplies schemas, prompts and assets, so install it editable.
 
 ```bash
 git clone https://github.com/d3ming/sigma
 cd sigma
 git switch seed
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-.venv/bin/python -m wire.cli --help
+export SIGMA_DATA_ROOT="$(mktemp -d)"
+cp -R examples/data/. "$SIGMA_DATA_ROOT/"
+scripts/setup.sh
+.venv/bin/sigma site --out /tmp/sigma-site
 .venv/bin/pytest -q
 ```
 
-The tests use synthetic inputs and need no private data. Ingest requires your own sources; the example inputs and complete setup walkthrough are part of the remaining launch work.
+This builds an empty desk without network access, private files or model credentials. Open `/tmp/sigma-site/index.html` to inspect it. The examples deliberately contain no follow list, claims or research post. Add your own sources and people before starting ingest. Transcription additionally needs `ffmpeg` and the `whisper` extra; Apple silicon can use `.[dev,whisper,mac]`.
 
-## Before the initial review lands
+`SIGMA_DATA_ROOT` is the only home for operator inputs and output. Keep it outside the checkout, or use the ignored `data/` link. Public code never carries your follows, transcripts, drafts, scores or published content. Site identity belongs in `site.json` there; the checked-in example is generic.
 
-- Remove the SI news lens and add research pages with a publish check.
-- Read operator inputs and output through one data root; ship a runnable example set.
-- Configure site identity separately from the code.
-- Rename the package and CLI to Sigma, and the Alpha index to Signals.
-- Build the site locally and deploy it prebuilt, with content-based change checks and matching release verification.
+## Operate the desk
 
-Pushing this repository does not deploy the site. Production cutover is separate from reviewing this import.
+Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market sweep and [source-reading](skills/source-reading/SKILL.md) to read the underlying evidence across source types. [The source comparison](docs/source-research.md) explains the design choices.
 
-## Contributing
+Start with `sigma --help` and `sigma doctor`. An agent follows [the daily prompt](prompts/daily.md), using the next action returned by `sigma status`; the [X workflow](skills/x-daily/SKILL.md) does the same for X. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
 
-Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [REVIEW.md](REVIEW.md). Changes to the initial proposal stay on `seed` until the owner reviews the complete PR into `develop`.
+Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
+
+The site is built locally and uploaded prebuilt. Pushing code does not deploy it. See `deploy/mac/site-deploy.sh --help` for its local dry run and production path.
+
+## Contribute
+
+The initial proposal stays on `seed` for the owner's review into `develop`. Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [REVIEW.md](REVIEW.md). [Architecture](docs/architecture.md) explains the ownership boundaries; [the agent guide](docs/agent-guide.md) explains how to use the evidence.
 
 ## License
 
-[MIT](LICENSE). Source material belongs to its creators; transcripts and private operator data are not included.
+[MIT](LICENSE). Source material belongs to its creators. Transcripts are never included in this repository or served by the site.

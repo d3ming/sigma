@@ -1,16 +1,17 @@
-"""GET /api/search?q=...: search what was said in Wire's episodes. A Vercel Python function; standard library only.
+"""GET /api/search?q=...: search what was said in Sigma's episodes. A Vercel Python function; standard library only.
 
-The index (built by `wire search-index`) lives in a PRIVATE Vercel Blob store. This function downloads it with
-SEARCH_READ_WRITE_TOKEN (the wire-search store's), keeps a copy in /tmp and answers from that copy. It returns short snippets only (at most 40 words
+The index (built by `sigma search-index`) lives in a PRIVATE Vercel Blob store. This function downloads it with
+SEARCH_READ_WRITE_TOKEN (the sigma-search store's), keeps a copy in /tmp and answers from that copy. It returns short snippets only (at most 40 words
 each, at most 2 per episode, at most 20 results); the full transcripts are never published.
 
-For local runs, WIRE_SEARCH_INDEX_FILE points at an index file and skips Blob.
+For local runs, SIGMA_SEARCH_INDEX_FILE points at an index file and skips Blob.
 
-Response (JSON; the contract the Find page and other agents read, also stated for agents in wire/site.py find_md):
+Response (JSON; the contract the Find page and other agents read, also stated for agents in sigma/site.py find_md):
     200 {"q", "results": [{"show", "title", "date", "timestamp" (seconds), "time" ("1:02:05"), "snippet" (matches in [[ ]]), "link"}]}
+Internal links are root-relative paths such as `/episodes/example.html`; clients resolve them against the same origin as this API URL.
     400 {"error"} for an empty query or one over MAX_QUERY_CHARS; 503 {"error"} when the index cannot be read (the Find page
     still filters episodes). Words are ANDed, a "quoted phrase" stays a phrase, and a word in capitals (NVDA, $NVDA) also matches
-    the company's names. A show leaves the index with `no_search: true` in sources.yaml (wire/searchindex.py).
+    the company's names. A show leaves the index with `no_search: true` in sources.yaml (sigma/searchindex.py).
 
 Dependencies: Vercel installs a function's dependencies from the nearest dependency file above it, and the root pyproject.toml
 (feedparser, yt-dlp, ...) would otherwise go into the function. api/requirements.txt is empty on purpose so it is the nearest one,
@@ -28,11 +29,10 @@ import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
-PATHNAME = "wire-search/index.sqlite"  # the Blob pathname wire/searchindex.py uploads to
-SITE = "https://wire.dming.si"
-CACHE = "/tmp/wire-search-index.sqlite"
+PATHNAME = "sigma-search/index.sqlite"  # the Blob pathname sigma/searchindex.py uploads to
+CACHE = "/tmp/sigma-search-index.sqlite"
 CACHE_SECONDS = 3600  # the index is rebuilt daily; a warm function re-downloads at most once an hour
 MAX_QUERY_CHARS = 100
 MAX_TERMS = 8
@@ -47,7 +47,7 @@ class Unavailable(RuntimeError):
 
 
 def fts_query(q: str, names=None) -> str | None:
-    """The library's rule (wire/library.py fts_query): "quoted phrases" stay phrases, other words are ANDed. None if no words.
+    """The library's rule (sigma/library.py fts_query): "quoted phrases" stay phrases, other words are ANDed. None if no words.
     A word typed as a ticker (NVDA or $NVDA, in capitals) also matches the company's names: names(ticker) -> list."""
     out = []
     for m in re.finditer(r'"([^"]+)"|(\$?)([\w][\w.\-]*)', q):
@@ -63,7 +63,7 @@ def fts_query(q: str, names=None) -> str | None:
 
 def index_path() -> str:
     """The local index file: the override for local runs, else the cached Blob download (refreshed hourly)."""
-    local = os.environ.get("WIRE_SEARCH_INDEX_FILE")
+    local = os.environ.get("SIGMA_SEARCH_INDEX_FILE")
     if local:
         return local
     try:
@@ -93,10 +93,27 @@ def index_path() -> str:
 
 
 def link(youtube_url: str | None, page: str | None, url: str | None, ts: int) -> str | None:
-    """YouTube at the moment when the episode has a video, else Wire's own page for the episode, else the publisher's page."""
-    if youtube_url:
-        return f"{youtube_url}{'&' if '?' in youtube_url else '?'}t={ts}s"
-    return SITE + page if page else url or None
+    """YouTube at the moment when the episode has a video, else a site-relative page, else the publisher's page."""
+    video = safe_url(youtube_url)
+    if video:
+        parts = urlsplit(video)
+        query = parts.query + ("&" if parts.query else "") + f"t={ts}s"
+        return urlunsplit(parts._replace(query=query))
+    return safe_url(page) or safe_url(url)
+
+
+def safe_url(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value or "\\" in value or any(ord(c) <= 0x20 for c in value):
+        return None
+    try:
+        parts = urlsplit(value)
+        if value.startswith("/"):
+            return value if not value.startswith("//") and not parts.scheme and not parts.netloc and parts.path.startswith("/") else None
+        if parts.scheme != "https" or not parts.netloc or parts.username is not None or parts.password is not None or not parts.hostname:
+            return None
+    except ValueError:
+        return None
+    return value
 
 
 def clock(ts: int) -> str:
@@ -113,7 +130,7 @@ def cap_words(text: str, n: int = MAX_WORDS) -> str:
 
 
 def search(q: str, db: str) -> list[dict]:
-    """The library's transcript query (wire/library.py search_transcripts) with a [[match]] snippet of 40 words, capped again below."""
+    """The library's transcript query (sigma/library.py search_transcripts) with a [[match]] snippet of 40 words, capped again below."""
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
         def names(ticker):

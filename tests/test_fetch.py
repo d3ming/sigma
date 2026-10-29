@@ -1,4 +1,4 @@
-"""`wire fetch`, `wire merge` and `wire transcribe`: feeds in, a run folder out. Feeds, transcript files, yt-dlp and Whisper are fakes."""
+"""`sigma fetch`, `sigma merge` and `sigma transcribe`: feeds in, a run folder out. Feeds, transcript files, yt-dlp and Whisper are fakes."""
 import json
 import os
 import subprocess
@@ -9,9 +9,9 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from wire import feedcache, fetch as fetch_mod, transcribe, whisper
-from wire.cli import main
-from wire.store import Store
+from sigma import feedcache, fetch as fetch_mod, transcribe, whisper
+from sigma.cli import main
+from sigma.store import Store
 from tests.helpers import LONG, ep, make_run, targs
 
 NOW = datetime.now(timezone.utc)
@@ -246,7 +246,7 @@ def test_triage_whispers_the_top_pick_and_every_other_tier_1_episode_unless_told
 
 
 def test_fetch_merge_and_transcribe_wait_for_the_manifest_lock_and_still_land_their_edits(tmp_path, web, monkeypatch):
-    """AGENTS.md: manifest.json is written only through wire.manifest.update, because transcribe runs for hours while other
+    """AGENTS.md: manifest.json is written only through sigma.manifest.update, because transcribe runs for hours while other
     commands edit the same file. With the lock held, each command waits; once it is free the command's edit is in the file."""
     import fcntl
     import threading
@@ -268,3 +268,39 @@ def test_fetch_merge_and_transcribe_wait_for_the_manifest_lock_and_still_land_th
             fcntl.flock(lock, fcntl.LOCK_UN)
         t.join(5)
         assert not t.is_alive() and landed(json.loads((run / "manifest.json").read_text())), name
+
+
+def test_fetch_duplicate_identity_preserves_episode_numbers_and_transcript_filenames(tmp_path):
+    from sigma.ranked import RankedError, validate
+
+    first = ep("rss:21", "Episode 21: The AI infrastructure outlook", "show")
+    next_episode = ep("rss:22", "Episode 22: The AI infrastructure outlook", "show")
+    known = SimpleNamespace(id=first.id, title=first.title, source_id=first.source_id, url=first.url,
+                            published_at=first.published_at.isoformat())
+    assert not fetch_mod.same_episode(next_episode, known)
+    assert fetch_mod.same_episode(first, known)
+    datetime_copy = ep("rss:copy", first.title, "show")
+    datetime_copy.url = ""
+    assert fetch_mod.same_episode(datetime_copy, first)
+    year_left = ep("rss:year-left", "2026 AI Outlook", "show-left")
+    year_right = ep("rss:year-right", "2026 AI Outlook", "show-right")
+    year_left.url, year_right.url = "https://example.invalid/left", "https://example.invalid/right"
+    assert not fetch_mod.same_episode(year_right, year_left)
+
+    shared = "An exceptionally long shared episode title that extends past the filename limit and ends in "
+    long_a = ep("rss:long-a", shared + "twenty one", "show")
+    long_b = ep("rss:long-b", shared + "twenty two", "show")
+    run = tmp_path / "run"
+    run.mkdir()
+    row_a = fetch_mod.write_episode(run, long_a, None, None)
+    row_b = fetch_mod.write_episode(run, long_b, None, None)
+    assert row_a["file"] != row_b["file"]
+    assert (run / row_a["file"]).exists() and (run / row_b["file"]).exists()
+
+    influencer = {"week_of": "2026-10-22", "run_dir": "runs/daily", "ranked_by": "reader", "episodes": [
+        {"rank": 1, "episode_id": "rss:creator", "title": "Creator video", "url": "https://example.invalid/video",
+         "source": "Creator", "tier": 3, "published": "2026-10-22", "score": 9, "reason": "Relevant", "claims": []}
+    ]}
+    validate(influencer, ranking=False)
+    with pytest.raises(RankedError, match="tier 3 can never be a top pick"):
+        validate(influencer)

@@ -6,7 +6,7 @@ Every episode is scored once, by the first run that transcribes it, and that sco
 it and later runs reuse it. So score against the absolute anchors below; never against a week or a batch.
 
 You are one reader. Input: `rank/batch-N-in.json` (or `rank/eval-in.json`, a blind re-score of already-scored episodes
-that measures drift), written by `wire rank-prep` (episodes with real transcripts, condensed to a `[timestamp]` every
+that measures drift), written by `sigma rank-prep` (episodes with real transcripts, condensed to a `[timestamp]` every
 30 s). Output: the same name ending `-out.json`, a JSON list of `{episode_id, title, url, source,
 tier, published, score, reason, claims}`, one entry per input episode. Cite timestamps from the condensed text.
 `rank-merge` combines the batches into `ranked.json` (`schema/ranked.schema.json`) and rejects ids it does not know;
@@ -27,7 +27,7 @@ Skip ads, intros, banter and vague opinion. Each claim has:
 
 Keep at most 5 claims per episode, best first. One claim per point: if the speaker returns to a point, or says it two ways,
 write it once, with its figures and the company it is about. A claim that only restates another in fewer words is dropped
-(`wire` merges such repeats anyway, but the best wording is yours to choose).
+(`sigma` merges such repeats anyway, but the best wording is yours to choose).
 
 ## 2. Score each episode 1-10
 

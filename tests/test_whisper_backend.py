@@ -1,7 +1,7 @@
 import sys
 from types import SimpleNamespace
 
-from wire import whisper
+from sigma import whisper
 
 
 def force_platform(monkeypatch, system, machine, modules):
@@ -11,7 +11,7 @@ def force_platform(monkeypatch, system, machine, modules):
 
 
 def test_auto_picks_mlx_only_on_apple_silicon_with_mlx(monkeypatch):
-    monkeypatch.setenv("PA_WHISPER_BACKEND", "auto")
+    monkeypatch.setenv("SIGMA_WHISPER_BACKEND", "auto")
     force_platform(monkeypatch, "darwin", "arm64", {"mlx_whisper", "faster_whisper"})
     assert whisper.backend() == "mlx" and whisper.available()
     force_platform(monkeypatch, "darwin", "arm64", {"faster_whisper"})
@@ -25,7 +25,7 @@ def test_auto_picks_mlx_only_on_apple_silicon_with_mlx(monkeypatch):
 
 
 def _mlx_fakes(monkeypatch, duration, segs=None):
-    monkeypatch.setenv("PA_WHISPER_BACKEND", "mlx")
+    monkeypatch.setenv("SIGMA_WHISPER_BACKEND", "mlx")
     seen = {"paths": [], "trim": []}
     segs = segs or [{"start": 0.0, "end": 5.0, "text": "hi"}]
 

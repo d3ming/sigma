@@ -1,7 +1,7 @@
 # Weekly themes (for the agent writing themes.json)
 
 Input: `runs/<week>/ranked.json`, written by `rank-merge`. Output: `runs/<week>/themes.json`, valid against
-`schema/themes.schema.json`, then `wire themes-check runs/<week> --top 15`. `publish` runs the same check and
+`schema/themes.schema.json`, then `sigma themes-check runs/<week> --top 15`. `publish` runs the same check and
 refuses on an `invalid:` line, then exports the file to `published/<week>/themes.json` and the site shows it at the top
 of the weekly page. A week without `themes.json` publishes as before.
 
@@ -40,7 +40,7 @@ Never put holdings, weights or portfolio data in it. Never put your reasoning in
 
 ## 3. Check, then write the rationale
 
-1. `wire themes-check runs/<week> --top 15`. Fix the file for each `invalid:` line and rerun; never edit
+1. `sigma themes-check runs/<week> --top 15`. Fix the file for each `invalid:` line and rerun; never edit
    around a check.
 2. Append a `Run` entry to `data/decisions.md` (git-ignored, private; use the entry format at the top of the file): the date and run, the themes you chose and why, the
    candidates you rejected and why (for example one episode only, one show only, too generic), and any judgment calls

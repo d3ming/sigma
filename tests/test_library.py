@@ -5,8 +5,8 @@ from pathlib import Path
 import jsonschema
 import pytest
 
-from wire import library
-from wire.cli import main
+from sigma import library
+from sigma.cli import main
 
 SCHEMA = json.loads((Path(__file__).resolve().parent.parent / "schema" / "library-claim.schema.json").read_text())
 
@@ -26,33 +26,38 @@ def make_run(root: Path, name="2026-10-20", claim="Nvidia HBM supply is sold out
     run = root / name
     run.mkdir(parents=True)
     (run / "ep1.md").write_text(TRANSCRIPT)
+    (run / "ep2.md").write_text("## Transcript\n\n[0:00:05] Amazon Trainium demand is rising.\n")
     (run / "manifest.json").write_text(json.dumps({"run_at": "2026-10-20T10:00:00", "episodes": [
         {"episode_id": "ep1", "file": "ep1.md", "title": "Jensen Huang on HBM", "source": "Show A", "tier": 1,
          "published": "2026-10-19", "url": "https://a.example/ep1", "youtube_id": "abc123", "has_transcript": True,
          "fallback_text": False, "transcript_source": "podcast:transcript", "transcript_url": "https://a.example/ep1.vtt"},
-        {"episode_id": "ep2", "file": "ep2.md", "title": "No transcript", "source": "Show B", "tier": 2,
-         "published": "2026-10-10", "url": "https://b.example/ep2", "has_transcript": False}]}))
+        {"episode_id": "ep2", "file": "ep2.md", "title": "Trainium demand", "source": "Show B", "tier": 2,
+         "published": "2026-10-10", "url": "https://b.example/ep2", "has_transcript": True}]}))
     (run / "ranked.json").write_text(json.dumps({"week_of": "2026-10-19", "run_dir": str(run), "ranked_by": "t", "episodes": [
         {"rank": 1, "episode_id": "ep1", "title": "Jensen Huang on HBM", "url": "https://a.example/ep1", "source": "Show A",
          "tier": 1, "published": "2026-10-19", "score": 8, "reason": "r",
          "claims": [{"ticker": ["nvda", "private:Foo"], "claim": claim, "speaker": "Jensen Huang", "timestamp": 70,
                      "novelty": 2, "verifiable": 3}]},
-        {"rank": 2, "episode_id": "ep2", "title": "No transcript", "url": "https://b.example/ep2", "source": "Show B",
+        {"rank": 2, "episode_id": "ep2", "title": "Trainium demand", "url": "https://b.example/ep2", "source": "Show B",
          "tier": 2, "published": "2026-10-10", "score": 3, "reason": "r",
          "claims": [{"ticker": ["AMZN"], "claim": "Amazon Trainium demand is rising.", "speaker": "Andy Jassy", "timestamp": 5,
                      "novelty": 1, "verifiable": 1}]}]}))
-    (run / "report.json").write_text(json.dumps({"date": "2026-10-20", "title": "t", "run_dir": str(run), "episodes": [
+    (run / "report.json").write_text(json.dumps({"date": "2026-10-20", "title": "t", "run_dir": str(run),
+        "key_insights": ["One.", "Two.", "Three."], "essential": [
+            {"episode_id": "ep1", "headline": "Jensen on HBM", "show": "Show A", "guests": "Jensen Huang"}], "episodes": [
         {"episode_id": "ep1", "headline": "Jensen on HBM", "url": "https://a.example/ep1",
          "youtube_url": "https://www.youtube.com/watch?v=abc123",
-         "signal": [{"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30}],
+         "signal": [{"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30},
+                    {"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30},
+                    {"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30}],
          "sections": [{"title": "s", "body": "b", "claims": [{"text": "Oracle capex doubles next year.", "speaker": "Jensen Huang", "timestamp": 30},
-                                                              {"text": "Unknown timing remark.", "speaker": "unknown", "timestamp": None}]}]}]}))
+                                                              {"text": "Unknown timing remark.", "speaker": "unknown", "timestamp": 70}]}]}]}))
     return run
 
 
 @pytest.fixture
 def lib(tmp_path, capsys):
-    """Drive `wire library ...` on a throwaway database: lib("query", "--ticker", "NVDA") returns the parsed rows."""
+    """Drive `sigma library ...` on a throwaway database: lib("query", "--ticker", "NVDA") returns the parsed rows."""
     db = str(tmp_path / "lib.sqlite")
 
     def run(*argv, text=False):

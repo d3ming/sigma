@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Template: install.sh replaces __SIGMA_REPO__ and writes ~/Library/LaunchAgents/com.sigma.daily.plist.
+     Weekdays 14:30 local (fetch and transcribe, done before the 15:30 agent routine that builds the 17:00 issue). A run missed while asleep fires once on the next wake (launchd catch-up). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.sigma.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__SIGMA_REPO__/deploy/mac/run-daily.sh</string>
+  </array>
+  <key>WorkingDirectory</key><string>__SIGMA_REPO__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>SIGMA_DATA_ROOT</key><string>__SIGMA_DATA_ROOT__</string>
+    <key>SIGMA_WHISPER_BACKEND</key><string>mlx</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>14</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>__SIGMA_REPO__/logs/launchd.out.log</string>
+  <key>StandardErrorPath</key><string>__SIGMA_REPO__/logs/launchd.err.log</string>
+  <key>ProcessType</key><string>Background</string>
+</dict>
+</plist>

@@ -1,44 +1,29 @@
 #!/usr/bin/env bash
-# Release Wire: develop reaches main, and the site, only through one reviewed pull request whose exact commit was tested
-# locally first. AGENTS.md has the flow; `make release` and `make release-land` run this.
-#   scripts/release.sh [--dry-run]   cut or refresh the candidate: point the release-candidate branch at origin/develop's tip,
-#                                    open or refresh its PR into main, test that exact commit in a detached worktree (the
-#                                    suite, then a local preview on a spare port and the routes below), post the result on the PR.
-#                                    --dry-run does the same but pushes and posts nothing: it prints the PR body and the comment.
-#   scripts/release.sh land          land the candidate: fast-forward main to the PR head, deploy, check the live site, comment.
-# The PR's head is release-candidate, not develop, so the operator's and bots' pushes to develop after the cut do not move
-# what was tested; they go out in the next release. Landing needs both, for the PR's current head:
-#   - the newest release-check comment is a pass naming that SHA (fixes land on develop; `make release` refreshes the PR);
-#   - a comment line `LGTM <sha>` (7 to 40 hex characters of that SHA) from an account with write access, in a comment that
-#     also has a `reviews:` line linking or summing up the two independent reviews of that SHA (AGENTS.md, To release). A
-#     comment, not an approving review: the release PR is opened by the account the agents share, and GitHub never lets a
-#     PR's author approve it. For the same reason the gate cannot tell who wrote the LGTM; the rule in AGENTS.md is the check.
-# The deploy is site-deploy.sh, which allows 2 deploys a Pacific day (the 8:00 AM X edition and the 5:00 PM issue; AGENTS.md)
-# and skips a release that changes nothing the site builds from. Land asks `site-deploy.sh --quota <sha>` before it moves
-# main, so a release that would need a third deploy is refused with main untouched. WIRE_DEPLOY_FORCE=1 (a deploy the
-# owner asked for) lifts that and passes --force.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 MAIN="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"  # a worktree has no .venv of its own: use the main checkout's
 PY=python3
 for v in "$ROOT/.venv" "$MAIN/.venv"; do [ -x "$v/bin/python" ] && { PY="$v/bin/python"; break; }; done
-SITE="${WIRE_SITE_URL:-https://wire.dming.si}"
+export SIGMA_DATA_ROOT="${SIGMA_DATA_ROOT:-$ROOT/data}"
+SITE="${SIGMA_BASE_URL:-}"
+if [ -z "$SITE" ]; then SITE=$(cd "$ROOT" && SIGMA_DATA_ROOT="${SIGMA_DATA_ROOT:-$ROOT/data}" PYTHONPATH=. "$PY" -m sigma.site_config); fi
+SITE=${SITE%/}
 CAND=release-candidate
-TMP=$(mktemp -d); WT=""; SERVER=""; BACK_TO_DEVELOP=""
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/sigma-release.XXXXXX"); WT=""; PREFLIGHT_WT=""; SERVER=""; BACK_TO_DEVELOP=""
 
 cleanup() {
   [ -z "$SERVER" ] || kill "$SERVER" 2>/dev/null || true
-  [ -z "$WT" ] || git worktree remove --force "$WT" 2>/dev/null || true
+  [ -z "$WT" ] || git worktree remove "$WT" 2>/dev/null || true
+  [ -z "$PREFLIGHT_WT" ] || git worktree remove "$PREFLIGHT_WT" 2>/dev/null || true
   if [ -n "$BACK_TO_DEVELOP" ]; then
     git checkout -q develop || echo "[release] could not return this clone to develop: git checkout develop" >&2
   fi
-  rm -rf "$TMP"
 }
 trap cleanup EXIT
 say() { echo "[release] $*"; }
-# tick <step> start|end: one line in the run's step log (wire/steplog.py, `wire step table` prints it). It never fails a release.
-STEPLOG=$(cd "$ROOT" && PYTHONPATH=. "$PY" -c 'from wire.steplog import log_path; print(log_path())' 2>/dev/null) || STEPLOG=""
+# tick <step> start|end: one line in the run's step log (sigma/steplog.py, `sigma step table` prints it). It never fails a release.
+STEPLOG=$(cd "$ROOT" && PYTHONPATH=. "$PY" -c 'from sigma.steplog import log_path; print(log_path())' 2>/dev/null) || STEPLOG=""
 [ -z "$STEPLOG" ] || mkdir -p "$(dirname "$STEPLOG")" 2>/dev/null || STEPLOG=""
 tick() { [ -z "$STEPLOG" ] || printf '{"step":"release: %s","event":"%s","at":"%s"}\n' "$1" "$2" "$(date -u +%Y-%m-%dT%H:%M:%S+00:00)" >>"$STEPLOG" 2>/dev/null || true; }
 die() { echo "[release] refused: $*" >&2; exit 1; }
@@ -51,33 +36,46 @@ redact() {
 }
 writers_only='["OWNER","MEMBER","COLLABORATOR"]'
 
-# dates <sha>: the newest daily run, X edition and Alpha day in that commit's published/ (empty when it has none).
-dates() {
-  RUN=$(git ls-tree --name-only "$1" published/ | sed -n 's|^published/\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)$|\1|p' | tail -1)
-  XD=$(git ls-tree --name-only "$1" published/x/editions/ | sed -n 's|.*/\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)\.json$|\1|p' | tail -1)
-  AD=$(git ls-tree --name-only "$1" published/alpha/ | sed -n 's|.*/\([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)\.json$|\1|p' | tail -1)
+publication_days() {
+  (cd "$CODE" && PYTHONPATH=. "$PY" - <<'PY'
+from sigma.paths import data_root
+from sigma.signals_site import load as load_signals
+from sigma.site import load_editions
+published = data_root() / "published"
+days, _ = load_signals(published)
+editions = load_editions(published)
+print(max(days) if days else "-", editions[0]["date"] if editions else "-")
+PY
+  )
 }
 
-# route <label> <url> [wire verify flags]: one table row. `wire verify` from $CODE (the candidate's code) does the GET and
+# route <label> <url> [sigma verify flags]: one table row. `sigma verify` from $CODE (the candidate's code) does the GET and
 # the content check; $NO_EVENTS keeps a local check out of the event log.
 route() {
   local name=$1 url=$2 out r=PASS; shift 2
-  out=$(cd "$CODE" && PA_NO_EVENTS="$NO_EVENTS" PYTHONPATH=. "$PY" -m wire.cli verify "$url" "$@" 2>&1) || { r=FAIL; FAILS=$((FAILS + 1)); }
+  out=$(cd "$CODE" && SIGMA_NO_EVENTS="$NO_EVENTS" PYTHONPATH=. "$PY" -m sigma.cli verify "$url" "$@" 2>&1) || { r=FAIL; FAILS=$((FAILS + 1)); }
   echo "| \`$name\` | $r | $(echo "$out" | sed -e "s|$BASE_URL||g" -e 's/^\[verify\] //' -e 's/|/\\|/g' | paste -sd ';' - | sed 's/;/; /g') |"
 }
 
 # smoke <base url> <sha>: the routes a reader and an agent hit first, checked against what commit <sha> published.
 smoke() {
   BASE_URL=${1%/}; FAILS=0
-  dates "$2"
-  if [ -n "$RUN" ]; then route / "$BASE_URL/" --run "$RUN"; else route / "$BASE_URL/" --expect '</html>'; fi
-  if [ -n "$XD" ]; then
-    local label; label=$(cd "$CODE" && PYTHONPATH=. "$PY" -c 'import sys; from wire.site import human_date; print(human_date(sys.argv[1]))' "$XD")
-    route /x "$BASE_URL/x" --expect "<title>X $label "
-    route "/x/$XD/" "$BASE_URL/x/$XD/" --expect "<title>X $label "
+  route / "$BASE_URL/" --expect '</html>'
+  route /llms.txt "$BASE_URL/llms.txt" --expect '# Sigma'
+  local days signals_day x_day x_label
+  days=$(publication_days)
+  signals_day=${days%% *}
+  x_day=${days#* }
+  if [ "$signals_day" != - ]; then
+    route "/signals/index.json, /signals/$signals_day.json" "$BASE_URL" --signals "$signals_day"
+    signals_label=$(cd "$CODE" && PYTHONPATH=. "$PY" -c 'import sys; from sigma.site import human_date; print(human_date(sys.argv[1], True))' "$signals_day")
+    route "/signals/$signals_day/" "$BASE_URL/signals/$signals_day/" --expect "$signals_label"
   fi
-  route /llms.txt "$BASE_URL/llms.txt" --expect '# Wire'
-  [ -z "$AD" ] || route "/alpha/index.json, /alpha/$AD.json" "$BASE_URL" --alpha "$AD"  # --alpha takes the site root
+  if [ "$x_day" != - ]; then
+    x_label=$(cd "$CODE" && PYTHONPATH=. "$PY" -c 'import sys; from sigma.site import human_date; print(human_date(sys.argv[1]))' "$x_day")
+    route /x "$BASE_URL/x" --expect "<title>X $x_label "
+    route "/x/$x_day/" "$BASE_URL/x/$x_day/" --expect "<title>X $x_label "
+  fi
   [ "$FAILS" -eq 0 ]
 }
 
@@ -92,26 +90,23 @@ body() {
   git log -n 150 --format='- %h %s' "$BASE..$SHA"
   [ "$n" -le 150 ] || echo "- and $((n - 150)) more: \`git log ${BASE:0:12}..${SHA:0:12}\`"
   echo
-  echo "## Published data"
+  echo "## Published site"
   echo
-  git diff --name-only "$BASE" "$SHA" -- published/ | awk -F/ '
-    { if ($2 == "alpha" || $2 == "x") { k = $2; for (i = 3; i < NF; i++) k = k "/" $i; f = $NF; sub(/\..*/, "", f) } else { k = "runs"; f = $2 }
-      if (!((k, f) in seen)) { seen[k, f] = 1; v[k] = (k in v ? v[k] ", " : "") "`" f "`" } }
-    END { for (k in v) print "- " k ": " v[k] }' | sort
-  git diff --quiet "$BASE" "$SHA" -- published/ && echo "None."
+  echo "The site is built from the private data root configured by \`SIGMA_DATA_ROOT\`; no published output is committed here."
+  echo "Before landing, \`site-deploy.sh --preflight\` builds and hashes the Vercel publication content without uploading it."
   echo
   echo "## Code and docs changed"
   echo
-  git diff --name-status "$BASE" "$SHA" -- . ':!published' | awk -F'\t' 'NR <= 150 { print "- " $1 " `" $NF "`" }'
-  git diff --quiet "$BASE" "$SHA" -- . ':!published' && echo "None."
+  git diff --name-status "$BASE" "$SHA" | awk -F'\t' 'NR <= 150 { print "- " $1 " `" $NF "`" }'
+  git diff --quiet "$BASE" "$SHA" && echo "None."
   echo
   echo "## Checklist"
   echo
   echo "- [ ] The newest release check below passed on this head"
   echo "- [ ] Commits and code changes read; anything the site shows differently looked at on the local preview (\`make preview\` on develop)"
   echo "- [ ] Every review finding fixed on \`develop\`, then \`make release\` refreshed this PR and checked the new head"
-  echo "- [ ] Two independent reviews (Codex and Bellatrix, REVIEW.md) cleared this head, each posted on this PR"
-  echo "- [ ] A comment line \`LGTM <sha>\` names this head, with a \`reviews:\` line linking or summing up both reviews"
+  echo "- [ ] The owner reviewed this exact head"
+  echo "- [ ] A write-authority account commented \`LGTM <sha>\` for this head"
   echo "- [ ] \`make release-land\` from the main checkout: fast-forwards \`main\`, deploys, checks the live site, comments here"
 }
 
@@ -172,7 +167,7 @@ cut() {
   fi
   [ "$tests" = PASS ] || result=fail
   {
-    echo "<!-- wire-release-check sha=$SHA result=$result -->"
+    echo "<!-- sigma-release-check sha=$SHA result=$result -->"
     echo "## Release check: $(echo "$result" | tr a-z A-Z) at \`${SHA:0:12}\`"
     echo
     echo "\`make release\` tested \`$SHA\` in a detached worktree on $(pacific): the suite, then a local preview built from it."
@@ -183,7 +178,7 @@ cut() {
     echo "$rows"
     echo
     if [ "$result" = pass ]; then
-      echo "Landable once two independent reviews clear it: comment \`LGTM ${SHA:0:12}\` with a \`reviews:\` line, then \`make release-land\`."
+      echo "Landable after owner review: comment \`LGTM ${SHA:0:12}\`, then run \`make release-land\`."
     else
       echo "Not landable. Fix on \`develop\`, then \`make release\` again."
     fi
@@ -213,14 +208,33 @@ import json, re, sys
 pr, writers = json.load(open(sys.argv[1])), json.loads(sys.argv[2])
 head = pr["headRefOid"]
 bodies = [c["body"] for c in pr["comments"] if c.get("authorAssociation") in writers]
-checks = [m for b in bodies for m in re.findall(r"<!-- wire-release-check sha=([0-9a-f]{40}) result=(pass|fail) -->", b)]
+checks = [m for b in bodies for m in re.findall(r"<!-- sigma-release-check sha=([0-9a-f]{40}) result=(pass|fail) -->", b)]
 sha, result = checks[-1] if checks else ("none", "none")
-ok = any(head.startswith(p) for b in bodies if "reviews:" in b for p in re.findall(r"(?m)^\s*LGTM ([0-9a-f]{7,40})\s*$", b))
+ok = any(head.startswith(p) for b in bodies for p in re.findall(r"(?m)^\s*LGTM ([0-9a-f]{7,40})\s*$", b))
 print(head, sha, result, "yes" if ok else "no")' "$TMP/pr.json" "$writers_only")
   [ "$checked" = "$head" ] && [ "$result" = pass ] \
     || die "PR #$pr's head is ${head:0:12}, but the newest release check is $result at ${checked:0:12}; run make release"
-  [ "$lgtm" = yes ] || die "PR #$pr has no comment from an account with write access holding a line 'LGTM ${head:0:12}' and 'reviews:' (AGENTS.md, To release)"
+  [ "$lgtm" = yes ] || die "PR #$pr has no comment from a write-authority account with line 'LGTM ${head:0:12}'"
   git merge-base --is-ancestor origin/main "$head" || die "origin/main is not an ancestor of ${head:0:12}; main only ever fast-forwards"
+
+  local force="" preflight=deploy/mac/site-deploy.sh preflight_output preflight_hash
+  [ -z "${SIGMA_DEPLOY_FORCE:-}" ] || force=--force
+  PREFLIGHT_WT="$TMP/preflight"
+  git worktree add -q --detach "$PREFLIGHT_WT" "$head"
+  if [ -f "$ROOT/.vercel/project.json" ]; then
+    mkdir -p "$PREFLIGHT_WT/.vercel"
+    cp "$ROOT/.vercel/project.json" "$PREFLIGHT_WT/.vercel/project.json"
+  fi
+  say "building and checking the reviewed publication content before moving main"
+  if ! preflight_output=$(cd "$PREFLIGHT_WT" && SIGMA_DATA_ROOT="$SIGMA_DATA_ROOT" SIGMA_PYTHON="$PY" SIGMA_DEPLOY_STATE_DIR="$ROOT/.vercel" SIGMA_DEPLOY_ARTIFACT_DIR="$ROOT/.vercel" "$preflight" --preflight ${force:+--force}); then
+    echo "$preflight_output" >&2
+    die "local publication preflight failed; main is untouched"
+  fi
+  echo "$preflight_output"
+  preflight_hash=$(echo "$preflight_output" | sed -n 's/^\[site\] production build content: \([0-9a-f]\{64\}\)$/\1/p' | tail -1)
+  [[ "$preflight_hash" =~ ^[0-9a-f]{64}$ ]] || die "publication preflight did not return a full content hash; main is untouched"
+  git worktree remove "$PREFLIGHT_WT"
+  PREFLIGHT_WT=""
 
   # Publish exactly the approved commit. A local main holding commits of its own would make the fast-forward a no-op
   # ("already up to date") and push code nobody reviewed, so it is refused, not reset: those commits are someone's work.
@@ -228,10 +242,6 @@ print(head, sha, result, "yes" if ok else "no")' "$TMP/pr.json" "$writers_only")
     die "local main has commits that are not in ${head:0:12}; move them to develop (git log ${head:0:12}..main), then rerun"
   fi
   tick "land: ff main and push" start
-  local force=""
-  [ -z "${WIRE_DEPLOY_FORCE:-}" ] || force=--force
-  [ -n "$force" ] || deploy/mac/site-deploy.sh --quota "$head" \
-    || die "the day's deploys are used up and ${head:0:12} changes the site; it waits for the next publish (WIRE_DEPLOY_FORCE=1 only when the owner asks). main is untouched"
   BACK_TO_DEVELOP=1
   git checkout -q main
   git merge -q --ff-only "$head"
@@ -252,7 +262,7 @@ print(head, sha, result, "yes" if ok else "no")' "$TMP/pr.json" "$writers_only")
   fi
 
   tick "land: deploy" start
-  deploy/mac/site-deploy.sh $force >"$TMP/deploy.log" 2>&1 || deploy=FAIL
+  SIGMA_DEPLOY_ARTIFACT_DIR="$ROOT/.vercel" deploy/mac/site-deploy.sh --deploy-staged "$preflight_hash" $force >"$TMP/deploy.log" 2>&1 || deploy=FAIL
   tick "land: deploy" end
   cat "$TMP/deploy.log"
   CODE=$ROOT; NO_EVENTS=""

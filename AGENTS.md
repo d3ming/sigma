@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Sigma is a public research-signals desk and a place to publish research on method and tooling. A stranger can clone it,
+Sigma finds evidence-backed signals for the US stock market and publishes research on methods and tooling. A stranger can clone it,
 supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
 
 The initial import is reviewed from `seed` into `develop`. Keep the whole proposal in that PR; the owner reviews it
@@ -67,3 +67,5 @@ Everything else is yours to decide. Be bold with reversible work.
   lives.
 - An accepted limitation is a `Known limit:` paragraph in the body of the commit that accepts it.
 - Reviewing a change: [REVIEW.md](REVIEW.md).
+
+For broader source discovery and reading, use `skills/signal-discovery` and `skills/source-reading`. Their private leads do not bypass the podcast and X publication checks.

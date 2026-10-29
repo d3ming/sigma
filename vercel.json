@@ -1,5 +1,5 @@
 {
-  "buildCommand": "python3 -m wire.site --out dist",
+  "buildCommand": "python3 -m sigma.site --out dist",
   "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": true,
@@ -8,7 +8,7 @@
   },
   "functions": {
     "api/search.py": {
-      "excludeFiles": "{dist,published,wire,docs,tests,prompts,schema,deploy,web,site-assets,skills,.github,.pytest_cache}/**"
+      "excludeFiles": "{{data,.local,dist,published,sigma,docs,tests,prompts,schema,deploy,web,site-assets,skills,.github,.pytest_cache,examples}/**,.env*,**/.env*,.private-words,**/.private-words,PLAN.md,**/PLAN.md,followlist*,**/followlist*}"
     }
   }
 }

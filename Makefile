@@ -7,7 +7,10 @@ preview-stop:
 preview-logs:
 	@scripts/preview.sh logs
 
-.PHONY: release release-land
+.PHONY: publish release release-land
+publish:
+	@deploy/mac/site-deploy.sh $(if $(DRY_RUN),--preflight)
+
 # Release develop to main through one reviewed PR (AGENTS.md); see scripts/release.sh. `make release DRY_RUN=1` pushes and posts nothing.
 release:
 	@scripts/release.sh $(if $(DRY_RUN),--dry-run)

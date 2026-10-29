@@ -20,3 +20,15 @@ the private seed archive at `9ccc50f:tests/`.
 `PLAN.md` and `docs/migration/` held the private migration handoff and operating
 manual. They are excluded from the public history. The originals remain in the
 private seed archive at `9ccc50f`; the active plan stays local and ignored.
+
+## Newsletter benchmark
+
+The TMTB email parser measured podcast selection against a particular newsletter and searched for missed episodes. It is outside the public Signals desk's scope. Its command, fetch option, recall statistics and dedicated fixtures were removed together. The last public copy is `68f6d6c:wire/tmtb.py`; a local reference is retained under `.local/deletion-candidates/`. Existing private benchmark records are preserved.
+
+## SI news lens
+
+The SI lens published a second feed of AI news and how-tos. Sigma instead focuses its signal pipeline on Signals; methods and tooling belong in explicitly allowed research posts. The last public implementation is the initial import at `68f6d6c`. Historical operator output is not deleted.
+
+## Legacy command and configuration names
+
+The package and command named `wire`, the `podcast-alpha` alias, the `WIRE_*` and `PA_*` settings, and the Alpha index were replaced by `sigma`, `SIGMA_*` and Signals. Keeping aliases would create competing configuration paths. Old public `/alpha` page links redirect to `/signals`; there are no old CLI or environment aliases. The last implementation is `68f6d6c`.

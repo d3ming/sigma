@@ -4,9 +4,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from wire import custom, fetch as fetch_mod, people, status, whisper
-from wire.cli import main
-from wire.ingest import Episode
+from sigma import custom, fetch as fetch_mod, people, status, whisper
+from sigma.cli import main
+from sigma.ingest import Episode
 from tests.helpers import LONG, STATUS_SHAPE, make_run, targs
 
 NOW = datetime.now(timezone.utc)
@@ -42,7 +42,7 @@ def run_find(capsys, *argv, runs):
 
 
 def test_find_candidates_for_a_person(monkeypatch, capsys, tmp_path):
-    """`wire find`: one row per episode however many places carry it, newest first, with where it can be fetched from."""
+    """`sigma find`: one row per episode however many places carry it, newest first, with where it can be fetched from."""
     other = yt_ep("yt:other", "A different Friar talk", days_ago=3)
     fake_finders(monkeypatch, itunes=[itunes_ep()], youtube=[yt_ep(), other])
     cands = run_find(capsys, "--person", "Sarah Friar", "--role", "OpenAI CFO", runs=tmp_path)

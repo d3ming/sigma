@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/d3ming/wire/schema/themes.schema.json",
-  "title": "Wire weekly themes",
-  "description": "Output the operator agent writes after rank-merge, following prompts/themes.md: the week's 3-5 cross-episode themes, each grounded in claims from ranked.json. `wire themes-check` and `publish` hold it to more than this schema (ids exist, evidence inside the published top N, two shows per theme, claims pass the publish checks). Private reasoning never goes in this file.",
+  "$id": "https://github.com/d3ming/sigma/schema/themes.schema.json",
+  "title": "Sigma weekly themes",
+  "description": "Output the operator agent writes after rank-merge, following prompts/themes.md: the week's 3-5 cross-episode themes, each grounded in claims from ranked.json. `sigma themes-check` and `publish` hold it to more than this schema (ids exist, evidence inside the published top N, two shows per theme, claims pass the publish checks). Private reasoning never goes in this file.",
   "type": "object",
   "additionalProperties": false,
   "required": ["week_of", "run", "headline", "themes"],

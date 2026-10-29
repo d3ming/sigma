@@ -2,8 +2,8 @@ import json
 import sys
 from datetime import datetime, timezone
 
-from wire import steplog
-from wire.cli import main
+from sigma import steplog
+from sigma.cli import main
 
 
 def _lines(p):

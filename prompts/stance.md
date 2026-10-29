@@ -4,14 +4,14 @@ For each item you are given, say how bullish or bearish it is on each US-listed 
 itself when it takes a view of that. The labels feed the Sentiment page, which adds them up with a weight for recency. A
 label is made once and kept, so judge each item on its own text.
 
-You are one reader. Input: `stance/in-N.json`, written by `wire stance-prep`: a list of items. Output:
+You are one reader. Input: `stance/in-N.json`, written by `sigma stance-prep`: a list of items. Output:
 `stance/out-N.json`, a JSON list with one entry per input item, in the shape of `schema/stance.schema.json`:
 
 ```json
 [{"key": "c-0123456789ab", "labels": [{"ticker": "XYZ", "stance": 1, "reason": "Calls demand for its product strong this year"}]}]
 ```
 
-Copy `key` exactly. Save the file, then the coordinator runs `wire stance-merge`; it lists every problem it finds.
+Copy `key` exactly. Save the file, then the coordinator runs `sigma stance-merge`; it lists every problem it finds.
 
 ## Items
 
@@ -20,14 +20,14 @@ Copy `key` exactly. Save the file, then the coordinator runs `wire stance-merge`
   mentions the company. You may add a US ticker the claim is clearly about and the tags missed. A claim with no
   candidates was sent because its words read like a market view: label it `@MARKET`, `@RATES` or `@CREDIT` if it is one,
   and give `labels: []` if it is not. Market targets are never required.
-- An **X post** (`kind: post`) is one post by an account Wire follows, with its `handle` and the post it quotes, if any
+- An **X post** (`kind: post`) is one post by an account Sigma follows, with its `handle` and the post it quotes, if any
   (`quoted`, context only: the author's view is what counts). `candidates` are the US tickers it cashtags or names, a hint
   only. Label the US-listed companies the post is about, named or not, and nothing else; `labels: []` when no US stock is
   its subject. A post that reports a fact or headline with no view ("Brazil's market falls 20%", "MSFT is offering
   buyouts") is stance `0` or no label: news is not a view unless the author frames it as one (calls it good or bad for
   the stock, says what it means for the price). A post of one stock's chart or level without a call is `0`.
   A thread item (an author's own posts in a row, separated by blank lines) is one view: label it once, as a whole.
-- An **X sentence** (`kind: x`, older) is one sentence of Wire's daily edition about what several accounts posted. Label
+- An **X sentence** (`kind: x`, older) is one sentence of Sigma's daily edition about what several accounts posted. Label
   it like a post.
 - An item with `market_only: true` already has its ticker labels, which stay. Give it market labels (below) only, and
   `labels: []` when it is not a market view.
@@ -79,7 +79,7 @@ mood of the news and not your own view of the stock. Use only what the item says
 
 ## Origin, horizon and target (for every label with a stance other than 0)
 
-The Alpha index (`wire alpha-index`) hands these labels to people and agents, and the private ledger grades them later at
+The Signals index (`sigma signals-index`) hands these labels to people and agents, and the private ledger grades them later at
 5, 21 and 63 trading days. Add three fields to a label whose stance is not `0`; leave them out of a `0`.
 
 ```json

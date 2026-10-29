@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/d3ming/wire/schema/ranked.schema.json",
-  "title": "Wire weekly ranking",
+  "$id": "https://github.com/d3ming/sigma/schema/ranked.schema.json",
+  "title": "Sigma weekly ranking",
   "description": "Output the operator agent writes after following prompts/rank.md over a fetch run folder. Holdings or weights must never appear here.",
   "type": "object",
   "additionalProperties": false,

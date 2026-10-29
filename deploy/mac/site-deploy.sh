@@ -1,97 +1,278 @@
 #!/bin/zsh
-# Deploy wire.dming.si from origin/main (production is main; day-to-day work is on develop and reaches main by a
-# fast-forward release, see AGENTS.md). Refuses unless this clone is on main, at origin/main.
-# At most once per commit, and at most WIRE_DEPLOYS_PER_DAY (2) per Pacific day. Git pushes do not deploy: the Vercel Hobby plan allows 100 deployments a day per account, and a skipped build still counts. Wire
-# publishes twice on weekdays, an X-only edition by 8:00 AM and the podcasts plus X by 5:00 PM, and each publish is one
-# deploy (`make release-land` runs this script). .vercel/deploys holds one "<Pacific date> <sha>" line per deploy made,
-# forced or not; a third deploy in the day is refused. --force is for a deploy the owner asks for: it deploys even if this
-# commit already went out or the day's two are used up (it is still recorded). `--quota [sha]` only reports, and
-# release.sh land asks it before it moves main: exit 1 only when the day's deploys are used up and [sha] (default origin/main)
-# would change what the site builds from since the last deploy; a release that changes nothing the site reads needs no deploy.
-# Uploads `git archive origin/main`, never the working tree: data/ and runs/ are private.
 set -euo pipefail
-WIRE="${0:A:h:h:h}"
-cd "$WIRE"
-LOG="$WIRE/.vercel/deploys"         # .vercel/ is git-ignored and local to this Mac
-TODAY=$(TZ=America/Los_Angeles date +%F)
-MAX=${WIRE_DEPLOYS_PER_DAY:-2}
-USED=$(grep -c "^$TODAY " "$LOG" 2>/dev/null || true); USED=${USED:-0}
-STAMP="$WIRE/.vercel/deployed-sha"
-# changes_site <sha>: 0 when <sha> differs from the last deployed commit in a path the build reads (tests, docs, prompts,
-# skills, scripts and deploy tooling are not), or when there is no usable stamp.
-changes_site() {
-  [[ -f $STAMP ]] && git cat-file -e "$(<$STAMP)^{commit}" 2>/dev/null || return 0
-  ! git diff --quiet "$(<$STAMP)" "$1" -- . ':!tests' ':!docs' ':!deploy' ':!prompts' ':!skills' ':!scripts' \
-      ':!.githooks' ':!.github' ':!AGENTS.md' ':!README.md' ':!CONTRIBUTING.md' ':!SECURITY.md' ':!CODE_OF_CONDUCT.md' ':!REVIEW.md'
+CALLER_PWD=$PWD
+SIGMA="${0:A:h:h:h}"
+cd "$SIGMA"
+DATA_ROOT="${SIGMA_DATA_ROOT:-$SIGMA/data}"
+[[ $DATA_ROOT == /* ]] || DATA_ROOT="$CALLER_PWD/$DATA_ROOT"
+export SIGMA_DATA_ROOT="$DATA_ROOT"
+PYTHON=${SIGMA_PYTHON:-}
+if [[ -z $PYTHON ]]; then
+  if [[ -x "$SIGMA/.venv/bin/python" ]]; then PYTHON="$SIGMA/.venv/bin/python"; else PYTHON=python3; fi
+fi
+STATE="${SIGMA_DEPLOY_STATE_DIR:-$SIGMA/.vercel}"
+ARTIFACTS="${SIGMA_DEPLOY_ARTIFACT_DIR:-$SIGMA/.vercel}"
+LOG="$STATE/deploys"
+STAMP="$STATE/deployed-hash"
+FAILLOG="$STATE/deploy-failed.log"
+BUILD_OUT="$STATE/build.out"
+BUILD_ERR="$STATE/build.err"
+
+audit_publication() {
+  "$PYTHON" - "$1" <<'PY'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+private_parts = {
+    "data", ".local", "published", "followlists", "followlist", "docs-migration",
+    "sources.yaml", "people.yaml", "creators.json", "x-accounts.json", "entities.json", "show_links.yaml",
 }
-if [[ "${1:-}" == --quota ]]; then
-  echo "[site] $USED of $MAX deploys used on $TODAY"
-  (( USED < MAX )) || { changes_site "${2:-origin/main}" && exit 1; }
+private_files = {".private-words", "PLAN.md", "followlists.json", "followlists.yaml", "followlists.txt"}
+for path in root.rglob("*"):
+    parts = path.relative_to(root).parts
+    if any(part.startswith(".env") or part.startswith("followlist") or part in private_parts or part in private_files for part in parts):
+        sys.exit(1)
+    if any(parts[index:index + 2] == ("docs", "migration") for index in range(len(parts) - 1)):
+        sys.exit(1)
+PY
+}
+
+TODAY=$(TZ=America/Los_Angeles date +%F)
+MAX=${SIGMA_DEPLOYS_PER_DAY:-2}
+USED=$(grep -c "^$TODAY " "$LOG" 2>/dev/null || true); USED=${USED:-0}
+MODE=${1:-}
+if [[ $MODE == --help || $MODE == -h ]]; then
+  cat <<'HELP'
+usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH|--force]
+
+Builds a production Vercel output, hashes the generated publication content,
+and deploys the frozen prebuilt output when its content changed. --preflight
+builds and checks quota without upload; --dry-run builds without quota refusal.
+--site-only runs the static site builder without Vercel or an account. Production
+upload requires local main to match origin/main. --force bypasses the content
+and daily quota skips. --deploy-staged uploads the frozen preflight artifact
+identified by its full content hash, without rebuilding it.
+HELP
   exit 0
 fi
-BRANCH=$(git branch --show-current)
-if [[ $BRANCH != main ]]; then
-  echo "[site] refused: production deploys only from main, and this clone is on '${BRANCH:-a detached HEAD}'." >&2
-  echo "Release instead: make release, review the PR, then make release-land, which runs this script from main (AGENTS.md)" >&2
+FORCE=0
+if [[ $MODE == --force ]]; then FORCE=1; fi
+if [[ $MODE == --preflight && ${2:-} == --force ]]; then FORCE=1; fi
+if [[ $MODE == --deploy-staged && ${3:-} == --force ]]; then FORCE=1; fi
+[[ $MODE == --site-only || $MODE == --dry-run || $MODE == --preflight || $MODE == --deploy-staged || $MODE == --force || -z $MODE ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH|--force]" >&2; exit 2; }
+[[ $# -le 1 || ( $MODE == --preflight && $# -eq 2 && ${2:-} == --force ) || ( $MODE == --deploy-staged && ( $# -eq 2 || ( $# -eq 3 && ${3:-} == --force ) ) ) ]] || { echo "usage: site-deploy.sh [--site-only|--preflight [--force]|--dry-run|--deploy-staged HASH [--force]|--force]" >&2; exit 2; }
+if [[ -z $MODE || $MODE == --force || $MODE == --deploy-staged ]]; then
+  BRANCH=$(git branch --show-current)
+  if [[ $BRANCH != main ]]; then
+    echo "[site] refused: production deploys only from main, and this clone is on '${BRANCH:-detached HEAD}'." >&2
+    exit 1
+  fi
+  git fetch -q origin main
+  [[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] || { echo "[site] refused: local main is not at origin/main" >&2; exit 1; }
+fi
+BUILD_OUT="$SIGMA/.vercel/build.out"
+BUILD_ERR="$SIGMA/.vercel/build.err"
+BASE_URL=${SIGMA_BASE_URL:-}
+if [[ $MODE == --site-only && -z $BASE_URL ]]; then
+  BASE_URL=$(SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH="$SIGMA" "$PYTHON" -m sigma.site_config) || { echo "[site] could not resolve the configured base URL" >&2; exit 1; }
+fi
+if [[ $MODE == --site-only ]]; then
+  PYTHONPATH="$SIGMA" SIGMA_BASE_URL="$BASE_URL" "$PYTHON" - "$SIGMA" <<'PY'
+import hashlib
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+repo = pathlib.Path(sys.argv[1])
+with tempfile.TemporaryDirectory(prefix="sigma-site-only-") as temp:
+    output = pathlib.Path(temp) / "site"
+    subprocess.run([sys.executable, "-m", "sigma.site", "--out", str(output)], cwd=repo, env=os.environ.copy(), check=True)
+    digest = hashlib.sha256()
+    files = sorted(path for path in output.rglob("*") if path.is_file())
+    for path in files:
+        name = path.relative_to(output).as_posix().encode()
+        payload = path.read_bytes()
+        digest.update(len(name).to_bytes(8, "big"))
+        digest.update(name)
+        digest.update(len(payload).to_bytes(8, "big"))
+        digest.update(payload)
+    print(f"[site] local content: {digest.hexdigest()[:12]} ({len(files)} files); no Vercel account or upload used")
+PY
+  exit $?
+fi
+mkdir -p "$SIGMA/.vercel" "$STATE" "$ARTIFACTS"
+if [[ $MODE == --deploy-staged ]]; then
+  HASH=$2
+  [[ $HASH =~ '^[0-9a-f]{64}$' ]] || { echo "[site] refused: invalid publication hash" >&2; exit 2; }
+  STAGED="$ARTIFACTS/publication/$HASH"
+  [[ -d "$STAGED/.vercel/output" && -f "$STAGED/.vercel/output/config.json" ]] || { echo "[site] refused: staged publication $HASH is missing" >&2; exit 1; }
+  if [[ -f "$SIGMA/.vercel/project.json" ]]; then
+    [[ -f "$STAGED/.vercel/project.json" ]] && cmp -s "$SIGMA/.vercel/project.json" "$STAGED/.vercel/project.json" \
+      || { echo "[site] refused: staged publication belongs to a different Vercel project" >&2; exit 1; }
+  fi
+  VERIFY_HASH=$("$PYTHON" - "$STAGED/.vercel/output" <<'PY'
+import hashlib
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    name = path.relative_to(root).as_posix().encode()
+    payload = path.read_bytes()
+    digest.update(len(name).to_bytes(8, "big"))
+    digest.update(name)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+print(digest.hexdigest())
+PY
+)
+  [[ $VERIFY_HASH == "$HASH" ]] || { echo "[site] refused: staged publication does not match its hash" >&2; exit 1; }
+  audit_publication "$STAGED/.vercel/output" || { echo "[site] refused: staged publication contains a private path" >&2; exit 1; }
+else
+  SOURCE=$(mktemp -d "${TMPDIR:-/tmp}/sigma-vercel-build.XXXXXX")
+  git -C "$SIGMA" archive HEAD | tar -x -C "$SOURCE"
+  mkdir -p "$SOURCE/.vercel"
+  [[ ! -f "$SIGMA/.vercel/project.json" ]] || cp "$SIGMA/.vercel/project.json" "$SOURCE/.vercel/project.json"
+  if [[ -z $BASE_URL ]]; then
+    BASE_URL=$(cd "$SOURCE" && SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH=. "$PYTHON" -m sigma.site_config) \
+      || { echo "[site] could not resolve the configured base URL from staged source" >&2; exit 1; }
+  fi
+  OUTPUT="$SOURCE/.vercel/output"
+  PYTHON_PATH=${PYTHON:h}
+  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$DATA_ROOT" SIGMA_BASE_URL="$BASE_URL" vercel build --prod) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
+    :
+  else
+    rc=$?
+    echo "[site] local production build failed (vercel exit $rc):"
+    cat "$BUILD_OUT" "$BUILD_ERR"
+    exit "$rc"
+  fi
+  [[ -d $OUTPUT && -f $OUTPUT/config.json ]] || { echo "[site] refused: vercel build produced no complete .vercel/output" >&2; exit 1; }
+  audit_publication "$OUTPUT" || { echo "[site] refused: generated publication contains a private path" >&2; exit 1; }
+  HASH=$("$PYTHON" - "$OUTPUT" <<'PY'
+import hashlib
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    name = path.relative_to(root).as_posix().encode()
+    payload = path.read_bytes()
+    digest.update(len(name).to_bytes(8, "big"))
+    digest.update(name)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+print(digest.hexdigest())
+PY
+  )
+  echo "[site] production build content: $HASH"
+  STAGED="$ARTIFACTS/publication/$HASH"
+  if [[ -d "$STAGED/.vercel/output" ]]; then
+    STAGED_HASH=$("$PYTHON" - "$STAGED/.vercel/output" <<'PY'
+import hashlib
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    name = path.relative_to(root).as_posix().encode()
+    payload = path.read_bytes()
+    digest.update(len(name).to_bytes(8, "big"))
+    digest.update(name)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+print(digest.hexdigest())
+PY
+    )
+    [[ $STAGED_HASH == "$HASH" ]] || { echo "[site] refused: saved publication content does not match its hash" >&2; exit 1; }
+  else
+    mkdir -p "$STAGED/.vercel"
+    cp -R "$OUTPUT" "$STAGED/.vercel/output"
+  fi
+  if [[ -f "$SIGMA/.vercel/project.json" ]]; then
+    if [[ -f "$STAGED/.vercel/project.json" ]]; then
+      cmp -s "$SIGMA/.vercel/project.json" "$STAGED/.vercel/project.json" || { echo "[site] refused: saved publication belongs to a different Vercel project" >&2; exit 1; }
+    else
+      cp "$SIGMA/.vercel/project.json" "$STAGED/.vercel/project.json"
+    fi
+  fi
+fi
+if [[ $MODE == --preflight || $MODE == --dry-run ]]; then
+  if [[ -f $STAMP && "$(cat "$STAMP")" == "$HASH" ]]; then
+    echo "[site] unchanged; no deployment needed"
+  elif [[ $MODE == --preflight && $FORCE == 0 ]] && (( USED >= MAX )); then
+    echo "[site] refused: already made today's $MAX deployments ($TODAY); next publication can deploy it" >&2
+    exit 1
+  else
+    echo "[site] changed; dry run, no deployment uploaded"
+  fi
+  exit 0
+fi
+if [[ $FORCE == 0 && -f $STAMP && "$(cat "$STAMP")" == "$HASH" ]]; then
+  echo "[site] unchanged since last deployment; not deployed"
+  exit 0
+fi
+if [[ $FORCE == 0 ]] && (( USED >= MAX )); then
+  echo "[site] refused: already made today's $MAX deployments ($TODAY); next publication can deploy it" >&2
   exit 1
 fi
-git fetch -q origin main
-[[ $(git rev-parse HEAD) == $(git rev-parse origin/main) ]] \
-  || { echo "[site] refused: local main is not at origin/main; git push (or git pull --ff-only) first" >&2; exit 1; }
-SHA=$(git rev-parse origin/main)
-if [[ "${1:-}" != --force && -f $STAMP && "$(<$STAMP)" == "$SHA" ]]; then
-  echo "[site] ${SHA:0:7} already deployed"
-  exit 0
-fi
-# A commit that changes nothing the build reads (tests, docs, prompts, skills, scripts) leaves the site as it is: no deploy.
-if [[ "${1:-}" != --force && -f $STAMP ]] && ! changes_site "$SHA"; then
-  echo "$SHA" >"$STAMP"
-  echo "[site] ${SHA:0:7} changes nothing the site builds from; not deployed"
-  exit 0
-fi
-if [[ "${1:-}" != --force ]] && (( USED >= MAX )); then
-  echo "[site] refused: Wire already made today's $MAX deploys ($TODAY); ${SHA:0:7} goes out with the next publish. --force only when the owner asks"
-  exit 1
-fi
-TMP=$(mktemp -d)
-trap 'rm -rf "$TMP"' EXIT
-mkdir "$TMP/site"
-git archive origin/main | tar -x -C "$TMP/site"
-mkdir -p "$TMP/site/.vercel"
-cp .vercel/project.json "$TMP/site/.vercel/"  # the link to the project only, not the stamps or the failure log
-# The URL is on stdout; progress and errors go to stderr. Reading both as one stream once took a success for a failure,
-# left the commit unstamped, and every later run deployed it again (2026-10-27: 4 extra deploys). So the two streams stay
-# apart, and a failure is never silent: the first release under the reviewed flow (2026-10-28) died with only the CLI banner
-# on stderr and no exit code, because `|| true` ate it and the message showed the last 3 lines of a 3-line log. Now each
-# attempt keeps its exit code and both streams, a failed attempt prints them (and keeps them in .vercel/deploy-failed.log,
-# git-ignored, local), and one retry follows after a pause. A failed attempt that made no deployment costs no quota; only
-# a CLI that lost the URL of a deployment it did make could cost a second one.
-OUT="$TMP/vercel.out"; ERR="$TMP/vercel.err"; FAILLOG="$WIRE/.vercel/deploy-failed.log"
-url="" rc=0
-attempt() {  # attempt <n>: sets url and rc
-  rc=0 url=""
-  (cd "$TMP/site" && vercel deploy --prod --yes >"$OUT" 2>"$ERR") || rc=$?
+OUT="$SIGMA/.vercel/deploy.out"
+ERR="$SIGMA/.vercel/deploy.err"
+url=""
+rc=0
+attempt() {
+  rc=0; url=""
+  VERIFY_HASH=$("$PYTHON" - "$STAGED/.vercel/output" <<'PY'
+import hashlib
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(p for p in root.rglob("*") if p.is_file()):
+    name = path.relative_to(root).as_posix().encode()
+    payload = path.read_bytes()
+    digest.update(len(name).to_bytes(8, "big"))
+    digest.update(name)
+    digest.update(len(payload).to_bytes(8, "big"))
+    digest.update(payload)
+print(digest.hexdigest())
+PY
+)
+  if [[ $VERIFY_HASH != "$HASH" ]]; then
+    rc=91
+    echo "staged publication changed after its content hash" >"$ERR"
+    : >"$OUT"
+    echo "[site] refused: staged publication changed after its content hash" >&2
+    return 1
+  fi
+  (cd "$STAGED" && vercel deploy --prebuilt --prod --yes) >"$OUT" 2>"$ERR" || rc=$?
   url=$(grep -Eo 'https://[^ "<>]+' "$OUT" | tail -1 || true)
-  [[ $url == https://* && $rc -eq 0 ]] && return 0  # a URL with a failing exit is a build that failed after upload: not a success
-  # A URL means Vercel created a deployment even though its build failed; that one counts toward the day's quota.
-  [[ $url == https://* ]] && { echo "$TODAY $SHA" >>"$LOG"; USED=$((USED+1)); }
+  [[ $rc -eq 0 && $url == https://* ]] && return 0
+  if [[ $url == https://* ]]; then
+    echo "$TODAY $HASH" >>"$LOG"
+    USED=$((USED + 1))
+  fi
   {
-    echo "=== $(date '+%F %T %Z') attempt $1: vercel exit $rc, url '${url:-none}'; ${SHA:0:7}; vercel $(vercel --version 2>&1 | tail -1); node $(node --version 2>&1)"
+    echo "=== $(date '+%F %T %Z') attempt $1: vercel exit $rc; ${HASH:0:12}; url '${url:-none}'"
     echo "--- stdout"; cat "$OUT"; echo "--- stderr"; cat "$ERR"
   } >>"$FAILLOG"
-  echo "[site] deploy attempt $1 failed (vercel exit $rc). stdout, then stderr, last 20 lines each:" >&2
+  echo "[site] deploy attempt $1 failed (vercel exit $rc). stdout, then stderr:" >&2
   { echo "--- stdout"; tail -20 "$OUT"; echo "--- stderr"; tail -20 "$ERR"; } >&2
   return 1
 }
 attempt 1 || {
-  if [[ "${1:-}" != --force ]] && (( USED >= MAX )); then
-    echo "[site] not retrying: the failed attempt used the day's last deploy ($USED of $MAX on $TODAY); full output in .vercel/deploy-failed.log. main has already moved, so the only way out is deploy/mac/site-deploy.sh --force from main, and only when the owner asks" >&2
+  if [[ $FORCE == 0 ]] && (( USED >= MAX )); then
+    echo "[site] not retrying: the failed attempt used the day's last deploy ($USED of $MAX on $TODAY); full output in $FAILLOG" >&2
     exit 1
   fi
-  echo "[site] retrying once in ${WIRE_DEPLOY_RETRY_SLEEP:-15}s" >&2
-  sleep "${WIRE_DEPLOY_RETRY_SLEEP:-15}"
-  attempt 2 || { echo "[site] deploy failed twice (vercel exit $rc): $(tail -2 "$ERR" "$OUT" 2>/dev/null | grep -v '^==>' | tr '\n' ' ' | cut -c1-300); full output in .vercel/deploy-failed.log"; exit 1; }
+  WAIT=${SIGMA_DEPLOY_RETRY_SLEEP:-15}
+  echo "[site] retrying once in ${WAIT}s" >&2
+  sleep "$WAIT"
+  attempt 2 || { echo "[site] deploy failed twice (vercel exit $rc); full output in $FAILLOG" >&2; exit 1; }
 }
-echo "$SHA" >"$STAMP"
-echo "$TODAY $SHA" >>"$LOG"
-echo "[site] deployed ${SHA:0:7}: $url"
+echo "$HASH" >"$STAMP"
+echo "$TODAY $HASH" >>"$LOG"
+echo "[site] deployed: $url"

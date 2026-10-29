@@ -1,12 +1,12 @@
-"""`wire site`: published/ in, the static website out. Rules come from AGENTS.md and the site notes, not from site.py."""
+"""`sigma site`: published/ in, the static website out. Rules come from AGENTS.md and the site notes, not from site.py."""
 import html as _html
 import json
 import re
 
 import pytest
 
-from wire import site
-from wire.cli import main
+from sigma import research, site
+from sigma.cli import main
 
 EP = "rss:aaa"
 THEMES = {  # the resolved form themes.py exports
@@ -108,7 +108,7 @@ def build(tmp_path, *extra):
 
 @pytest.fixture(autouse=True)
 def no_real_entities(tmp_path, monkeypatch):
-    """`wire site` reads entities.json from the repo; point it at an empty file so the fixture shows stay untagged."""
+    """`sigma site` reads entities.json from the repo; point it at an empty file so the fixture shows stay untagged."""
     (tmp_path / "entities.json").write_text("{}")
     monkeypatch.setattr(site, "ENTITIES_FILE", tmp_path / "entities.json")
 
@@ -129,8 +129,8 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     dmd = (out / "runs/2026-01-09-daily.md").read_text()
     assert "Friday, Jan 9, 2026" in dmd and "Capacity is tight" in dmd and "0:01:01" not in dmd and "1:01" in dmd
     home = (out / "index.html").read_text()
-    assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home and "not investment advice. The author may hold positions" in home
-    assert home.count('href="https://x.com/dming"') == 2 and "@dming</a>" in home  # the maker credit and the footer link both go to their X profile
+    assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home and "What the sources say, not advice." in home
+    assert "@dming" not in home and "Mingdom" not in home and '<a class="brand" href="/">Sigma</a>' in home
     banned = re.compile(r"\b(agents?|whisper|novelty|verifiable|tiers?|fetched|grounded|pipeline|transcripts?|2026-01-05-weekly|"
                         r"2026-01-09-daily|score|about)\b", re.I)
     for f in out.rglob("*.html"):
@@ -142,11 +142,11 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
                                "themes_path": "/runs/2026-01-05-weekly/themes.json"}
     assert len((out / "claims.jsonl").read_text().splitlines()) == 2 + 1 + 2 + 9
     llms = (out / "llms.txt").read_text()
-    assert llms.startswith("# Wire\n\n> ") and "## Start here" in llms and "## Indexes" in llms
-    links = re.findall(r"\]\((https://wire\.dming\.si[^)]*)\)", llms)
+    assert llms.startswith("# Sigma\n\n> ") and "## Start here" in llms and "## Indexes" in llms
+    links = re.findall(r"\]\((https://example\.invalid[^)]*)\)", llms)
     assert links
     for u in links:  # every link in llms.txt points at a file that was built
-        assert (out / site.file_of(u.replace("https://wire.dming.si", ""))).exists(), u
+        assert (out / site.file_of(u.replace("https://example.invalid", ""))).exists(), u
     assert "/claims.jsonl" in llms and "/llms-full.txt" in llms and "/tickers/NVDA.md" in llms
     full = (out / "llms-full.txt").read_text()
     assert full.index("Jan 13, 2026") < full.index("Jan 12, 2026") < full.index("Jan 9, 2026") < full.index("Week of Jan 5, 2026")
@@ -164,16 +164,16 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
         assert "javascript:" not in text and not re.search(r"(?<!\\)<script", text), f
     sm = (out / "sitemap.xml").read_text()
     locs = re.findall(r"<loc>([^<]+)</loc>", sm)
-    assert "https://wire.dming.si/tickers/" not in locs and "https://wire.dming.si/board/" not in locs  # the old board routes only redirect
+    assert "https://example.invalid/tickers/" not in locs and "https://example.invalid/board/" not in locs
     for old in ("tickers", "board"):
         assert 'content="0; url=/sentiment/"' in (out / old / "index.html").read_text() and "/sentiment.md" in (out / f"{old}.md").read_text()
     assert 'href="/sentiment/" aria-current="page">Sentiment</a>' in (out / "sentiment/index.html").read_text()
     for path in ["/", "/index.md", "/sentiment/", "/sentiment.md", "/tickers/NVDA.html", "/people/andy-jassy.md", "/episodes/rss_eee.html",
                  "/runs/2026-01-12-daily.md", "/llms.txt"]:
-        assert "https://wire.dming.si" + path in locs, path
+        assert "https://example.invalid" + path in locs, path
     assert "<lastmod>2026-01-11</lastmod>" in sm and len(locs) == len(set(locs))
     robots = (out / "robots.txt").read_text()
-    assert "Disallow" not in robots and "Sitemap: https://wire.dming.si/sitemap.xml" in robots
+    assert "Disallow" not in robots and "Sitemap: https://example.invalid/sitemap.xml" in robots
 
 
 def test_site_people_shows_and_claim_ids(tmp_path):
@@ -189,7 +189,7 @@ def test_site_people_shows_and_claim_ids(tmp_path):
     assert j["novelty"] == 3 and j["tier"] == 1  # the raw feed keeps the fields the pages hide
     assert next(r for r in rows if r["id"] == "2026-01-12-daily:rss:eee:2")["person"] is None  # "host" is a role, not a person
     assert not any(k.startswith("_") for r in rows for k in r)
-    assert "wire.dming.si" not in (out / "llms.txt").read_text() and "wire.dming.si" not in (out / "sitemap.xml").read_text()
+    assert "dming" not in (out / "llms.txt").read_text() and "dming" not in (out / "sitemap.xml").read_text()
     again = build(tmp_path / "again", "--base-url", "https://example.test/")
     assert ids == [json.loads(line)["id"] for line in (again / "claims.jsonl").read_text().splitlines()]
     ppl = json.loads((out / "people.json").read_text())["people"]
@@ -218,13 +218,12 @@ ENTITIES = {
     "show_topics": {"show-e": ["ai", "chips", "bogus"]},
     "companies": {"amazon": {"name": "Amazon", "kind": "public", "ticker": "AMZN", "aliases": ["AWS"]}},
     "people": {"andy-jassy": {"name": "Andy Jassy", "affiliations": [{"company": "amazon", "role": "CEO"}]}},
-    "lenses": {"si": {"name": "SI", "mark": "SI", "about": "Technical", "topics": ["ai", "chips"]},
-               "alpha": {"name": "Alpha", "mark": "\u03b1", "about": "Investing", "topics": [], "public_ticker": 1}}}
+    "lenses": {"signals": {"name": "Signals", "mark": "S", "about": "Public market signals", "topics": ["ai", "chips"], "public_ticker": 1}}}
 
 
 def test_entities_filter_shows_companies_and_lenses(tmp_path):
     """Stated rules: shows are found by topic, an episode is found through the company it is about
-    (a speaker's employer counts), and each episode carries Alpha and SI lenses; a titled ranking is a one-off issue, not a week."""
+    (a speaker's employer counts), and each episode carries only the public Signals lens."""
     pub = tmp_path / "published"
     make_published(pub)
     make_people(pub)
@@ -242,19 +241,19 @@ def test_entities_filter_shows_companies_and_lenses(tmp_path):
     assert ai < index.index("Show E") < chips < other < index.index("Show A")  # Show E under both tags, untagged last
     assert '<a href="/shows/?topic=chips#chips">Chips</a>' in (out / "shows/show-e.html").read_text()
     show_e = next(s for s in json.loads((out / "shows.json").read_text())["shows"] if s["show"] == "Show E")
-    assert show_e["tags"] == ["ai", "chips"] and show_e["lenses"] == ["si"]
+    assert show_e["tags"] == ["ai", "chips"] and show_e["lenses"] == ["signals"]
     co = (out / "companies/amazon.html").read_text()  # Jassy's employer: the episode is about Amazon though he is the only speaker
     assert 'href="/episodes/rss_eee.html"' in co and 'href="/people/andy-jassy.html">Andy Jassy</a> (CEO)' in co
     assert '<a href="/companies/amazon.html">Amazon</a> · CEO' in (out / "people/andy-jassy.html").read_text()
     assert next(c for c in json.loads((out / "companies.json").read_text())["companies"] if c["id"] == "amazon")["episodes"] == 1
     rows = {e["i"]: e for e in json.loads((out / "find-index.json").read_text())["eps"]}
-    assert rows["/episodes/rss_eee.html"]["c"] == ["amazon"] and sorted(rows["/episodes/rss_eee.html"]["l"]) == ["alpha", "si"]
-    assert rows["/episodes/rss_aaa.html"]["l"] == ["alpha"]  # a public ticker claim, no AI topic
-    assert 'data-l="alpha"' in (out / "index.html").read_text() and '<button type="button" data-lens="si"' in (out / "index.html").read_text()
+    assert rows["/episodes/rss_eee.html"]["c"] == ["amazon"] and rows["/episodes/rss_eee.html"]["l"] == ["signals"]
+    assert rows["/episodes/rss_aaa.html"]["l"] == ["signals"]  # a public ticker claim, no AI topic
+    assert 'data-l="signals"' in (out / "index.html").read_text() and 'data-lens="si"' not in (out / "index.html").read_text()
     home = (out / "index.html").read_text()
     assert "<h2>Special issues</h2>" in home and "A chosen set" in home and "Week of Jan 20" not in home
     tk = {t["symbol"]: t for t in json.loads((out / "tickers.json").read_text())["tickers"]}
-    assert tk["NVDA"]["claims"] == 2 and tk["NVDA"]["latest_date"] == "2026-01-11" and tk["NVDA"]["md"] == "https://wire.dming.si/tickers/NVDA.md"
+    assert tk["NVDA"]["claims"] == 2 and tk["NVDA"]["latest_date"] == "2026-01-11" and tk["NVDA"]["md"] == "https://example.invalid/tickers/NVDA.md"
 
 
 def test_influencer_episodes_are_social_videos_and_never_enter_the_ranking(tmp_path):
@@ -280,20 +279,20 @@ def test_influencer_episodes_are_social_videos_and_never_enter_the_ranking(tmp_p
     assert "Calls for a long above 180" in (out / "tickers/INFX.html").read_text()  # the chip links somewhere
     ep = (out / "episodes/rss_inf.html").read_text()
     assert "Rated as social commentary" in ep and "Rated 10 out of 10 as social commentary." in ep
-    assert "Unscored chart week" not in social and "<h1>Social</h1>" in social and "<title>Social · wire</title>" in social
+    assert "Unscored chart week" not in social and "<h1>Social</h1>" in social and "<title>Social · Sigma</title>" in social
     assert (out / "social.md").read_text().startswith("# Social")
     assert "Rated 10/10 as social commentary. Levels on two names" in (out / "social.md").read_text()
     llms = (out / "llms.txt").read_text()
     assert "/social.md" in llms and "/social.md" in (out / "index.md").read_text()
     sm = (out / "sitemap.xml").read_text()
-    assert all(f"https://wire.dming.si{p}" in sm for p in ("/social/", "/social.md", "/episodes/rss_inf.html", "/tickers/INFX.html"))
+    assert all(f"https://example.invalid{p}" in sm for p in ("/social/", "/social.md", "/episodes/rss_inf.html", "/tickers/INFX.html"))
     assert "Social" in (out / "tickers/NVDA.md").read_text() and "Calls for a long above 180" in (out / "tickers/NVDA.md").read_text()
     (tmp_path / "published/2026-01-09-daily/scores-influencer.json").unlink()  # no influencer data and no X: no Social page
     main(["site", "--out", str(tmp_path / "bare"), "--published", str(tmp_path / "published")])
     assert not (tmp_path / "bare/social").exists()
     ed = tmp_path / "published/x/editions"
     ed.mkdir(parents=True)
-    (ed / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "alpha": [], "si": [], "posts": [
+    (ed / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "signals": [], "posts": [
         {"id": "1", "handle": "someone", "cashtags": []}]}))
     main(["site", "--out", str(tmp_path / "xonly"), "--published", str(tmp_path / "published")])
     for path in ("x/index.html", "x/week/index.html", "x/archive/index.html", "x/2026-01-09/index.html", "social/index.html"):  # Social is current on both sides
@@ -326,17 +325,17 @@ def test_weekly_themes_lead_the_page_and_a_broken_file_never_breaks_it(tmp_path)
     for icon in ("favicon.svg", "favicon.ico", "apple-touch-icon.png"):  # the page head links these; a reader's tab shows no icon without them
         assert f'href="/{icon}"' in home and (out / icon).stat().st_size > 0
     assert "[hidden]{display:none!important}" in (out / "style.css").read_text()  # .entry sets display, which beat the attribute and left every row showing
-    assert "wire-window-2" in home and "wire-window')" not in home  # the Month a first load once saved must not override Week
+    assert "sigma-window-2" in home and "sigma-window')" not in home  # the Month a first load once saved must not override Week
     assert '<a href="/runs/2026-01-05-weekly/#theme-1">Capacity &lt;i&gt;sold out&lt;/i&gt;</a>' in home and '<a href="/themes/">All themes' in home
     page = (out / "themes/index.html").read_text()
     assert 'href="/themes/" aria-current="page"' in page and "Week of Jan 5, 2026" in page
     assert '<a href="/runs/2026-01-05-weekly/#ep-rss_aaa"' in page
-    assert "### Themes" in (out / "themes.md").read_text() and "[Themes](https://wire.dming.si/themes.md)" in (out / "index.md").read_text()
+    assert "### Themes" in (out / "themes.md").read_text() and "[Themes](https://example.invalid/themes.md)" in (out / "index.md").read_text()
     md = (out / "runs/2026-01-05-weekly.md").read_text()
     assert md.index("## Themes") < md.index("Chip supply stays tight") < md.index("### Capacity") < md.index("Boss")
-    assert "Consensus · Came up in 2 of 5 episodes · Tickers: [NVDA](https://wire.dming.si/tickers/NVDA.md), Acme (private)" in md
+    assert "Consensus · Came up in 2 of 5 episodes · Tickers: [NVDA](https://example.invalid/tickers/NVDA.md), Acme (private)" in md
     assert "[1:02:05](https://example.com/e?t=3725)" in md and "<b>" not in md.replace("\\<b>", "")
-    assert "[Themes as JSON](https://wire.dming.si/runs/2026-01-05-weekly/themes.json)" in md
+    assert "[Themes as JSON](https://example.invalid/runs/2026-01-05-weekly/themes.json)" in md
     assert json.loads((out / "runs/2026-01-05-weekly/themes.json").read_text())["themes"][0]["came_up_in"] == {"episodes": 2, "of": 5}
     assert "### Themes" in (out / "llms-full.txt").read_text() and "/runs/<issue>/themes.json" in (out / "llms.txt").read_text()
     assert "Themes" not in (out / "runs/2026-01-09-daily.md").read_text()
@@ -376,7 +375,7 @@ def test_creator_page_lists_videos_and_x_posts_with_a_view_and_is_linked_from_bo
     rows = [{"key": f"p-{i}", "labels": [{"ticker": t, "stance": s, "reason": "r"}], "id": i, "handle": "someone", "date": "2026-01-10"}
             for i, t, s in (("11", "NVDA", 1), ("12", "AMD", 0))]
     (pub / "x/stances/2026-01-10.jsonl").write_text("".join(json.dumps(r) + "\n" for r in rows))
-    (pub / "x/editions/2026-01-10.json").write_text(json.dumps({"date": "2026-01-10", "headline": "A day", "alpha": [], "si": [], "posts": [
+    (pub / "x/editions/2026-01-10.json").write_text(json.dumps({"date": "2026-01-10", "headline": "A day", "signals": [], "posts": [
         {"id": "11", "handle": "someone", "cashtags": []}]}))
     out = build(tmp_path)
     h = (out / "creators/show-i.html").read_text()
@@ -457,10 +456,10 @@ def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragm
 
 
 def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tmp_path, monkeypatch):
-    """failure-seen: release reviews found `wire verify --run` failing on healthy sites (a weekly; a `-daily` name), and the site
+    """failure-seen: release reviews found `sigma verify --run` failing on healthy sites (a weekly; a `-daily` name), and the site
     sending a daily issue's address to a home-page day with no row (2026-01-09-daily and 2026-01-12-daily here: their episodes
     came out the day before). Stated rule (owner, 2026-10-28): a daily issue's address lands on its day on the home page."""
-    from wire import verify
+    from sigma import verify
 
     pub = tmp_path / "published"
     special, day = pub / "2026-01-07-latent-space", pub / "2026-01-14"
@@ -490,53 +489,95 @@ def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tm
         main(["verify", "https://w.test/", "--run", "2026-01-13-weekly"])
 
 
-def test_alpha_sits_beside_the_podcast_home_with_at_least_three_picks_and_agent_files(tmp_path):
-    """Stated rule (owner, 2026-10-28): the home page stays the podcast home and carries a collapsible Alpha panel beside it, /alpha/
+def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agent_files(tmp_path):
+    """Stated rule (owner, 2026-10-28): the home page stays the podcast home and carries a collapsible Signals panel beside it, /signals/
     shows at least three picks (the weak ones labelled lower confidence), and agents get stable JSON, a schema, llms.txt and a
-    Markdown twin. With no Alpha data the home has no panel."""
+    Markdown twin. With no Signals data the home has no panel."""
     pub, out = tmp_path / "published", tmp_path / "dist"
     make_published(pub)
     site.build(pub, out)
-    assert "<h2>Episodes</h2>" in (out / "index.html").read_text() and not (out / "alpha").exists() and "alpha-panel" not in (out / "index.html").read_text()
+    assert "<h2>Episodes</h2>" in (out / "index.html").read_text() and (out / "signals/index.html").exists() and "No signals are published yet" in (out / "signals/index.html").read_text() and "signals-panel" not in (out / "index.html").read_text()
     sig = lambda t, who, st, o="primary": {"id": f"a-{t}{who}", "date": "2026-01-09", "ticker": t, "target": t, "direction": "bullish" if st > 0 else "bearish",
                                           "stance": st, "speaker": who, "role": "X account", "link": f"https://x.com/{who}/status/1", "source_kind": "x",
                                           "source_id": "1", "source_name": who, "origin": o, "horizon_days": 21, "reason": f"Likes {t}"}
     sigs = [sig("AAA", "@a", 2), sig("AAA", "@b", 1), sig("BBB", "@a", 1, "recap"), sig("CCC", "@c", -1), sig("DDD", "@d", 1), sig("@MARKET", "@e", 1),
             {**sig("ZZZ", "Host", 2), "source_kind": "podcast", "link": "https://example.com/ep", "source_name": "Some Show"}]
-    (pub / "alpha").mkdir()
+    (pub / "signals").mkdir()
     day = {"schema_version": 1, "date": "2026-01-09", "generated_at": "2026-01-09T09:00-08:00", "complete": False,
            "missing": [{"source": "x", "reason": "2 posts unlabelled"}], "counts": {"signals": 7, "primary": 6, "recap": 1}, "signals": sigs}
-    (pub / "alpha" / "2026-01-09.json").write_text(json.dumps(day))
+    (pub / "signals" / "2026-01-09.json").write_text(json.dumps(day))
     (pub / "x/editions").mkdir(parents=True)
-    (pub / "x/editions/2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "alpha": [], "si": [], "posts": []}))
+    (pub / "x/editions/2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "signals": [], "posts": []}))
     site.build(pub, out)
-    for xp in ("x/index.html", "x/2026-01-09/index.html"):  # the old X pages open with the Alpha view and keep the edition under it
+    for xp in ("x/index.html", "x/2026-01-09/index.html"):  # the old X pages open with the Signals view and keep the edition under it
         xh = (out / xp).read_text()
         assert xh.count('class="card') >= 3 and xh.index('class="card') < xh.index("<h2>A day</h2>")
     assert "Daily picks" in (out / "x.md").read_text() and "\n## A day" in (out / "x.md").read_text()
     home = (out / "index.html").read_text()
-    assert "<h2>Episodes</h2>" in home and '<details class="alpha-panel" id="alpha-panel" open>' in home and "All of today" in home
+    assert "<h2>Episodes</h2>" in home and '<details class="signals-panel" id="signals-panel" open>' in home and "All of today" in home
     # the panel and its tape hold X signals only, say so with the X mark, and link each ticker to its signal on the day page
-    assert 'aria-label="X signals"' in home and 'class="tape"' in home and 'href="/alpha/2026-01-09/#s-AAA"' in home
-    assert "ZZZ" not in home[home.index('<details class="alpha-panel"'):] .split("</details>")[0] and "ZZZ" in (out / "alpha" / "index.html").read_text()
+    assert 'aria-label="X signals"' in home and 'class="tape"' in home and 'href="/signals/2026-01-09/#s-AAA"' in home
+    assert "ZZZ" not in home[home.index('<details class="signals-panel"'):] .split("</details>")[0] and "ZZZ" in (out / "signals" / "index.html").read_text()
     tape = home[home.index('<span class="tape"'):].split("</summary>")[0]
     tape = re.sub(r"<[^>]+>", " ", tape)  # the visible words only. The tape scrolls per-ticker items only: no date, count or market line
     assert "X signal" not in tape and "Jan" not in tape and "US stocks" not in tape and "@MARKET" not in tape and "▲" in tape
     assert "AAA" in tape and "Bullish" in tape and "ZZZ" not in tape
     assert "tabindex=\"-1\"" in home and "prefers-reduced-motion" in (out / "style.css").read_text()
-    assert 'id="s-AAA"' in (out / "alpha" / "2026-01-09" / "index.html").read_text() and 'id="s-MARKET"' in (out / "alpha" / "2026-01-09" / "index.html").read_text()
-    alpha = (out / "alpha" / "index.html").read_text()
-    picks_html = alpha.split("<h2>Daily picks")[1].split("<h2>Markets")[0]
-    assert picks_html.count('<details class="card') >= 3 and 'class="lc"' in picks_html and 'class="card lo"' not in alpha and "Incomplete day" in alpha and "Lower confidence" not in alpha and "recap" not in re.sub(r"<script.*?</script>|<style.*?</style>", "", alpha).lower()  # the weak picks carry a dim dot, not a fade; the origin label is JSON only
-    assert "primary" not in picks_html and "<h2>More from today</h2>" in alpha
-    assert 'data-rest="/alpha/2026-01-09/rest.html"' in alpha and 'href="/alpha/2026-01-09/more/"' in alpha  # a link without a script, a toggle with one
-    frag = (out / "alpha" / "2026-01-09" / "rest.html").read_text()
+    assert 'id="s-AAA"' in (out / "signals" / "2026-01-09" / "index.html").read_text() and 'id="s-MARKET"' in (out / "signals" / "2026-01-09" / "index.html").read_text()
+    signals = (out / "signals" / "index.html").read_text()
+    picks_html = signals.split("<h2>Daily picks")[1].split("<h2>Markets")[0]
+    assert picks_html.count('<details class="card') >= 3 and 'class="lc"' in picks_html and 'class="card lo"' not in signals and "Incomplete day" in signals and "Lower confidence" not in signals and "recap" not in re.sub(r"<script.*?</script>|<style.*?</style>", "", signals).lower()  # the weak picks carry a dim dot, not a fade; the origin label is JSON only
+    assert "primary" not in picks_html and "<h2>More from today</h2>" in signals
+    assert 'data-rest="/signals/2026-01-09/rest.html"' in signals and 'href="/signals/2026-01-09/more/"' in signals  # a link without a script, a toggle with one
+    frag = (out / "signals" / "2026-01-09" / "rest.html").read_text()
     rest_ids = re.findall(r'id="(s-\w+)"', frag)  # the rest is in the fragment and the no-script page, and not in the day page itself
-    assert rest_ids and "<html" not in frag and all(f'id="{i}"' not in alpha for i in rest_ids)
-    more = (out / "alpha" / "2026-01-09" / "more" / "index.html").read_text()
+    assert rest_ids and "<html" not in frag and all(f'id="{i}"' not in signals for i in rest_ids)
+    more = (out / "signals" / "2026-01-09" / "more" / "index.html").read_text()
     assert all(f'id="{i}"' in more for i in rest_ids) and "/more/" not in (out / "sitemap.xml").read_text() and 'class="card lo"' not in frag
     assert 'url=/' in (out / "podcasts" / "index.html").read_text() and (out / "podcasts.md").exists()
-    assert json.loads((out / "alpha" / "index.json").read_text())["days"][0]["path"] == "/alpha/2026-01-09.json"
-    assert (out / "alpha" / "2026-01-09.json").exists() and (out / "alpha" / "schema.json").exists() and (out / "research" / "index.html").exists()
-    assert "/alpha/index.json" in (out / "llms.txt").read_text() and "Daily picks" in (out / "alpha.md").read_text() and "alpha.md" in (out / "index.md").read_text()
-    assert "/alpha/2026-01-09.json" in (out / "sitemap.xml").read_text()
+    assert json.loads((out / "signals" / "index.json").read_text())["days"][0]["path"] == "/signals/2026-01-09.json"
+    assert (out / "signals" / "2026-01-09.json").exists() and (out / "signals" / "schema.json").exists() and (out / "research" / "index.html").exists()
+    assert "/signals/index.json" in (out / "llms.txt").read_text() and "Daily picks" in (out / "signals.md").read_text() and "signals.md" in (out / "index.md").read_text()
+    assert "/signals/2026-01-09.json" in (out / "sitemap.xml").read_text()
+
+
+def test_research_posts_are_allowlisted_safe_and_fail_before_replacing_site(tmp_path, monkeypatch):
+    data = tmp_path / "data"
+    posts_dir = data / "research" / "posts"
+    posts_dir.mkdir(parents=True)
+    (data / "research" / "index.json").write_text(json.dumps({"posts": ["agent-workflows"]}))
+    post = {"title": "Public agent workflows", "date": "2026-10-01", "summary": "A synthetic methods note.",
+            "body": "Public agent workflows and model prompts use explicit, inspectable steps.\n\n<script>alert(1)</script> They can be compared without disclosing private inputs."}
+    (posts_dir / "agent-workflows.json").write_text(json.dumps(post))
+    allowed = research.load(data)
+    assert [item["slug"] for item in allowed] == ["agent-workflows"]
+    pages = {}
+    sitemap = []
+    out = tmp_path / "dist"
+    site.research_post_pages(allowed, lambda path, page, md, updated="": pages.update({path: (page, md)}), out, sitemap)
+    html_page, markdown = pages["/research/agent-workflows/"]
+    assert "Public agent workflows" in html_page and "inspectable steps" in html_page
+    assert "<script>alert(1)</script>" not in html_page and "&lt;script&gt;alert(1)&lt;/script&gt;" in html_page and "# Public agent workflows" in markdown
+    assert json.loads((out / "research/agent-workflows.json").read_text()) == {"slug": "agent-workflows", **post}
+    assert sitemap == [("/research/agent-workflows.json", "2026-10-01")]
+
+    monkeypatch.setenv("SIGMA_DATA_ROOT", str(data))
+    (out / "index.html").write_text("previous valid site")
+    for text in ("Fair value estimate.", "Internal system prompt.", "BLOB_READ_WRITE_TOKEN in private notes.",
+                 "VERCEL_BLOB_RW_store123_secret123", "sk_test_0123456789abcdef", "I own 1200 shares of NVDA."):
+        post["body"] = text
+        (posts_dir / "agent-workflows.json").write_text(json.dumps(post))
+        with pytest.raises(ValueError, match="not publishable"):
+            site.build(tmp_path / "published", out)
+        assert (out / "index.html").read_text() == "previous valid site"
+
+
+def test_research_only_publishes_explicit_slugs(tmp_path):
+    research_dir = tmp_path / "research"
+    (research_dir / "posts").mkdir(parents=True)
+    (research_dir / "index.json").write_text(json.dumps({"posts": []}))
+    (research_dir / "posts" / "unlisted.json").write_text(json.dumps({"body": "not included"}))
+    assert research.load(tmp_path) == []
+    (research_dir / "index.json").write_text(json.dumps({"posts": ["../unlisted"]}))
+    with pytest.raises(ValueError, match="invalid or duplicate"):
+        research.load(tmp_path)

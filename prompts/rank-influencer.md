@@ -8,7 +8,7 @@ new primary information), so they are scored here, apart, on what they pick and 
 never enter `scores.json` or `ranked.json`. Like every score, this one is made once, by the first run that transcribes
 the episode, and is its record: score against the anchors below, never against the batch.
 
-You are one reader. Input: `rank/influencer-N-in.json`, written by `wire rank-prep` (episodes from sources marked
+You are one reader. Input: `rank/influencer-N-in.json`, written by `sigma rank-prep` (episodes from sources marked
 `style: influencer`, condensed to a `[timestamp]` every 30 s). Output: `rank/influencer-N-out.json`, a JSON list of
 `{episode_id, title, url, source, tier, published, score, reason, claims}`, one entry per input episode, in the same
 shape as `rank/batch-N-out.json` (`schema/ranked.schema.json`). Cite timestamps from the condensed text.

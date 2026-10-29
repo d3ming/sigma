@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from wire import ingest, transcribe
-from wire import people as pm
-from wire.config import Source, load_sources
-from wire.ingest import Episode, canonical_id
-from wire.people import Person, apply_source_tiers, feed_transcripts, from_itunes, ITUNES_RETRIES, on_topic, parse_itunes
-from wire.whisper import Budget, segments_until
+from sigma import ingest, transcribe
+from sigma import people as pm
+from sigma.config import Source, load_sources
+from sigma.ingest import Episode, canonical_id
+from sigma.people import Person, apply_source_tiers, feed_transcripts, from_itunes, ITUNES_RETRIES, on_topic, parse_itunes
+from sigma.whisper import Budget, segments_until
 
 NOW = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
 
@@ -66,7 +66,7 @@ def test_a_source_falls_back_in_order_and_a_person_hit_inherits_its_shows_tier(m
 
 
 def test_transcript_methods_run_in_order_within_the_budget_and_feed_links_are_loaded_once(monkeypatch):
-    import wire.whisper as w
+    import sigma.whisper as w
 
     monkeypatch.setattr(transcribe, "from_rss_tag", lambda links, used=None: None)
     monkeypatch.setattr(w, "transcribe", lambda url, b: (b.spend(600) or [{"start": 0, "speaker": None, "text": "x"}], 600))
@@ -135,7 +135,7 @@ def test_person_search_backs_off_on_429_keeps_person_order_and_skips_namesakes(m
 def test_source_add_says_a_show_is_already_listed_when_its_channel_sits_in_show_links(monkeypatch, tmp_path):
     """failure-seen 2026-10-26: a video from a channel named after the host looked like a new source, but the channel was already Big Technology's."""
     import json
-    from wire import sources as sm
+    from sigma import sources as sm
 
     (tmp_path / "s.yaml").write_text('sources:\n  - {id: bt, name: "Big Technology Podcast", tier: 1, rss: "http://f/bt", topics: [tech]}\n')
     (tmp_path / "l.yaml").write_text("bt:\n  name: Big Technology Podcast\n  youtube: https://www.youtube.com/channel/UCye1YedIypHffYb8k6Gp9wg\n")

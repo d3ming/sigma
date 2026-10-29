@@ -1,5 +1,5 @@
-/* Wire visual base: colors (light and dark), fonts, type scale, spacing, radii, line weights.
-   Wire owns this file. Other sites copy it byte for byte and never edit it; a copy that differs is drift.
+/* Sigma visual base: colors (light and dark), fonts, type scale, spacing, radii, line weights.
+   Sigma owns this file. Other sites copy it byte for byte and never edit it; a copy that differs is drift.
    Usage guide: web/WEB_DESIGN.md. Custom properties only: no selectors beyond :root and the theme switch.
    Dark values come from light-dark(); the three-way switch sets data-theme on <html> (none = follow the system). */
 

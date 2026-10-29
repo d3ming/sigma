@@ -1,4 +1,4 @@
-"""Where a reader can listen: the link `wire links` gives each selected episode, the links the published files and site carry,
+"""Where a reader can listen: the link `sigma links` gives each selected episode, the links the published files and site carry,
 and the show-links file. Real title pairs from past weeks; every network call below is a fake."""
 import copy
 import hashlib
@@ -9,9 +9,9 @@ import subprocess
 import pytest
 import yaml
 
-from wire import links, published, report, showlinks, site
-from wire.digest import render, show_line
-from wire.ranked import RankedError
+from sigma import links, published, report, showlinks, site
+from sigma.digest import render, show_line
+from sigma.ranked import RankedError
 from tests.helpers import REPORT
 
 APPLE = "https://podcasts.apple.com/us/podcast/plain-english/id1594471023"
@@ -45,7 +45,7 @@ def sel(eid, show, title, published="2026-10-23", **kw):
 
 
 def test_fill_gives_each_selected_episode_its_best_listen_link(tmp_path):
-    """`wire links`: a verified YouTube video when there is one; else an Apple episode page matched on the title and date, or on
+    """`sigma links`: a verified YouTube video when there is one; else an Apple episode page matched on the title and date, or on
     the feed's own identity; else the page the feed gave; the show's Apple page only when nothing better exists."""
     run = tmp_path / "run"
     run.mkdir()
@@ -280,15 +280,21 @@ def test_spotify_and_apple_episode_pages_are_checked_and_one_failure_costs_only_
 def make_run(tmp_path):
     run = tmp_path / "runs" / "weekly"
     run.mkdir(parents=True)
+    (run / "a.md").write_text("## Transcript\n\n[0:01:01] Capacity demand is running ahead of current supply.\n")
+    (run / "b.md").write_text("## Transcript\n\n[0:01:01] Capacity demand is running ahead of current supply.\n")
     (run / "manifest.json").write_text(json.dumps({"episodes": [
-        {"episode_id": "rss:a", "title": "A", "source": "Show A", "published": "2026-10-20", "tier": 1, "file": "/Users/me/runs/a.md",
+        {"episode_id": "rss:a", "title": "A", "source": "Show A", "published": "2026-10-20", "tier": 1, "file": "a.md",
          "has_transcript": True, "description": "private show notes", "audio_url": "https://x/a.mp3", "youtube_id": "abcdefghijk"},
-        {"episode_id": "rss:b", "title": "B", "source": "Show B", "published": "2026-10-21", "tier": 1, "description": "notes"},
+        {"episode_id": "rss:b", "title": "B", "source": "Show B", "published": "2026-10-21", "tier": 1,
+         "file": "b.md", "has_transcript": True, "description": "notes"},
         {"episode_id": "rss:z", "title": "Z (not in the ranking)", "source": "Show Z", "published": "2026-10-21"}]}))
-    (run / "ranked.json").write_text(json.dumps({"week_of": "2026-10-17", "episodes": [
-        {"episode_id": e, "title": e, "source": f"Show {e[-1].upper()}", "tier": 1, "published": "2026-10-2" + n, "score": 7,
-         "claims": [{"claim": "Capex rises", "speaker": "CEO", "timestamp": 61, "ticker": ["nvda"]}]}
-        for e, n in (("rss:a", "0"), ("rss:b", "1"))]}))
+    (run / "ranked.json").write_text(json.dumps({"week_of": "2026-10-17", "run_dir": str(run), "ranked_by": "test", "episodes": [
+        {"rank": 1, "episode_id": "rss:a", "title": "rss:a", "url": "https://example.com/a", "source": "Show A", "tier": 1,
+         "published": "2026-10-20", "score": 7, "reason": "reason", "claims": [
+             {"claim": "Capacity demand runs ahead of supply.", "speaker": "CEO", "timestamp": 61, "ticker": ["nvda"], "novelty": 1, "verifiable": 1}]},
+        {"rank": 2, "episode_id": "rss:b", "title": "rss:b", "url": "https://example.com/b", "source": "Show B", "tier": 1,
+         "published": "2026-10-21", "score": 7, "reason": "reason", "claims": [
+             {"claim": "Capacity demand runs ahead of supply.", "speaker": "CEO", "timestamp": 61, "ticker": ["nvda"], "novelty": 1, "verifiable": 1}]}]}))
     return run
 
 
@@ -347,8 +353,9 @@ def test_published_files_and_the_site_carry_the_links_and_nothing_private(tmp_pa
     manifest = json.loads((run / "manifest.json").read_text())
     manifest["episodes"].append({"episode_id": "yt:i", "title": "I", "source": "Show I", "published": "2026-10-21", "tier": 2, "style": "influencer"})
     (run / "manifest.json").write_text(json.dumps(manifest))
-    inf = {"week_of": "2026-10-17", "rubric": 1, "episodes": [{"episode_id": "yt:i", "title": "I", "source": "Show I", "tier": 2,
-                                                              "published": "2026-10-21", "score": 7, "reason": "Levels on one name", "claims": []}]}
+    inf = {"week_of": "2026-10-17", "run_dir": str(run), "ranked_by": "test", "rubric": 1,
+           "episodes": [{"rank": 1, "episode_id": "yt:i", "title": "I", "url": "https://example.com/i", "source": "Show I", "tier": 2,
+                         "published": "2026-10-21", "score": 7, "reason": "Levels on one name", "claims": []}]}
     (run / "scores-influencer.json").write_text(json.dumps(inf))
     dest, _ = published.export(run, root=root, resolver=False)
     assert json.loads((dest / "scores-influencer.json").read_text()) == inf
@@ -505,7 +512,7 @@ def test_show_links_are_discovered_filled_verified_and_only_a_wrong_channel_is_b
 
 
 def test_transcript_links_prefer_the_publishers_page_then_youtube_captions(tmp_path):
-    from wire.links import backfill_transcript_urls, transcript_link
+    from sigma.links import backfill_transcript_urls, transcript_link
 
     assert transcript_link({"transcript_url": "https://cdn.example.com/t/1.html"}) == "https://cdn.example.com/t/1.html"
     assert transcript_link({"transcript_url": "https://x/ep.mp3"}) is None

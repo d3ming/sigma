@@ -1,9 +1,9 @@
 # Select must-watch episodes (daily)
 
 Input: a daily run folder (`manifest.json`, one `.md` per episode, and `scores.json`: every transcribed episode,
-already scored 1-10 with claims). Optional: `missed.md` from `tmtb-import`.
+already scored 1-10 with claims).
 Output: `selected.json` in the run folder, valid against `schema/selected.schema.json`.
-Check it with `wire check selected runs/<name>/selected.json`; the check enforces the floor below.
+Check it with `sigma check selected runs/<name>/selected.json`; the check enforces the floor below.
 
 The count: **at least 3 picks a day, and no upper limit.** Pick every episode scored 6 or more, best first, however
 many that is. If fewer than 3 score 6 or more, fill up to 3 with the best episodes scored 5, each flagged
@@ -16,7 +16,7 @@ The floor counts podcast interviews only (`scores.json`). Episodes from influenc
    open the transcript only to settle a close call. Do not rescore: the score is the record, and the site ranks by it.
    Novelty and decision-relevance are already inside the score, so you may not drop a 6+ for being "not new enough" and
    you may not use them to stay under 3. Every scored episode must have a transcript; if one that should be a candidate
-   has none (`transcribe_skip` in `manifest.json` says why), run `wire transcribe --top 0` and score it first.
+   has none (`transcribe_skip` in `manifest.json` says why), run `sigma transcribe --top 0` and score it first.
 2. A pick must pass all of these:
    - Speaker: an executive on their own company (CEO, CFO, founder, lab head; `kind: exec`) or an investor with a
      named fund view (`kind: investor`). Analysts only with primary research (`kind: analyst`). No `other`.

@@ -13,4 +13,4 @@ if [ "${1:-}" = "--msg" ]; then
   if grep -v '^#' "$2" | grep -inwE "$pat" >&2; then echo "commit message names something in $list; reword it" >&2; exit 1; fi
   exit 0
 fi
-if git grep -inwE "$pat" -- . ':!LICENSE' >&2; then echo "tracked files name something in $list; reword them (see AGENTS.md)" >&2; exit 1; fi
+if git grep --cached -inwE "$pat" -- . ':!LICENSE' >&2; then echo "staged files name something in $list; reword them (see AGENTS.md)" >&2; exit 1; fi

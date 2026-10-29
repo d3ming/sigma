@@ -2,7 +2,7 @@
 
     python3 scripts/preview_server.py [--port 8787]
 
-Mirrors vercel.json's cleanUrls (/alpha/ and /sentiment both resolve). Only stdlib here; the build is `python -m wire.site`.
+Mirrors vercel.json's cleanUrls (/signals/ and /sentiment both resolve). Only stdlib here; the build is `python -m sigma.site`.
 The Vercel function in api/ (site search) does not run locally. The server binds to 127.0.0.1 only."""
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / ".preview"
 DIST = OUT / "dist"
-WATCH = ["wire", "published", "site-assets", "web", "schema", "entities.json", "people.yaml", "creators.json", "show_links.yaml", "us-tickers.json", "x-accounts.json", "sources.yaml"]
+WATCH = ["sigma", "published", "site-assets", "web", "schema", "entities.json", "people.yaml", "creators.json", "show_links.yaml", "us-tickers.json", "x-accounts.json", "sources.yaml"]
 LOCK = threading.Lock()
 
 
@@ -50,7 +50,7 @@ def build() -> bool:
     OUT.mkdir(exist_ok=True)
     py = ROOT / ".venv" / "bin" / "python"
     t = time.time()
-    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "wire.site", "--out", str(new), "--published", "published"], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "sigma.site", "--out", str(new), "--published", "published"], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
         log("BUILD FAILED, still serving the last good build:\n" + (r.stdout + r.stderr)[-1500:])
         return False
@@ -78,7 +78,7 @@ def watch(every: float) -> None:
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    server_version = "wire-preview"
+    server_version = "sigma-preview"
 
     def log_message(self, fmt, *a):
         log(f"{self.address_string()} {fmt % a}")

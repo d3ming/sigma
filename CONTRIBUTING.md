@@ -1,7 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. Maintainers and the operator agent (the LLM agent that runs the daily loop by following [`prompts/`](prompts)) commit
-straight to `develop`; `main` is the release branch, fast-forwarded from `develop` when the site goes out. Outside contributors send pull requests. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). The owner reviews the initial `seed` proposal into `develop` before it lands.
 
 ## Set up
 
@@ -37,26 +36,11 @@ in the commit message.
   Docs hold only what code cannot: [AGENTS.md](AGENTS.md) for a rule the operator would otherwise get wrong,
   [docs/architecture.md](docs/architecture.md) when a part is added or moves.
 
-## Proposing a show, person or X account
+## Proposing a change
 
-Wire's lists are public and open to suggestions: `sources.yaml` (podcasts and channels), `people.yaml` (people searched
-across all podcasts) and `x-accounts.json` (X accounts the daily scan reads). Open a pull request that adds or changes
-one entry, with a line on why: what the show or account covers, and an episode or post that shows it. `wire source add
-<url>` writes a correct `sources.yaml` line. The maintainer reviews each list change. New
-shows start at tier 2 and earn tier 1 through `wire source review`.
+Send the initial launch changes to `seed` for the complete review into `develop`. Keep source lists and editorial output in your configured data root; suggest generic examples instead of submitting a real follow list. Never commit `data/`, `runs/`, publication output, transcripts, `.env` content or local reference copies.
 
-## Sending a pull request
-
-1. Fork the repo and branch from `develop`.
-2. Set up as above and make the change. Show it working, with a test only where the rules above call for one.
-3. Run `scripts/setup.sh` once per clone; every `git push` then runs the suite (`scripts/check.sh`). CI runs it on
-   Python 3.10 and 3.12 without the Whisper extra.
-4. Open a pull request against `develop` and fill in the template. Keep it small: one change, one reason.
-5. The maintainer reviews it and may ask for changes.
-
-Do not edit `published/`. Only the operator's runs write it. Leave `sources.yaml`, `people.yaml` and `show_links.yaml`
-alone unless the list change is the point of the PR; they are the maintainer's own lists. Report security problems
-privately, as in [SECURITY.md](SECURITY.md).
+Run `scripts/setup.sh` once to install the local hooks. Before pushing, run `scripts/check.sh` and exercise the affected command with real or clearly identified example inputs. Record the command, output and limits in the commit body. A passing offline suite does not prove a live deployment.
 
 ## Commit messages
 

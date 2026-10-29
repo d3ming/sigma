@@ -10,6 +10,6 @@ labels: bug
 
 **Steps to reproduce** (commands, flags, the run date)
 
-**Environment** (OS, Python version, Whisper backend; paste `wire doctor`)
+**Environment** (OS, Python version, Whisper backend; paste `sigma doctor`)
 
 Do not paste transcripts, holdings or tokens.

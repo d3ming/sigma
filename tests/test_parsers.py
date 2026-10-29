@@ -1,6 +1,6 @@
 """Small parsers whose edge cases a command run would not reach: transcript formats and the link an episode gets."""
-from wire.ingest import page_url, parse_duration
-from wire.transcribe import fmt_ts, parse_cues, parse_json, title_match, to_seconds
+from sigma.ingest import page_url, parse_duration
+from sigma.transcribe import fmt_ts, parse_cues, parse_json, title_match, to_seconds
 
 
 def test_transcript_formats_timestamps_durations_and_title_matching():

@@ -1,9 +1,9 @@
 # Web design base
 
-Wire owns the visual base in [`tokens.css`](tokens.css): colors in light and dark, fonts, type scale, spacing, radii and
-line weights. Other sites (Alpha) copy that file byte for byte. **Do not edit a copy.** To change a value, change it here;
+Sigma owns the visual base in [`tokens.css`](tokens.css): colors in light and dark, fonts, type scale, spacing, radii and
+line weights. Other sites (Signals) copy that file byte for byte. **Do not edit a copy.** To change a value, change it here;
 copies are checked for drift against this file. Layout, components, navigation and information architecture belong to each
-site, which builds them from these tokens. Wire's own are in `wire/site.py`.
+site, which builds them from these tokens. Sigma's own are in `sigma/site.py`.
 
 ## Colors
 
@@ -46,7 +46,7 @@ Fonts: `--font-sans` (Geist) for text, `--font-mono` (Geist Mono) for every read
 - Both themes are first-class. Check every page in both before shipping.
 - The user switch has three states: system, light, dark. System is the default. Set `data-theme="light"` or `"dark"` on
   `<html>`; for system, set nothing. Remember the choice in `localStorage` (wrapped in try/catch) and apply it in `<head>`
-  before the stylesheet so the page never flashes. Wire's key is `wire-theme`; each site uses its own.
+  before the stylesheet so the page never flashes. Sigma's key is `sigma-theme`; each site uses its own.
 - Anything that needs the effective theme (an embed, a chart library) reads `data-theme`, and falls back to
   `matchMedia('(prefers-color-scheme: dark)')` when it is not `light` or `dark`.
 - `light-dark()` needs Chrome 123, Safari 17.5 or Firefox 120 or later.
@@ -57,6 +57,6 @@ Fonts: `--font-sans` (Geist) for text, `--font-mono` (Geist Mono) for every read
   and tables stay flat.
 - Sentence case for headings, buttons and navigation. Small uppercase mono with letter spacing (0.06 to 0.14em) is only for
   table column headers and micro labels.
-  Wire's own site predates this rule: its nav and section headings are still uppercase mono.
+  Sigma's own site predates this rule: its nav and section headings are still uppercase mono.
 - Fonts load through the site's own font loader. A site that uses a loader sets `--font-geist-sans`, `--font-geist-mono`
   and `--font-unbounded` to the family names it loaded; otherwise the plain names in `tokens.css` apply.

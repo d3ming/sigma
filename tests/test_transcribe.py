@@ -1,4 +1,4 @@
-"""`wire transcribe` around the edges: which Python it runs under, the lock, reusing a transcript, news last, the download retries."""
+"""`sigma transcribe` around the edges: which Python it runs under, the lock, reusing a transcript, news last, the download retries."""
 import io
 import json
 import os
@@ -6,14 +6,14 @@ import os
 import pytest
 import requests
 
-from wire import fetch as fetch_mod
-from wire.cli import main
-from wire import whisper
+from sigma import fetch as fetch_mod
+from sigma.cli import main
+from sigma import whisper
 from tests.helpers import LONG, ep, make_run, targs
 
 
 def test_the_python_with_whisper_is_chosen_and_a_run_needs_one(monkeypatch, tmp_path):
-    monkeypatch.delenv("PA_PYTHON", raising=False)
+    monkeypatch.delenv("SIGMA_PYTHON", raising=False)
     monkeypatch.setattr(fetch_mod, "has_whisper", lambda p: p == str(tmp_path / ".venv" / "bin" / "python"))
     monkeypatch.setattr(fetch_mod, "ROOT", tmp_path)
     monkeypatch.setattr(fetch_mod.Path, "exists", lambda self: True)

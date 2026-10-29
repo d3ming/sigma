@@ -1,16 +1,16 @@
 ---
 name: score-eval
-description: Measure and improve Wire's episode scoring (prompts/rank.md) against the owner's gold set, one change per round, until the top of the ranking matches the owner's judgment. Use when the owner disputes a score or an ordering, before any change to prompts/rank.md, when adding gold labels, or when a weekly eval shows drift.
+description: Measure and improve Sigma's episode scoring (prompts/rank.md) against the owner's gold set, one change per round, until the top of the ranking matches the owner's judgment. Use when the owner disputes a score or an ordering, before any change to prompts/rank.md, when adding gold labels, or when a weekly eval shows drift.
 ---
 
 # Score eval
 
-The score is Wire's core judgment: it orders the Top list, the weekly ranking and the daily picks. This skill keeps
+The score is Sigma's core judgment: it orders the Top list, the weekly ranking and the daily picks. This skill keeps
 it honest. The rubric is changed only through a measured round, and the measure is the owner's own judgment, written
 down as a gold set.
 
 Everything here lives in `data/score-eval/` (git-ignored: gold labels are research). The code is
-`wire/scoreeval.py`, run as `wire score-eval pool|prep|grade|table`.
+`sigma/scoreeval.py`, run as `sigma score-eval pool|prep|grade|table`.
 
 ## What "good" means
 
@@ -37,7 +37,7 @@ Every reported number is on the `test` split as well as `all`. The analyst reads
 - `editor-brief.md`: the owner's taste in prose. Editors label from it, never from the rubric, so gold and rubric
   stay independent.
 
-**Adding labels.** Candidates come from `wire score-eval pool` (library episodes with a score and a transcript).
+**Adding labels.** Candidates come from `sigma score-eval pool` (library episodes with a score and a transcript).
 Label new ones with fresh editor agents: give each 5-6 episodes, the brief and the condensed transcripts under
 `cond/`, and ask for a dossier per episode (speakers and how rarely they are heard, up to four material new facts with
 timestamps, a score, why, `not_higher`, `not_lower`). Then one calibration pass orders the top region from the
@@ -46,12 +46,12 @@ dossiers alone. Show the owner the top 15 and every changed label; the owner's w
 
 ## One round
 
-1. **Prep.** `wire score-eval prep vN --reps 2 --size 10`: snapshots `prompts/rank.md` into `vN/rubric.md` and
+1. **Prep.** `sigma score-eval prep vN --reps 2 --size 10`: snapshots `prompts/rank.md` into `vN/rubric.md` and
    writes `vN/in/rep<r>-b<k>-in.json`. Batches are seeded per rep, so every variant scores the same batches.
 2. **Read.** One fresh reader agent per batch, nothing else in its context: the variant's `rubric.md`, its input
    file and the transcripts it names. Tell it to open nothing else under `data/score-eval/`. Output goes to
    `vN/out/<same name>-out.json`. Readers never see gold, prior scores or other batches.
-3. **Grade.** `wire score-eval grade vN` writes `vN/results.jsonl` and `vN/summary.json` and prints the status table.
+3. **Grade.** `sigma score-eval grade vN` writes `vN/results.jsonl` and `vN/summary.json` and prints the status table.
    It lists every missing or unknown id; a round with problems is incomplete and is not compared.
 4. **Analyze, train only.** A fresh analyst agent gets the train rows of `results.jsonl` (score, gold, the reader's
    reason), the train gold rows with `why`, and the current rubric. It names the one behavior that costs the most
@@ -60,7 +60,7 @@ dossiers alone. Show the owner the top 15 and every changed label; the owner's w
 5. **Decide.** Keep a change when the test headline improves outside noise and no guardrail regresses outside
    noise; otherwise revert. Noise: the spread between two baseline reps of the same variant. On a tie, keep the
    simpler rubric.
-6. **Record.** Write the status table (`wire score-eval table`) and a short paragraph to `data/score-eval/narrative.md`:
+6. **Record.** Write the status table (`sigma score-eval table`) and a short paragraph to `data/score-eval/narrative.md`:
    which variant wins and why, in terms of the changes. Append the decision to `data/decisions.md`.
 
 Stop when the test headline has not moved outside noise for three rounds, or `owner_pairs` is 1.00 and `band_pairs`

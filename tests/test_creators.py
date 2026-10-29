@@ -1,4 +1,4 @@
-from wire import creators
+from sigma import creators
 
 
 def test_registry_points_only_at_listed_sources_and_handles():

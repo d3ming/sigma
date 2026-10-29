@@ -2,9 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from wire.ingest import Episode, canonical_id
-from wire.people import Person, dedupe, is_clip, load_people, mentions, parse_itunes, youtube_candidates
-from wire.store import Store
+from sigma.ingest import Episode, canonical_id
+from sigma.people import Person, dedupe, is_clip, load_people, mentions, parse_itunes, youtube_candidates
+from sigma.store import Store
 
 NOW = datetime(2026, 10, 21, 12, tzinfo=timezone.utc)
 JH = Person("Jensen Huang", "NVIDIA CEO", "core")

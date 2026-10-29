@@ -1,10 +1,10 @@
-"""Which episodes are worth whispering: wire.triage on small manifests. The picks are what `wire transcribe --top N` transcribes."""
+"""Which episodes are worth whispering: sigma.triage on small manifests. The picks are what `sigma transcribe --top N` transcribes."""
 import json
 from datetime import datetime, timezone
 
-from wire import triage as tri
-from wire.people import Person
-from wire.triage import named_guests, triage
+from sigma import triage as tri
+from sigma.people import Person
+from sigma.triage import named_guests, triage
 
 NOW = datetime(2026, 10, 23, 12, tzinfo=timezone.utc)
 PEOPLE = [Person("Jane Placeholder", "CEO", "core"), Person("Omar Example", "founder", "watch"),

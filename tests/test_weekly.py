@@ -1,6 +1,6 @@
 """The weekly run as an agent runs it (prompts/weekly.md): rank-prep -> readers -> rank-merge -> themes-check -> publish.
 
-Every step goes through wire.cli.main. The readers (agents) are played by the test, which writes rank/batch-N-out.json
+Every step goes through sigma.cli.main. The readers (agents) are played by the test, which writes rank/batch-N-out.json
 from each batch-N-in.json the way prompts/rank.md says."""
 import io
 import json
@@ -11,15 +11,64 @@ from datetime import datetime, timezone
 
 import pytest
 
-from wire import library, published
-from wire.cli import main
-from wire.fetch import write_episode
-from wire.ingest import Episode
+from sigma import library, published, report
+from sigma.cli import after_stage, main
+from sigma.fetch import write_episode
+from sigma.ingest import Episode
 
 from tests.helpers import STATUS_SHAPE, sandbox, spoken
 
 RUN = "2026-10-19-weekly"
 AD = "this episode is brought to you by acme corp " * 8
+
+
+def test_claim_grounding_fails_closed_without_a_manifest_or_transcript(tmp_path):
+    data = {"episodes": [{"episode_id": "ep1", "claims": [{"claim": "Demand is growing.", "timestamp": 10}]}]}
+    errors, warnings = report.ranked_check(data, tmp_path)
+    assert errors and "manifest.json is missing or unreadable" in errors[0][2] and not warnings
+    (tmp_path / "manifest.json").write_text("{")
+    errors, warnings = report.ranked_check(data, tmp_path)
+    assert errors and "manifest.json is missing or unreadable" in errors[0][2] and not warnings
+    (tmp_path / "manifest.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "ep1", "has_transcript": True, "file": "missing.md"}]}))
+    errors, warnings = report.ranked_check(data, tmp_path)
+    assert errors and "claims cannot be grounded" in errors[0][2] and not warnings
+
+
+def test_claim_speaker_must_match_an_explicit_label_at_the_cited_segment(tmp_path):
+    assert report._explicit_speaker("The point is: demand will rise through next year.") is None
+    assert report._explicit_speaker("Host: Demand will rise through next year.") == "Host"
+    assert report._explicit_speaker("Actual speaker (CEO): Demand will rise through next year.") == "Actual speaker (CEO)"
+    (tmp_path / "e1.md").write_text("## Transcript\n\n[0:00:10] Actual speaker: Demand will rise through next year.\n"
+                                      "[0:00:12] A separate comment follows without a speaker label.\n")
+    (tmp_path / "e2.md").write_text("## Transcript\n\n[0:00:30] Demand will rise through next year.\n")
+    (tmp_path / "manifest.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "ep1", "has_transcript": True, "file": "e1.md"},
+        {"episode_id": "ep2", "has_transcript": True, "file": "e2.md"}]}))
+    ranked = {"episodes": [
+        {"episode_id": "ep1", "claims": [{"claim": "Demand will rise through next year.", "speaker": "Wrong speaker", "timestamp": 10},
+                                             {"claim": "A separate comment follows.", "speaker": "Wrong speaker", "timestamp": 13}]},
+        {"episode_id": "ep2", "claims": [{"claim": "Demand will rise through next year.", "speaker": "Unlabeled speaker", "timestamp": 30}]}]}
+    errors, warnings = report.ranked_check(ranked, tmp_path)
+    assert len(errors) == 1 and "speaker 'Wrong speaker' does not match transcript label 'Actual speaker'" in errors[0][2]
+    assert not warnings
+    daily = {"essential": [], "episodes": [
+        {"episode_id": "ep1", "signal": [{"text": "Demand will rise through next year.", "speaker": "Wrong speaker", "timestamp": 10},
+                                             {"text": "A separate comment follows.", "speaker": "Wrong speaker", "timestamp": 13}], "sections": []},
+        {"episode_id": "ep2", "signal": [{"text": "Demand will rise through next year.", "speaker": "Unlabeled speaker", "timestamp": 30}], "sections": []}]}
+    errors = report.verify("report", daily, tmp_path)
+    assert len(errors) == 1 and "speaker 'Wrong speaker' does not match transcript label 'Actual speaker'" in errors[0]
+    ranked["episodes"][0]["claims"][0]["timestamp"] = 11
+    daily["episodes"][0]["signal"][0]["timestamp"] = 11
+    errors, warnings = report.ranked_check(ranked, tmp_path)
+    assert len(errors) == 1 and "speaker 'Wrong speaker' does not match transcript label 'Actual speaker'" in errors[0][2]
+    assert not warnings
+    errors = report.verify("report", daily, tmp_path)
+    assert len(errors) == 1 and "speaker 'Wrong speaker' does not match transcript label 'Actual speaker'" in errors[0]
+    ranked["episodes"][0]["claims"][0]["speaker"] = "Actual speaker"
+    daily["episodes"][0]["signal"][0]["speaker"] = "Actual speaker"
+    assert report.ranked_check(ranked, tmp_path) == ([], [])
+    assert report.verify("report", daily, tmp_path) == []
 
 # id: (show, tier, reader score, published, filler word, what is said at 5:00, claims as (ticker, claim, speaker))
 SAID = {
@@ -30,10 +79,10 @@ SAID = {
     "e": "power and cooling are now the real bottleneck for new capacity in every region we looked at",
 }
 EPISODES = {
-    "a": ("Show A", 1, 9, "2026-10-18", "alpha", [("NVDA", "Accelerator demand stays ahead of supply into next year", "Ann Lee"),
+    "a": ("Show A", 1, 9, "2026-10-18", "signals", [("NVDA", "Accelerator demand stays ahead of supply into next year", "Ann Lee"),
                                                   ("AMD", "Buyers are qualifying a second chip supplier", "Ann Lee"),
                                                   ("", "The panel liked the venue", "Pat Moss (host)")]),
-    "a2": ("Show A on a second feed", 1, 4, "2026-10-17", "alpha", []),  # the same transcript as a
+    "a2": ("Show A on a second feed", 1, 4, "2026-10-17", "signals", []),  # the same transcript as a
     "b": ("Show B", 1, 8, "2026-10-18", "bravo", [("nvda", "Packaging capacity at the foundry is fully booked", "Bo Chen"),
                                                   ("TSM", "Foundry expansion lands late in the year", "Bo Chen")]),
     "c": ("Show A", 1, 7, "2026-10-18", "charlie", [("TSM", "Cloud spending plans rise again", "Ann Lee (founder)"),
@@ -133,7 +182,7 @@ def test_week_from_transcripts_to_published(week, capsys, monkeypatch):
     d = status(run)
     assert (d["stage"], d["next"]["type"]) == ("rank_prep", "wait")
     (run / "transcribe.queued").unlink()
-    assert status(run)["next"]["command"] == f"wire rank-prep {run} --eval 6"  # a weekly also re-scores a blind sample to measure drift
+    assert status(run)["next"]["command"] == f"sigma rank-prep {run} --eval 6"  # a weekly also re-scores a blind sample to measure drift
     capsys.readouterr()
     main(["rank-prep", str(run)])
     out = capsys.readouterr().out
@@ -151,7 +200,7 @@ def test_week_from_transcripts_to_published(week, capsys, monkeypatch):
     d = status(run)
     assert d["stage"] == "readers" and "batch-4-in.json" in d["next"]["summary"]
     read_batches(run)
-    assert status(run)["next"]["command"] == f"wire rank-merge {run}"
+    assert status(run)["next"]["command"] == f"sigma rank-merge {run}"
 
     # a reader returning an id the manifest does not know stops the merge before ranked.json exists
     edit(run / "rank" / "batch-1-out.json", lambda rows: rows[0].update(episode_id="rss:nope"))
@@ -168,21 +217,21 @@ def test_week_from_transcripts_to_published(week, capsys, monkeypatch):
     assert [e["episode_id"] for e in ranked["episodes"]] == [f"rss:{i}" for i in "abcgdehi"]
     assert [e["rank"] for e in ranked["episodes"]] == list(range(1, 9)) and ranked["week_of"] == "2026-10-15"
     assert "Episode a (second feed)" in ranked["notes"] and "Episode g" in ranked["notes"] and "Episode j" in ranked["notes"] and "1 had no usable transcript" in ranked["notes"]
-    assert status(run)["next"]["command"] == f"wire publish {run}/ranked.json --top 15"
+    assert status(run)["next"]["command"] == f"sigma publish {run}/ranked.json --top 15"
 
     # themes-check and publish: the digest holds the top 5 of 8, each cited claim and theme is grounded
     (run / "themes.json").write_text(json.dumps(themes_json()))
     capsys.readouterr()
     main(["themes-check", str(run), "--top", "5"])
-    monkeypatch.setattr(published, "ROOT", root / "published")
-    monkeypatch.delenv("PA_NO_PUBLISHED")
+    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
+    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
     main(["publish", str(run / "ranked.json"), "--top", "5"])
     digest = (run / "digest-2026-10-15.md").read_text()
     assert "Top 5 of 8 ranked episodes" in digest and "## 5. Episode d" in digest and "Episode e" not in digest and "Episode h" not in digest
     assert "[0:05:00](https://www.youtube.com/watch?v=aaaaaaaaaaa&t=300s)" in digest
     # Ann Lee is a guest on a and c; Pat Moss is labelled host in a, so the bare Pat Moss in c and d is not a repeat guest
     assert digest.count("another interview with") == 1 and "Also #1: another interview with Ann Lee" in digest
-    pub = root / "published" / RUN
+    pub = root / "data" / "published" / RUN
     assert sorted(p.name for p in pub.iterdir()) == ["claims.jsonl", "digest-2026-10-15.md", "episodes.json", "ranked.json", "themes.json"]
     th = json.loads((pub / "themes.json").read_text())
     ev = th["themes"][0]["evidence"][0]
@@ -190,7 +239,7 @@ def test_week_from_transcripts_to_published(week, capsys, monkeypatch):
     assert (ev["claim"], ev["speaker"], ev["show"], ev["timestamp"]) == ("Accelerator demand stays ahead of supply into next year", "Ann Lee", "Show A", 300)
     assert ev["link"] == "https://www.youtube.com/watch?v=aaaaaaaaaaa&t=300s" and th["themes"][1]["evidence"][0]["link"] == "https://example.com/b"
     assert status(run)["stage"] == "done"
-    assert "transcript" not in " ".join(p.name for p in pub.iterdir()) and "alpha alpha" not in (pub / "claims.jsonl").read_text()
+    assert "transcript" not in " ".join(p.name for p in pub.iterdir()) and "signals signals" not in (pub / "claims.jsonl").read_text()
 
 
 def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, capsys, monkeypatch):
@@ -199,7 +248,7 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
     `style: influencer` source (stated rule) is read under prompts/rank-influencer.md and lands in
     scores-influencer.json, never in the ranking, even with a 10 that would put it first."""
     root, first = week, week / "runs" / RUN
-    monkeypatch.delenv("PA_NO_LIBRARY")
+    monkeypatch.delenv("SIGMA_NO_LIBRARY")
     monkeypatch.setattr(library, "DEFAULT_DB", root / "lib.sqlite")
     k = Episode(id="rss:k", source_id="show-k", source_name="Show K", tier=2, style="influencer", title="Episode k", url=url("k"),
                 published_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
@@ -261,8 +310,8 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
 def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch):
     """prompts/rank.md and AGENTS.md: a ranking that breaks a rule, or a claim the transcript does not support, publishes nothing."""
     run, root = ranked_week, ranked_week.parent.parent
-    monkeypatch.setattr(published, "ROOT", root / "published")
-    monkeypatch.delenv("PA_NO_PUBLISHED")
+    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
+    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
     ranked = (run / "ranked.json").read_text()
     manifest = (run / "manifest.json").read_text()
     said = SAID["a"]
@@ -286,7 +335,7 @@ def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch)
         edit(run / "ranked.json", mutate)
         with pytest.raises(SystemExit):
             main(["publish", str(run / "ranked.json"), "--top", "5"])
-        assert not list(run.glob("digest-*.md")) and not (root / "published").exists(), why
+        assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists(), why
     # claims on an episode whose transcript is only a show description
     (run / "ranked.json").write_text(ranked)
     edit(run / "manifest.json", lambda m: next(e for e in m["episodes"] if e["episode_id"] == "rss:b").update(has_transcript=False))
@@ -297,20 +346,40 @@ def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch)
     (run / "manifest.json").write_text(manifest)
     edit(run / "ranked.json", lambda d: ep_row(d, "a")["claims"][0].update(claim=" ".join(said.split()[:11])))
     main(["publish", str(run / "ranked.json"), "--top", "5"])
-    assert list(run.glob("digest-*.md")) and (root / "published" / RUN / "ranked.json").exists()
+    assert list(run.glob("digest-*.md")) and (root / "data" / "published" / RUN / "ranked.json").exists()
 
 
-def test_ranking_without_a_manifest_is_published_with_one_warning(ranked_week, capsys):
-    """The claims cannot be grounded without the run's manifest: say so once and still render. An episode with no page
-    is listed by title, never as an empty link."""
+def test_ranking_with_claims_without_a_manifest_is_refused(ranked_week, capsys):
+    """Claim-bearing rankings cannot be published when their manifest is unavailable."""
     run = ranked_week
     (run / "manifest.json").unlink()
     edit(run / "ranked.json", lambda d: ep_row(d, "a").update(url=""))
     capsys.readouterr()
-    main(["publish", str(run / "ranked.json"), "--top", "5"])
-    warnings = [l for l in capsys.readouterr().out.splitlines() if "warning:" in l and "manifest.json" in l]
-    digest, = run.glob("digest-*.md")
-    assert len(warnings) == 1 and "| Episode a |" in digest.read_text() and "]()" not in digest.read_text()
+    with pytest.raises(SystemExit, match="cannot ground claims"):
+        main(["publish", str(run / "ranked.json"), "--top", "5"])
+    assert not list(run.glob("digest-*.md"))
+
+
+def test_number_grounding_warnings_block_digest_publication(ranked_week):
+    run = ranked_week
+    edit(run / "ranked.json", lambda d: ep_row(d, "a")["claims"][0].update(claim="Revenue grew 93%."))
+    with pytest.raises(SystemExit, match="number 93 not spoken"):
+        main(["publish", str(run / "ranked.json"), "--top", "5"])
+    assert not list(run.glob("digest-*.md"))
+
+
+def test_failed_public_export_stops_before_persistent_library_ingest(tmp_path, monkeypatch):
+    def refuse(*args, **kwargs):
+        raise ValueError("grounding failed")
+
+    monkeypatch.delenv("SIGMA_NO_PUBLISHED", raising=False)
+    monkeypatch.delenv("SIGMA_NO_LIBRARY", raising=False)
+    monkeypatch.setattr(published, "export", refuse)
+    ingested = []
+    monkeypatch.setattr(library, "ingest_run", lambda *args, **kwargs: ingested.append(args))
+    with pytest.raises(SystemExit, match="not exported.*grounding failed"):
+        after_stage(tmp_path, ingest=True)
+    assert ingested == []
 
 
 THEME_CASES = {
@@ -377,26 +446,26 @@ def test_themes_check_refuses_what_prompts_themes_md_forbids(ranked_week, capsys
 
 def test_publish_refuses_invalid_themes_and_writes_nothing(ranked_week, monkeypatch):
     run, root = ranked_week, ranked_week.parent.parent
-    monkeypatch.setattr(published, "ROOT", root / "published")
-    monkeypatch.delenv("PA_NO_PUBLISHED")
+    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
+    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
     data = themes_json()
     data["themes"][1]["evidence"][1] = {"episode_id": "rss:c", "claim_index": 4}
     (run / "themes.json").write_text(json.dumps(data))
     with pytest.raises(SystemExit) as e:
         main(["publish", str(run / "ranked.json"), "--top", "5"])
     assert "[publish] invalid: themes: themes[1] 'Foundry timing': evidence[1] (rss:c claims[4])" in str(e.value)
-    assert not list(run.glob("digest-*.md")) and not (root / "published").exists()
+    assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists()
     # export-published: a good file exports; a later refusal leaves the earlier export alone
     (run / "themes.json").write_text(json.dumps(themes_json()))
     main(["export-published", str(run), "--top", "5"])
-    assert (root / "published" / RUN / "themes.json").exists()
+    assert (root / "data" / "published" / RUN / "themes.json").exists()
     with pytest.raises(SystemExit, match=r"\[published\] invalid: themes: themes\[2\]"):
         main(["export-published", str(run), "--top", "4"])
-    assert (root / "published" / RUN / "themes.json").exists()
+    assert (root / "data" / "published" / RUN / "themes.json").exists()
     # a re-export replaces the folder, so a file dropped from the run does not linger; a run with nothing to publish is refused
-    (root / "published" / RUN / "stale.txt").write_text("old")
+    (root / "data" / "published" / RUN / "stale.txt").write_text("old")
     main(["export-published", str(run), "--top", "5"])
-    assert not (root / "published" / RUN / "stale.txt").exists()
+    assert not (root / "data" / "published" / RUN / "stale.txt").exists()
     (root / "runs" / "empty").mkdir()
     with pytest.raises(SystemExit, match="nothing published"):
         main(["export-published", str(root / "runs" / "empty")])

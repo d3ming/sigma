@@ -4,9 +4,9 @@ from datetime import date
 
 import pytest
 
-from wire import board, stance, tickers
+from sigma import board, stance, tickers
 
-US = {"AAA": "Alpha Inc", "BBB": "Beta Inc"}
+US = {"AAA": "Signals Inc", "BBB": "Beta Inc"}
 TODAY = date(2026, 10, 26)
 
 
@@ -114,7 +114,7 @@ def test_x_posts_are_labelled_themselves_and_the_sentence_summing_them_up_counts
     self-reply thread is one item (one view, not one per post), and a post and the edition sentence that sums it up never count twice. A day with only sentence labels keeps counting its sentences.
     By hand: 03:10 UTC on Oct 27 is 20:10 PDT on Oct 26, so the post's day is the 26th."""
     monkeypatch.setattr(tickers, "load", lambda path=None: US)
-    monkeypatch.setenv("WIRE_X_DIR", str(tmp_path / "x"))
+    monkeypatch.setenv("SIGMA_X_DIR", str(tmp_path / "x"))
     scan = tmp_path / "x" / "scan" / "2026-10-26"
     scan.mkdir(parents=True)
     post = lambda i, text, **kw: {"id": i, "handle": "alice", "created_at": "2026-10-27T03:10:00Z", "text": text, "cashtags": [], "metrics": {}, **kw}
@@ -131,9 +131,9 @@ def test_x_posts_are_labelled_themselves_and_the_sentence_summing_them_up_counts
     (pub / "x" / "stances").mkdir(parents=True)
     (pub / "x" / "editions").mkdir()
     for day, handle, pid, text, tk in (("2026-10-26", "alice", "11111", "AAA looks strong", "AAA"), ("2026-10-25", "carol", "99999", "BBB looks strong", "BBB")):
-        (pub / "x" / "editions" / f"{day}.json").write_text(json.dumps({"date": day, "alpha": [{"text": text, "cites": [pid]}], "si": [],
-                                                                         "posts": [{"id": pid, "handle": handle, "lens": "alpha", "date": day, "cashtags": []}]}))
-        (pub / "x" / "stances" / f"{day}.jsonl").write_text(json.dumps({"key": stance.x_key(day, "alpha", 0, text), "labels": [
+        (pub / "x" / "editions" / f"{day}.json").write_text(json.dumps({"date": day, "signals": [{"text": text, "cites": [pid]}],
+                                                                         "posts": [{"id": pid, "handle": handle, "lens": "signals", "date": day, "cashtags": []}]}))
+        (pub / "x" / "stances" / f"{day}.jsonl").write_text(json.dumps({"key": stance.x_key(day, "signals", 0, text), "labels": [
             {"ticker": tk, "stance": 1, "reason": "sentence label"}]}) + "\n")
     with (pub / "x" / "stances" / "2026-10-26.jsonl").open("a") as fh:  # labelled before threads were one item: each post once
         for i in ("88881", "88882"):

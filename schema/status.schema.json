@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "wire status --json: stage and single next action for one run folder",
+  "title": "sigma status --json: stage and single next action for one run folder",
   "type": "object",
   "required": ["run", "name", "kind", "exists", "stage", "stages", "blockers", "notes", "next"],
   "additionalProperties": true,

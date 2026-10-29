@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from wire import calls
+from sigma import calls
 
 SPY = {"2026-10-20": 100, "2026-10-21": 100, "2026-10-22": 100, "2026-10-23": 100, "2026-10-26": 101, "2026-10-27": 102,
        "2026-10-28": 104, "2026-10-29": 104, "2026-10-30": 105}
@@ -25,7 +25,7 @@ def test_follow_signs_the_excess_over_spy_by_side_from_the_last_close_on_or_befo
 def test_the_site_path_cannot_reach_the_ledger():
     """stated rule: creator track records never reach the site or published/. Building the site must not
     load the ledger module, so nothing in it can read data/calls or the private creators file."""
-    code = "import wire.site, sys; sys.exit('wire.calls' in sys.modules)"
+    code = "import sigma.site, sys; sys.exit('sigma.calls' in sys.modules)"
     assert subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).parent.parent).returncode == 0
 
 
@@ -33,7 +33,7 @@ def test_a_call_counts_toward_the_creator_only_when_the_speaker_is_the_creator_o
     """stated rule, speaker strings as they stand in published claims: the creator's name, "host", a
     listed host's name ("Paul") and "Paul (host)" are the creator's; a named guest, "guest host" and a blank speaker are not
     and land in the show's guest bucket."""
-    from wire import creators
+    from sigma import creators
 
     chip = creators.Creator("chip-stock-investor", "Chip Stock Investor", ["chip-stock-investor"], [])
     money = creators.Creator("everything-money", "Everything Money", ["everything-money"], [], ["Paul"])

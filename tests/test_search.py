@@ -1,11 +1,12 @@
 """Transcript search: the export and api/search.py follow these rules: shows with no_search stay out, one copy of an
 episode, at most 2 results per episode and 40 words each, a ticker also finds the company's names, and a result links to the video,
-else to Wire's own page, else to the publisher."""
+else to Sigma's own page, else to the publisher."""
 import importlib.util
 import json
+import sqlite3
 from pathlib import Path
 
-from wire import library, searchindex
+from sigma import library, searchindex
 
 SPEC = importlib.util.spec_from_file_location("api_search", Path(__file__).resolve().parent.parent / "api" / "search.py")
 api = importlib.util.module_from_spec(SPEC)
@@ -46,9 +47,16 @@ def test_export_and_function_follow_the_rules(tmp_path):
     assert all(len(r["snippet"].split()) <= 40 and "[[Zetacorp]]" in r["snippet"] for r in res)
     link = {r["title"]: r["link"] for r in res}
     assert link["Episode a"].startswith("https://yt/watch?v=1&t=")  # a video: opens at the moment
-    assert link["Episode c"] == "https://wire.dming.si/episodes/c.html"  # no video, a page of its own
+    assert link["Episode c"] == "/episodes/c.html"  # no video, a page of its own on the request's origin
     assert link["Episode d"] == "https://pod/d"  # neither: the publisher's page
     assert sorted(r["time"] for r in res if r["title"] == "Episode c") == ["0:05", "1:45"]  # the time shown as text
+    with sqlite3.connect(out) as con:
+        con.execute("UPDATE episodes SET url=? WHERE episode_id=?", ("javascript:alert(1)", "d"))
+    unsafe = next(r for r in api.search("zetacorp", str(out)) if r["title"] == "Episode d")
+    assert unsafe["link"] is None
+    assert api.safe_url("/episodes/c.html") == "/episodes/c.html"
+    assert api.safe_url("https://pod.example/episode") == "https://pod.example/episode"
+    assert api.safe_url("//evil.example/path") is None and api.safe_url("javascript:alert(1)") is None
 
 
 def test_a_ticker_finds_the_company_but_only_when_typed_as_one(tmp_path):

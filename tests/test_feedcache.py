@@ -5,8 +5,8 @@ import feedparser
 import pytest
 import requests
 
-from wire import feedcache, ingest
-from wire.config import Source
+from sigma import feedcache, ingest
+from sigma.config import Source
 
 RSS = b"""<?xml version="1.0"?><rss xmlns:podcast="https://podcastindex.org/namespace/1.0"
 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" version="2.0"><channel><link>https://show.example</link>

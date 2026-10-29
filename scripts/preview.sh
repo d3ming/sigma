@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 PORT="${PREVIEW_PORT:-8787}"
 DIR=".preview"; PIDF="$DIR/preview.pid"; LOG="$DIR/preview.log"
 PY=".venv/bin/python"; [ -x "$PY" ] || PY="python3"
-LABEL="com.dming.wire-preview"; PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+LABEL="com.sigma.preview"; PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 mkdir -p "$DIR"
 
 alive() { [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF")" 2>/dev/null; }
