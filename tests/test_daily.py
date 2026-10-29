@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 import requests
 
-from sigma import fetch as fetch_mod, people, transcribe
+from sigma import fetch as fetch_mod, people, report as report_mod, transcribe
 from sigma import ingest
 from sigma.ingest import Episode
 from sigma.cli import main
@@ -146,6 +146,17 @@ def selected(picks):
 def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     """check report --captions: one line per wrong number, naming each place that disagrees; a whole video offset is named once."""
     root = day
+    words = [(w, 0) for w in "a billion and a half one and a half million two billion and a half".split()]
+    spoken = report_mod.spoken_numbers(words)
+    assert spoken == [(0, "1.5"), (0, "1.5"), (0, "2.5")]
+    for phrase in ("a billion and a half million", "two billion and a half million"):
+        assert report_mod.spoken_numbers([(w, 0) for w in phrase.split()]) == []
+    near = {"episode_id": "synthetic", "signal": [{"text": "Raised 1.5 billion", "timestamp": 120}], "sections": []}
+    assert report_mod._number_warnings(near, spoken[:1]) == []
+    wrong = {"episode_id": "synthetic", "signal": [{"text": "Raised 1.6 billion", "timestamp": 120}], "sections": []}
+    distant = {"episode_id": "synthetic", "signal": [{"text": "Raised 1.5 billion", "timestamp": 121}], "sections": []}
+    assert len(report_mod._number_warnings(wrong, spoken[:1])) == 1
+    assert len(report_mod._number_warnings(distant, spoken[:1])) == 1
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     path = write(root, "report.json", report_json())
     captions = {"abcdefghijk": [(540, "our capex is 450 billion dollars"), (1140, "gross margin is 38 percent")],  # a minute early

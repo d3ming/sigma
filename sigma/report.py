@@ -293,6 +293,7 @@ _UNITS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
     "seventeen eighteen nineteen".split())}
 _TENS = {w: 10 * i for i, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()) if w != "_"}
+_MAGNITUDES = {"thousand", "million", "billion", "trillion"}
 _NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+")
 
 
@@ -320,6 +321,16 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
     out, i, n = [], 0, len(words)
     while i < n:
         w, ts = words[i]
+        if w == "a" and i + 4 < n and words[i + 1][0] in _MAGNITUDES and \
+                [words[i + k][0] for k in range(2, 5)] == ["and", "a", "half"]:
+            unit = words[i + 1][0]
+            next_unit = words[i + 5][0] if i + 5 < n and words[i + 5][0] in _MAGNITUDES else None
+            if next_unit and next_unit != unit:
+                i += 6
+                continue
+            out.append((ts, "1.5"))
+            i += 6 if next_unit else 5
+            continue
         if w[0].isdigit():
             out.append((ts, _num_key(float(w.replace(",", "")))))
             i += 1
@@ -337,10 +348,21 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                     cur = (cur or 1) * 100
                 elif x == "and" and cur >= 100 and j + 1 < n and (words[j + 1][0] in _UNITS or words[j + 1][0] in _TENS):
                     pass
+                elif x == "and" and cur > 0 and j + 2 < n and [words[j + 1][0], words[j + 2][0]] == ["a", "half"]:
+                    cur += 0.5
+                    j += 2
                 else:
                     break
                 j += 1
-            val = str(int(cur))
+            if j + 3 < n and words[j][0] in _MAGNITUDES and \
+                    [words[j + k][0] for k in range(1, 4)] == ["and", "a", "half"] and cur > 0:
+                next_unit = words[j + 4][0] if j + 4 < n and words[j + 4][0] in _MAGNITUDES else None
+                if next_unit and next_unit != words[j][0]:
+                    i = j + 5
+                    continue
+                cur += 0.5
+                j += 5 if next_unit else 4
+            val = str(cur) if cur % 1 else str(int(cur))
             if j + 1 < n and words[j][0] == "point" and words[j + 1][0] in _UNITS and _UNITS[words[j + 1][0]] < 10:
                 k = j + 1
                 while k < n and words[k][0] in _UNITS and _UNITS[words[k][0]] < 10:
