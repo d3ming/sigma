@@ -77,13 +77,18 @@ nav a:hover,nav a[aria-current]{color:var(--accent)}
 .menu ul{position:absolute;right:0;top:calc(100% + 8px);z-index:30;min-width:180px;margin:0;padding:var(--space-2) 0;list-style:none;background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);box-shadow:0 8px 24px rgb(0 0 0/.18)}
 .menu a{display:block;padding:var(--space-2) var(--space-4);font:500 var(--text-caption) var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);text-decoration:none}
 .menu a:hover,.menu a[aria-current]{color:var(--accent)}
-.mode{display:inline-flex;border:var(--line-1) solid var(--border);border-radius:var(--radius-md);overflow:hidden}
-.mode button{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;padding:0;color:var(--text-muted);background:none;border:0;cursor:pointer}
-.mode button+button{border-left:var(--line-1) solid var(--border)}
-.mode button:hover{color:var(--accent)}
-.mode button[aria-pressed=true]{color:var(--text-on-accent);background:var(--accent)}
-.mode button:focus-visible{outline-offset:-2px}
-.mode svg{width:16px;height:16px;display:block}
+.theme-switch{position:relative;display:inline-flex}
+.theme-switch summary{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;color:var(--text-muted);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);cursor:pointer;list-style:none}
+.theme-switch summary::-webkit-details-marker{display:none}
+.theme-switch summary svg{width:16px;height:16px;display:block}
+.theme-switch summary:hover,.theme-switch[open] summary{color:var(--accent)}
+.theme-switch summary:focus-visible{outline:var(--line-2) solid var(--accent);outline-offset:2px}
+.theme-switch-popover{position:absolute;top:calc(100% + 8px);right:0;z-index:30;min-width:148px;margin:0;padding:var(--space-1);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);box-shadow:0 8px 24px rgb(0 0 0/.18)}
+.theme-switch-popover button{display:flex;align-items:center;gap:var(--space-3);width:100%;min-height:40px;padding:0 var(--space-3);color:var(--text-muted);background:none;border:0;border-radius:var(--radius-md);font:500 var(--text-caption) var(--font-mono);text-align:left;cursor:pointer}
+.theme-switch-popover button svg{width:16px;height:16px}
+.theme-switch-popover button:hover{background:var(--surface-3);color:var(--text)}
+.theme-switch-popover button[aria-pressed=true]{color:var(--text);font-weight:600}
+.theme-switch-popover button[aria-pressed=true] svg{color:var(--accent)}
 main{padding:56px 0 80px}
 h1{font:500 var(--text-title)/1.2 var(--font-display);letter-spacing:-.01em;margin:0 0 .6em;text-wrap:balance}
 h2{display:flex;align-items:center;gap:var(--space-3);font:500 var(--text-caption) var(--font-mono);letter-spacing:.14em;text-transform:uppercase;color:var(--text-muted);margin:3.4em 0 1.1em}
@@ -255,7 +260,7 @@ footer{border-top:var(--line-1) solid var(--border);padding:26px 0 40px;color:va
 footer a{color:var(--text-muted)}
 footer .wrap{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px var(--space-5)}
 footer .upd{flex:1 0 100%;margin:0;font-size:var(--text-micro);letter-spacing:.04em}
-@media (max-width:480px){h1{font-size:1.4rem}.wrap{padding:0 16px}header.site .wrap{flex-wrap:wrap;row-gap:var(--space-3);position:relative}.bar{display:contents}.id{width:100%}.mode{position:absolute;top:0;right:16px}nav{order:3;flex:1 1 auto;gap:6px 10px}nav a{font-size:var(--text-micro);letter-spacing:.03em}.menu{order:4;position:static}.menu ul{left:16px;right:16px;top:calc(100% + 8px)}.entry{grid-template-columns:1.9rem 1fr;padding:24px 0}.post{grid-template-columns:1.9rem 1fr}.archive li{grid-template-columns:1fr;gap:0}
+@media (max-width:480px){h1{font-size:1.4rem}.wrap{padding:0 16px}header.site .wrap{flex-wrap:wrap;row-gap:var(--space-3);position:relative}.bar{display:contents}.id{width:100%}.theme-switch{position:absolute;top:0;right:16px}nav{order:3;flex:1 1 auto;gap:6px 10px}nav a{font-size:var(--text-micro);letter-spacing:.03em}.menu{order:4;position:static}.menu ul{left:16px;right:16px;top:calc(100% + 8px)}.entry{grid-template-columns:1.9rem 1fr;padding:24px 0}.post{grid-template-columns:1.9rem 1fr}.archive li{grid-template-columns:1fr;gap:0}
 .entry h3,.theme h3{font-size:1.2rem}.lede{font-size:1.08rem}main{padding-top:40px}.listen{display:flex;margin:4px 0 0 -7px}}
 """
 
@@ -310,18 +315,20 @@ def issue_title(r: dict) -> str:
     return human_date(r["date"], weekday=True)
 
 
-# Theme: system, light or dark. System (the default) sets no data-theme and lets tokens.css follow the OS; a pick is kept in
-# localStorage. THEME_BOOT runs in <head> before the stylesheet so the page never flashes the wrong theme.
 THEME_BOOT = "try{var t=localStorage.getItem('sigma-theme');if(t==='light'||t==='dark')document.documentElement.dataset.theme=t}catch(e){}"
 _ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
-MODE_BUTTON = ('<div class="mode" role="group" aria-label="Theme">'
-               f'<button type="button" data-m="system" aria-pressed="true" aria-label="System theme" title="System">{_ICON}<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>'
-               f'<button type="button" data-m="light" aria-pressed="false" aria-label="Light theme" title="Light">{_ICON}<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg></button>'
-               f'<button type="button" data-m="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">{_ICON}<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></button></div>'
-               "<script>(()=>{const r=document.documentElement,bs=document.querySelectorAll('.mode button');"
-               "const set=m=>{m==='system'?r.removeAttribute('data-theme'):r.dataset.theme=m;bs.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.m===m)))};"
+MODE_BUTTON = ('<details class="theme-switch"><summary aria-label="Theme" title="Theme">'
+               f'<span data-theme-icon="system">{_ICON}<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span>'
+               f'<span data-theme-icon="light" hidden>{_ICON}<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg></span>'
+               f'<span data-theme-icon="dark" hidden>{_ICON}<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></span></summary>'
+               '<div class="theme-switch-popover" role="group" aria-label="Theme">'
+               f'<button type="button" data-theme-choice="system" aria-pressed="true" aria-label="System theme">{_ICON}<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg><span>System</span></button>'
+               f'<button type="button" data-theme-choice="light" aria-pressed="false" aria-label="Light theme">{_ICON}<circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4"/></svg><span>Light</span></button>'
+               f'<button type="button" data-theme-choice="dark" aria-pressed="false" aria-label="Dark theme">{_ICON}<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg><span>Dark</span></button></div></details>'
+               "<script>(()=>{const r=document.documentElement,d=document.querySelector('.theme-switch'),bs=d.querySelectorAll('[data-theme-choice]'),icons=d.querySelectorAll('[data-theme-icon]');"
+               "const set=m=>{m==='system'?r.removeAttribute('data-theme'):r.dataset.theme=m;bs.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.themeChoice===m)));icons.forEach(i=>i.hidden=i.dataset.themeIcon!==m)};"
                "let m='system';try{m=localStorage.getItem('sigma-theme')}catch(e){}set(m==='light'||m==='dark'?m:'system');"
-               "bs.forEach(b=>b.addEventListener('click',()=>{const m=b.dataset.m;set(m);try{m==='system'?localStorage.removeItem('sigma-theme'):localStorage.setItem('sigma-theme',m)}catch(e){}}))})()</script>")
+               "bs.forEach(b=>b.addEventListener('click',()=>{const m=b.dataset.themeChoice;set(m);try{m==='system'?localStorage.removeItem('sigma-theme'):localStorage.setItem('sigma-theme',m)}catch(e){}d.removeAttribute('open')}))})()</script>")
 
 
 # Display names and routes of the sections. /tickers/ is the ticker board; /tags/ lists every ticker, person and company.
