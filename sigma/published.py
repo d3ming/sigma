@@ -341,7 +341,7 @@ def validate_publication_outputs(published_root: str | Path, x_root: str | Path)
             scans.add(day)
 
     if scans:
-        from . import stance, xdaily
+        from . import board, stance, xdaily
 
     for day in sorted(scans):
         scan = x_root / "scan" / day
@@ -353,7 +353,8 @@ def validate_publication_outputs(published_root: str | Path, x_root: str | Path)
             post_id = str(row.get("id") or "")
             post = posts.get(post_id)
             if (row.get("key") != stance.post_key(post_id) or post is None or
-                    row.get("handle") != post.get("handle") or row.get("date") != post.get("created_at", "")[:10]):
+                    row.get("handle") != post.get("handle") or
+                    row.get("date") != stance._pacific_day(post.get("created_at"), board.pacific_tz())):
                 raise ValueError(f"[published] X stance source mismatch for {day}")
 
 
