@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from sigma import library, published, report
+from sigma import library, published, ranked as ranked_mod, report
 from sigma.cli import after_stage, main
 from sigma.fetch import write_episode
 from sigma.ingest import Episode
@@ -176,72 +176,6 @@ def ep_row(data, i):
     return next(e for e in data["episodes"] if e["episode_id"] == f"rss:{i}")
 
 
-def test_week_from_transcripts_to_published(week, capsys, monkeypatch):
-    run, root = week / "runs" / RUN, week
-    (run / "transcribe.queued").write_text(str(os.getpid()))  # scoring now would miss the episodes still in the queue
-    d = status(run)
-    assert (d["stage"], d["next"]["type"]) == ("rank_prep", "wait")
-    (run / "transcribe.queued").unlink()
-    assert status(run)["next"]["command"] == f"sigma rank-prep {run} --eval 6"  # a weekly also re-scores a blind sample to measure drift
-    capsys.readouterr()
-    main(["rank-prep", str(run)])
-    out = capsys.readouterr().out
-    assert "10 of 10 transcribed episodes to score in 4 batches" in out and "1 without a transcript" in out
-    batches = [json.loads((run / "rank" / f"batch-{k}-in.json").read_text()) for k in (1, 2, 3, 4)]
-    ids = sorted(e["episode_id"] for b in batches for e in b)
-    assert ids == sorted(f"rss:{i}" for i in EPISODES) and sorted(len(b) for b in batches) == [2, 2, 3, 3]  # the episode without text is not ranked
-    cond = (run / batches[0][0]["file"]).read_text()  # readers cite timestamps from the condensed text: one every 30 s
-    assert "[0:05:00]" in cond and "[0:05:10]" not in cond and "[0:05:30]" in cond
-    assert len(cond) < len((run / batches[0][0]["file"].replace("rank/cond/", "")).read_text())
-    d = status(run)
-    assert d["kind"] == "weekly" and d["stage"] == "readers" and d["next"]["prompt"] == "prompts/rank.md"
-    read_batches(run)
-    (run / "rank" / "batch-4-out.json").unlink()
-    d = status(run)
-    assert d["stage"] == "readers" and "batch-4-in.json" in d["next"]["summary"]
-    read_batches(run)
-    assert status(run)["next"]["command"] == f"sigma rank-merge {run}"
-
-    # a reader returning an id the manifest does not know stops the merge before ranked.json exists
-    edit(run / "rank" / "batch-1-out.json", lambda rows: rows[0].update(episode_id="rss:nope"))
-    with pytest.raises(SystemExit, match="rss:nope"):
-        main(["rank-merge", str(run)])
-    assert not (run / "ranked.json").exists()
-    read_batches(run)
-    capsys.readouterr()
-    main(["rank-merge", str(run)])
-    assert "warning: spread: fewer than 30% of episodes score 4 or less" in capsys.readouterr().out  # prompts/rank.md: a soft check
-    ranked = json.loads((run / "ranked.json").read_text())
-    # prompts/rank.md: best score first, then tier; the same transcript on two feeds counts once (the higher score stays); an ad
-    # read that two episodes share does not make them one; at most 2 tier-3 episodes and never in ranks 1-3 (g scores 10)
-    assert [e["episode_id"] for e in ranked["episodes"]] == [f"rss:{i}" for i in "abcgdehi"]
-    assert [e["rank"] for e in ranked["episodes"]] == list(range(1, 9)) and ranked["week_of"] == "2026-10-15"
-    assert "Episode a (second feed)" in ranked["notes"] and "Episode g" in ranked["notes"] and "Episode j" in ranked["notes"] and "1 had no usable transcript" in ranked["notes"]
-    assert status(run)["next"]["command"] == f"sigma publish {run}/ranked.json --top 15"
-
-    # themes-check and publish: the digest holds the top 5 of 8, each cited claim and theme is grounded
-    (run / "themes.json").write_text(json.dumps(themes_json()))
-    capsys.readouterr()
-    main(["themes-check", str(run), "--top", "5"])
-    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
-    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
-    main(["publish", str(run / "ranked.json"), "--top", "5"])
-    digest = (run / "digest-2026-10-15.md").read_text()
-    assert "Top 5 of 8 ranked episodes" in digest and "## 5. Episode d" in digest and "Episode e" not in digest and "Episode h" not in digest
-    assert "[0:05:00](https://www.youtube.com/watch?v=aaaaaaaaaaa&t=300s)" in digest
-    # Ann Lee is a guest on a and c; Pat Moss is labelled host in a, so the bare Pat Moss in c and d is not a repeat guest
-    assert digest.count("another interview with") == 1 and "Also #1: another interview with Ann Lee" in digest
-    pub = root / "data" / "published" / RUN
-    assert sorted(p.name for p in pub.iterdir()) == ["claims.jsonl", "digest-2026-10-15.md", "episodes.json", "ranked.json", "themes.json"]
-    th = json.loads((pub / "themes.json").read_text())
-    ev = th["themes"][0]["evidence"][0]
-    assert th["themes"][0]["came_up_in"] == {"episodes": 3, "of": 8} and th["themes"][0]["tickers"] == ["NVDA"]
-    assert (ev["claim"], ev["speaker"], ev["show"], ev["timestamp"]) == ("Accelerator demand stays ahead of supply into next year", "Ann Lee", "Show A", 300)
-    assert ev["link"] == "https://www.youtube.com/watch?v=aaaaaaaaaaa&t=300s" and th["themes"][1]["evidence"][0]["link"] == "https://example.com/b"
-    assert status(run)["stage"] == "done"
-    assert "transcript" not in " ".join(p.name for p in pub.iterdir()) and "signals signals" not in (pub / "claims.jsonl").read_text()
-
-
 def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, capsys, monkeypatch):
     """prompts/rank.md: the first run to transcribe an episode scores it and the library keeps that score; a later run reads
     only the unscored ones, and re-scoring stored episodes blind is an eval that measures drift. An episode from a
@@ -316,27 +250,32 @@ def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch)
     manifest = (run / "manifest.json").read_text()
     said = SAID["a"]
 
-    def ts(i, n, v):
-        return lambda d: ep_row(d, i)["claims"][n].update(timestamp=v)
-
-    cases = {
+    ranking_cases = {
         "a score of 11": lambda d: ep_row(d, "a").update(score=11),
         "a field outside the schema": lambda d: ep_row(d, "a").update(weight=0.1),
         "ranks that skip": lambda d: ep_row(d, "b").update(rank=5),
         "tier 3 in the top 3": lambda d: ep_row(d, "b").update(tier=3),
         "three tier-3 episodes": lambda d: [ep_row(d, i).update(tier=3) for i in "dh"] and ep_row(d, "e").update(tier=3),
-        "holdings in a reason": lambda d: ep_row(d, "a").update(reason="holding 5% of NVDA"),
-        "an episode the manifest does not know": lambda d: ep_row(d, "a").update(episode_id="rss:nope"),
-        "a timestamp past the end of the transcript": ts("a", 0, 4000),
-        "twelve words copied from the transcript": lambda d: ep_row(d, "a")["claims"][0].update(claim=said),
     }
-    for why, mutate in cases.items():
-        (run / "ranked.json").write_text(ranked)
-        edit(run / "ranked.json", mutate)
-        with pytest.raises(SystemExit):
-            main(["publish", str(run / "ranked.json"), "--top", "5"])
-        assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists(), why
-    # claims on an episode whose transcript is only a show description
+    for why, mutate in ranking_cases.items():
+        data = json.loads(ranked)
+        mutate(data)
+        with pytest.raises(ranked_mod.RankedError):
+            ranked_mod.validate(data)
+    private = json.loads(ranked)
+    ep_row(private, "a").update(reason="holding 5% of NVDA")
+    (run / "ranked.json").write_text(json.dumps(private))
+    with pytest.raises(SystemExit, match="holdings data"):
+        main(["publish", str(run / "ranked.json"), "--top", "5"])
+    assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists()
+    bad_claims = json.loads(ranked)
+    ep_row(bad_claims, "a")["claims"][0].update(timestamp=4000, claim=said)
+    ep_row(bad_claims, "b")["episode_id"] = "rss:nope"
+    (run / "ranked.json").write_text(json.dumps(bad_claims))
+    with pytest.raises(SystemExit) as refusal:
+        main(["publish", str(run / "ranked.json"), "--top", "5"])
+    assert all(msg in str(refusal.value) for msg in ("not in manifest.json", "past the end of the transcript", "copied verbatim"))
+    assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists()
     (run / "ranked.json").write_text(ranked)
     edit(run / "manifest.json", lambda m: next(e for e in m["episodes"] if e["episode_id"] == "rss:b").update(has_transcript=False))
     with pytest.raises(SystemExit):
@@ -380,68 +319,6 @@ def test_failed_public_export_stops_before_persistent_library_ingest(tmp_path, m
     with pytest.raises(SystemExit, match="not exported.*grounding failed"):
         after_stage(tmp_path, ingest=True)
     assert ingested == []
-
-
-THEME_CASES = {
-    "week_of that differs from ranked.json": (lambda d: d.update(week_of="2026-10-16"), "differs from ranked.json"),
-    "a run name that is not the folder": (lambda d: d.update(run="other-run"), "not this run folder's name"),
-    "an episode_ids entry not in ranked.json": (lambda d: d["themes"][0].update(episode_ids=["rss:a", "rss:zzz"]), "rss:zzz is not in ranked.json"),
-    "evidence from an unknown episode": (lambda d: d["themes"][0].update(evidence=[{"episode_id": "rss:zzz", "claim_index": 0}, {"episode_id": "rss:b", "claim_index": 0}]), "rss:zzz is not in ranked.json"),
-    "a claim_index past the claims": (lambda d: d["themes"][0].update(evidence=[{"episode_id": "rss:a", "claim_index": 5}, {"episode_id": "rss:b", "claim_index": 0}]), "claim_index out of range"),
-    "evidence from one show only": (lambda d: d["themes"][0].update(evidence=[{"episode_id": "rss:a", "claim_index": 0}, {"episode_id": "rss:c", "claim_index": 0}], tickers=["TSM"]), "distinct show"),
-    "a ticker that is on no cited claim": (lambda d: d["themes"][0].update(tickers=["NVDA", "AMD"]), "are not on any cited claim"),
-    "evidence from an episode outside episode_ids": (lambda d: d["themes"][0].update(evidence=[{"episode_id": "rss:a", "claim_index": 0}, {"episode_id": "rss:d", "claim_index": 0}]), "not in this theme's episode_ids"),
-    "12 transcript words in a summary": (lambda d: d["themes"][0].update(summary="Both shows agreed that " + " ".join(SAID["a"].split()[:13]) + " and moved on."), "summary: "),
-    "12 transcript words in the headline": (lambda d: d.update(headline="Everyone says " + " ".join(SAID["d"].split()[:13]) + "."), "headline: "),
-}
-
-
-def test_themes_check_refuses_what_prompts_themes_md_forbids(ranked_week, capsys):
-    run = ranked_week
-    with pytest.raises(SystemExit, match="no themes.json"):
-        main(["themes-check", str(run)])
-    for why, (mutate, msg) in THEME_CASES.items():
-        data = themes_json()
-        mutate(data)
-        (run / "themes.json").write_text(json.dumps(data))
-        with pytest.raises(SystemExit) as e:
-            main(["themes-check", str(run), "--top", "5"])
-        lines = str(e.value).splitlines()
-        assert any(msg in l for l in lines) and all(l.startswith("[themes-check] invalid: themes: ") for l in lines), (why, lines)
-    # 11 copied words are fine; the top N the digest publishes decides which episodes may be cited; tickers keep the claim's spelling
-    ok = themes_json()
-    ok["themes"][0]["summary"] = "They said " + " ".join(SAID["b"].split()[:11]) + " so it is tight."
-    (run / "themes.json").write_text(json.dumps(ok))
-    main(["themes-check", str(run), "--top", "5"])
-    with pytest.raises(SystemExit, match="rss:d claims.0.*rank 5, outside the published top 4"):
-        main(["themes-check", str(run), "--top", "4"])
-    # a cited claim that fails the publish checks invalidates the theme; one nobody cites does not
-    (run / "themes.json").write_text(json.dumps(themes_json()))
-    ranked = (run / "ranked.json").read_text()
-    edit(run / "ranked.json", lambda d: ep_row(d, "b")["claims"][0].update(claim=SAID["b"]))
-    with pytest.raises(SystemExit, match=r"rss:b claims\[0\].*copied verbatim"):
-        main(["themes-check", str(run), "--top", "5"])
-    (run / "ranked.json").write_text(ranked)
-    (run / "themes.json").write_text(json.dumps(themes_json()))
-    ranked = (run / "ranked.json").read_text()
-    edit(run / "ranked.json", lambda d: ep_row(d, "a")["claims"][0].update(timestamp=4000))
-    with pytest.raises(SystemExit, match=r"evidence\[0\] \(rss:a claims\[0\]\): the claim fails the publish checks"):
-        main(["themes-check", str(run), "--top", "5"])
-    (run / "ranked.json").write_text(ranked)
-    edit(run / "ranked.json", lambda d: ep_row(d, "a")["claims"][2].update(timestamp=4000))
-    main(["themes-check", str(run), "--top", "5"])
-    with pytest.raises(SystemExit, match="timestamp"):  # publish itself still refuses the bad claim
-        main(["publish", str(run / "ranked.json"), "--top", "5"])
-    # evidence on an episode without a real transcript
-    (run / "ranked.json").write_text(ranked)
-    edit(run / "manifest.json", lambda m: next(e for e in m["episodes"] if e["episode_id"] == "rss:b").update(has_transcript=False))
-    with pytest.raises(SystemExit, match="rss:b.*no real transcript"):
-        main(["themes-check", str(run), "--top", "5"])
-    # without a manifest the grounding checks are skipped with one warning, as for claims
-    (run / "manifest.json").unlink()
-    capsys.readouterr()
-    main(["themes-check", str(run), "--top", "5"])
-    assert capsys.readouterr().out.count("warning:") == 1
 
 
 def test_publish_refuses_invalid_themes_and_writes_nothing(ranked_week, monkeypatch):

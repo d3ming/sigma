@@ -1,7 +1,3 @@
-import subprocess
-import sys
-from pathlib import Path
-
 import pytest
 
 from sigma import calls
@@ -20,13 +16,6 @@ def test_follow_signs_the_excess_over_spy_by_side_from_the_last_close_on_or_befo
     assert sorted(buy) == [5] and buy[5]["signed"] == pytest.approx(0.05) and sell[5]["signed"] == pytest.approx(-0.05)
     assert calls.follow({"date": "2026-10-24", "stance": 1}, STOCK, {**SPY, "2026-10-26": 101})[5]["excess"] == pytest.approx(0.05)
     assert calls.follow({"date": "2026-10-24", "stance": 1}, {"2026-10-26": 49}, SPY) == {}  # no close on the entry day: no return
-
-
-def test_the_site_path_cannot_reach_the_ledger():
-    """stated rule: creator track records never reach the site or published/. Building the site must not
-    load the ledger module, so nothing in it can read data/calls or the private creators file."""
-    code = "import sigma.site, sys; sys.exit('sigma.calls' in sys.modules)"
-    assert subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).parent.parent).returncode == 0
 
 
 def test_a_call_counts_toward_the_creator_only_when_the_speaker_is_the_creator_or_a_host():

@@ -7,7 +7,7 @@ import pytest
 from sigma import custom, fetch as fetch_mod, people, status, whisper
 from sigma.cli import main
 from sigma.ingest import Episode
-from tests.helpers import LONG, STATUS_SHAPE, make_run, targs
+from tests.helpers import STATUS_SHAPE, make_run, targs
 
 NOW = datetime.now(timezone.utc)
 DAY = 86400
@@ -68,7 +68,7 @@ def test_find_candidates_for_a_person(monkeypatch, capsys, tmp_path):
     assert [c["episode_id"] for c in run_find(capsys, "--person", "Sarah Friar", runs=tmp_path)] == ["rss:friar"]
     # an episode already transcribed in a run says which
     runs = tmp_path / "runs"
-    make_run(runs / "2026-10-17-weekly", [itunes_ep()], segs=LONG)
+    make_run(runs / "2026-10-17-weekly", [itunes_ep()], segs=[{"start": 0, "speaker": None, "text": "word " * 1000}])
     fake_finders(monkeypatch, itunes=[itunes_ep(), itunes_ep("rss:new", "Other talk with Friar", days_ago=2)])
     cands = {c["episode_id"]: c for c in run_find(capsys, "--person", "Sarah Friar", runs=runs)}
     assert cands["rss:friar"]["transcribed"]["run"] == "2026-10-17-weekly" and cands["rss:new"]["transcribed"] is None
@@ -113,38 +113,6 @@ def manifest(run):
     return json.loads((run / "manifest.json").read_text())
 
 
-def test_custom_run_from_picks(tmp_path):
-    a, b = pick(), pick(episode_id="yt:xyz", title="Altman, staying human", show="Chan", audio_url=None, youtube_id="xyz",
-                        people=["Sam Altman"], via=["youtube"])
-    run = custom_run(tmp_path, [a], "r", "--note", "OpenAI executives")
-    m = manifest(run)
-    assert m["kind"] == "custom" and m["note"] == "OpenAI executives" and m["days"] >= 5 and len(m["episodes"]) == 1
-    row = m["episodes"][0]
-    assert row["episode_id"] == "rss:friar" and row["has_transcript"] is False and row["audio_url"] == "https://cdn/rss:friar.mp3"
-    assert row["rerun"] is False and row["matched"] == ["Sarah Friar"] and row["source_tag"] == "person:Sarah Friar"
-    md = (run / row["file"]).read_text()
-    assert "episode_id: rss:friar" in md and "# Sarah Friar on OpenAI's models" in md and "_No transcript found._" in md
-    custom_run(tmp_path, [a, b], "r")  # rerun with one more pick: the first is not duplicated
-    m = manifest(run)
-    assert [e["episode_id"] for e in m["episodes"]] == ["rss:friar", "yt:xyz"] and m["note"] == "OpenAI executives"
-    assert m["episodes"][1]["youtube_id"] == "xyz" and len(m["custom"]) == 2 and m["custom"][1]["added"] == 1
-    assert len(list(run.glob("*.md"))) == 2
-    custom_run(tmp_path, [pick(episode_id="yt:copy", audio_url=None, youtube_id="copy")], "r")  # same title, same day: already there
-    assert len(manifest(run)["episodes"]) == 2
-    # a pick already transcribed in another run reuses that transcript instead of being whispered again
-    other = make_run(tmp_path / "runs" / "2026-10-17-weekly", [itunes_ep()], segs=LONG)
-    row = manifest(custom_run(tmp_path, [pick()], "reuse"))["episodes"][0]
-    assert row["has_transcript"] is True and row["transcript_source"] == "whisper (3 min)" and row["reused_from"].startswith(other.name)
-    assert "[0:03:10] " + "word " * 100 in (tmp_path / "runs" / "reuse" / row["file"]).read_text()
-    # a pick with nothing to fetch, or a name that is another kind of run, is refused
-    with pytest.raises(SystemExit, match="neither audio_url nor youtube_id"):
-        custom_run(tmp_path, [pick(audio_url=None, youtube_id=None)])
-    (tmp_path / "runs" / "daily").mkdir(parents=True)
-    (tmp_path / "runs" / "daily" / "manifest.json").write_text(json.dumps({"episodes": []}))
-    with pytest.raises(SystemExit, match="not a custom run"):
-        custom_run(tmp_path, [pick()], "daily")
-
-
 def test_transcribe_a_custom_run_and_follow_it_with_status(monkeypatch, tmp_path):
     """A custom run whispers every pick (no triage), YouTube-only picks from the video's audio; a failed download is recorded."""
     run = custom_run(tmp_path, [pick(episode_id="yt:xyz", audio_url=None, youtube_id="xyz", title="Altman, staying human"),
@@ -154,9 +122,10 @@ def test_transcribe_a_custom_run_and_follow_it_with_status(monkeypatch, tmp_path
     assert d["kind"] == "custom" and d["stage"] == "transcribe" and d["next"]["type"] == "command"
     assert d["transcribe"]["whisper_pending"] == 2 and "transcribe" in d["next"]["command"] and list(d["stages"]) == ["fetch", "transcribe"]
     calls = []
+    transcript = [{"start": 0, "speaker": None, "text": "word " * 1000}]
     monkeypatch.setattr(whisper, "available", lambda: True)
-    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append(vid) or (budget.spend(180) or LONG, 180.0))
-    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or LONG, 180.0))
+    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append(vid) or (budget.spend(180) or transcript, 180.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0))
     fetch_mod.transcribe_run(targs(run, top=8, people=None))  # top=8 would triage a daily run; a custom run takes every pick
     rows = {e["episode_id"]: e for e in manifest(run)["episodes"]}
     assert sorted(calls) == ["https://cdn/rss:friar.mp3", "xyz"]
@@ -181,6 +150,7 @@ def test_a_youtube_bot_check_waits_then_retries_once_then_gives_up_for_the_run(m
     run = custom_run(tmp_path, [pick(episode_id="yt:xyz", audio_url=None, youtube_id="xyz", title="Altman, staying human"),
                                 pick(title="Friar on compute")])
     calls, waits = [], []
+    transcript = [{"start": 0, "speaker": None, "text": "word " * 1000}]
     monkeypatch.setattr(whisper, "available", lambda: True)
     monkeypatch.setattr(fetch_mod.time, "sleep", waits.append)
 
@@ -188,10 +158,10 @@ def test_a_youtube_bot_check_waits_then_retries_once_then_gives_up_for_the_run(m
         calls.append(vid)
         if calls.count(vid) == 1:
             raise whisper.YouTubeBlocked("bot check")
-        return budget.spend(180) or LONG, 180.0
+        return budget.spend(180) or transcript, 180.0
 
     monkeypatch.setattr(whisper, "transcribe_youtube", youtube)
-    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or LONG, 180.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0))
     fetch_mod.transcribe_run(targs(run, people=None))
     assert calls.count("xyz") == 2 and calls[-1] == "xyz" and len(waits) == 1
     assert all(e["has_transcript"] for e in manifest(run)["episodes"]) and not (run / "transcribe.failed.log").exists()

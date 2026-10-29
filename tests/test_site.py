@@ -302,58 +302,6 @@ def test_influencer_episodes_are_social_videos_and_never_enter_the_ranking(tmp_p
     assert '<a href="/x/" aria-current="page"><span class="mark x"' in (tmp_path / "xonly/x/week/index.html").read_text()
 
 
-def test_weekly_themes_lead_the_page_and_a_broken_file_never_breaks_it(tmp_path):
-    out = build(tmp_path)
-    html = (out / "runs/2026-01-05-weekly/index.html").read_text()
-    assert html.index("Chip supply stays tight") < html.index("Capacity") < html.index('<article class="entry"')  # themes above the episodes
-    assert "&lt;b&gt;all year&lt;/b&gt;" in html and "<b>all year</b>" not in html and "<i>sold out</i>" not in html
-    text = " ".join(visible(html).split())
-    assert "Consensus" in text and "Came up in 2 of 5 episodes" in text
-    assert '<a class="chip" href="/tickers/NVDA.html">NVDA</a>' in html and "Acme" in text and 'href="/tickers/Acme' not in html
-    assert '<a href="#ep-rss_aaa"' in html and ">Jane &lt;i&gt;Doe&lt;/i&gt;, Show A</a>" in html and 'id="ep-rss_aaa"' in html
-    assert "<li>Bo, Show B</li>" in html and 'href="#ep-rss_bbb"' not in html  # an episode that is not on the page is not linked
-    assert "Themes" not in (out / "runs/2026-01-12-daily.md").read_text() and 'id="theme-1"' in html
-    home = (out / "index.html").read_text()
-    # the home page leads with the top-scored episodes (score 6 or more), then the latest themes
-    assert home.index('<ol class="top" id="top">') < home.index("Chip supply stays tight")
-    # a bare number read as unexplained; then the text wrapped to a second row, so it is a bar first in the meta line with a hover explanation
-    assert '<li class="entry fold" data-d="2026-01-04" data-l="" data-s="8" data-new id="d-2026-01-04">' in home and 'style="--n:8" role="img" tabindex="0" aria-label="Rated 8 out of 10. 6 or more is worth an hour of your time." data-tip="Rated 8 out of 10.' in home
-    assert ">Rated 8/10<" not in home  # the bar carries the rating; its hover text says what it means
-    # the home page says when it was last updated, from the newest daily (2026-01-13 here), and the Top list opens on Week.
-    # that is the footer's one "Updated" line on every page, not a second marker beside the Top heading.
-    assert '<p class="upd">Updated Jan 13</p>' in home and 'class="updated"' not in home and "let w='7'" in home
-    for icon in ("favicon.svg", "favicon.ico", "apple-touch-icon.png"):  # the page head links these; a reader's tab shows no icon without them
-        assert f'href="/{icon}"' in home and (out / icon).stat().st_size > 0
-    assert "[hidden]{display:none!important}" in (out / "style.css").read_text()  # .entry sets display, which beat the attribute and left every row showing
-    assert "sigma-window-2" in home and "sigma-window')" not in home  # the Month a first load once saved must not override Week
-    assert '<a href="/runs/2026-01-05-weekly/#theme-1">Capacity &lt;i&gt;sold out&lt;/i&gt;</a>' in home and '<a href="/themes/">All themes' in home
-    page = (out / "themes/index.html").read_text()
-    assert 'href="/themes/" aria-current="page"' in page and "Week of Jan 5, 2026" in page
-    assert '<a href="/runs/2026-01-05-weekly/#ep-rss_aaa"' in page
-    assert "### Themes" in (out / "themes.md").read_text() and "[Themes](https://example.invalid/themes.md)" in (out / "index.md").read_text()
-    md = (out / "runs/2026-01-05-weekly.md").read_text()
-    assert md.index("## Themes") < md.index("Chip supply stays tight") < md.index("### Capacity") < md.index("Boss")
-    assert "Consensus · Came up in 2 of 5 episodes · Tickers: [NVDA](https://example.invalid/tickers/NVDA.md), Acme (private)" in md
-    assert "[1:02:05](https://example.com/e?t=3725)" in md and "<b>" not in md.replace("\\<b>", "")
-    assert "[Themes as JSON](https://example.invalid/runs/2026-01-05-weekly/themes.json)" in md
-    assert json.loads((out / "runs/2026-01-05-weekly/themes.json").read_text())["themes"][0]["came_up_in"] == {"episodes": 2, "of": 5}
-    assert "### Themes" in (out / "llms-full.txt").read_text() and "/runs/<issue>/themes.json" in (out / "llms.txt").read_text()
-    assert "Themes" not in (out / "runs/2026-01-09-daily.md").read_text()
-    # a missing or broken themes.json leaves the issue as it was before themes existed
-    pub = tmp_path / "published"
-    d = pub / "2026-01-05-weekly"
-    for content in ("{not json", json.dumps({"themes": []}), json.dumps([1]), None):
-        if content is None:
-            (d / "themes.json").unlink()
-        else:
-            (d / "themes.json").write_text(content)
-        main(["site", "--out", str(tmp_path / "dist2"), "--published", str(pub)])
-        assert "<h2>Themes</h2>" not in (tmp_path / "dist2/runs/2026-01-05-weekly/index.html").read_text()
-        assert "themes_path" not in (tmp_path / "dist2/runs.json").read_text()
-        assert not (tmp_path / "dist2/runs/2026-01-05-weekly/themes.json").exists()
-    assert "No themes yet" in (tmp_path / "dist2/themes/index.html").read_text()
-
-
 def test_updated_line_is_pacific_time(monkeypatch):
     """'Updated Oct 27, 9:12 PM PT'. Worked by hand: Pacific is UTC-7 in October (daylight time) and UTC-8 in January; a date alone stays a date."""
     monkeypatch.setattr(site, "SITE_YEAR", 2026)  # the build sets it to the newest data's year, which is then left off

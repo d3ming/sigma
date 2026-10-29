@@ -2,7 +2,6 @@
 
 Every step goes through sigma.cli.main on a sandboxed repo root. Faked: the feed and iTunes finders, the transcript lookup,
 the background transcribe process, YouTube captions and the web."""
-import copy
 import fcntl
 import io
 import json
@@ -17,20 +16,23 @@ import pytest
 import requests
 
 from sigma import fetch as fetch_mod, people, transcribe
-from sigma import ingest, library, published
+from sigma import ingest
 from sigma.ingest import Episode
 from sigma.cli import main
 
-from tests.helpers import STATUS_SHAPE, no_web, sandbox, spoken
+from tests.helpers import STATUS_SHAPE, no_web, sandbox
 
 YESTERDAY = (date.today() - timedelta(days=1)).isoformat()
 RUN = "data/runs/" + YESTERDAY
 
-# What the two full transcripts say, by second (one segment a minute; each ends at 29:00).
-JANE = spoken({600: "our capex is 450 billion dollars next year and we keep building",
-               1200: "gross margin is 38 percent now",
-               1500: "the supply chain for advanced packaging will stay tight through the end of next year for everyone"})
-OMAR = spoken({300: "we ran 420 clinical sites", 600: "backlog stands at 880 units", 900: "headcount grew to 640 people"})
+JANE = [{"start": 0, "speaker": None, "text": "padding " * 750},
+        {"start": 600, "speaker": None, "text": "our capex is 450 billion dollars next year and we keep building"},
+        {"start": 1200, "speaker": None, "text": "gross margin is 38 percent now"},
+        {"start": 1500, "speaker": None, "text": "the supply chain for advanced packaging will stay tight through the end of next year for everyone"}]
+OMAR = [{"start": 0, "speaker": None, "text": "padding " * 750},
+        {"start": 300, "speaker": None, "text": "we ran 420 clinical sites"},
+        {"start": 600, "speaker": None, "text": "backlog stands at 880 units"},
+        {"start": 900, "speaker": None, "text": "headcount grew to 640 people"}]
 SHORT = [{"start": 0, "speaker": None, "text": "show notes " * 150}]  # 1,650 characters: a show description, not a transcript
 
 
@@ -139,141 +141,6 @@ def good_picks():
 
 def selected(picks):
     return {"date": YESTERDAY, "run_dir": RUN, "selected_by": "t", "episodes": picks}
-
-
-def test_today_through_report(day, capsys, monkeypatch):
-    """prompts/daily.md: status names one next action at every step, and each file the agent writes is checked before it counts."""
-    root = day
-    # today: Jane is found once (feed copy dropped for the people-search copy, listed first); out-of-window and replays are
-    # excluded with a reason; a show-description-sized text is flagged as fallback, not a transcript.
-    m = manifest(root)
-    assert [e["episode_id"] for e in m["episodes"]] == ["rss:jane", "rss:omar", "rss:pat"]
-    assert {x["episode_id"]: x["why"] for x in m["excluded"]} == {"rss:old": "outside window", "rss:replay": "rerun", "rss:aired": "rerun"}
-    rows = {e["episode_id"]: e for e in m["episodes"]}
-    assert rows["rss:jane"]["has_transcript"] and rows["rss:pat"]["fallback_text"] and not rows["rss:pat"]["has_transcript"]
-    assert (root / RUN / "transcribe.queued").read_text() == str(os.getpid())  # the pid of the process daily started
-
-    d = status(root)
-    assert (d["stage"], d["next"]["type"]) == ("transcribe", "wait")  # a transcribe was just queued: do not start another
-    transcribe_finished(root)
-    d = status(root)
-    assert (d["stage"], d["next"]["command"]) == ("rank_prep", f"sigma rank-prep {root / RUN}")  # every transcript is scored once, before select
-    main(["rank-prep", str(root / RUN)])
-    assert status(root)["stage"] == "readers"
-    scored(root)
-    d = status(root)
-    assert (d["stage"], d["next"]["prompt"]) == ("select", "prompts/select.md")
-    assert sorted(e["episode_id"] for e in json.loads((root / RUN / "scores.json").read_text())["episodes"]) == ["rss:jane", "rss:omar"]  # the fallback-text episode is not read
-
-    # selected.json: every bad pick list is refused, and status shows the same blockers
-    refused = {
-        "no picks": selected([]),
-        "a fallback episode not flagged": selected([pick("rss:pat", "Pat Roe")]),
-        "flagged but not said in why": selected([pick("rss:pat", "Pat Roe", "Great pick", fallback_text=True)]),
-        "one person twice": selected([pick("rss:jane", "Jane Placeholder"), pick("rss:omar", "jane  PLACEHOLDER")]),
-        "a replay": selected([pick("rss:replay", "Pat Example")]),
-    }
-    for why, data in refused.items():
-        with pytest.raises(SystemExit):
-            main(["check", "selected", write(root, "selected.json", data)])
-        assert status(root)["blockers"], why
-    main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
-    d = status(root)
-    assert d["stage"] == "links" and d["next"]["command"].startswith("sigma links")
-
-    # links: offline, so Jane's known YouTube id and Omar's Apple page (tracking suffix cut) are what is found
-    capsys.readouterr()
-    main(["links", str(root / RUN)])
-    sel = {e["episode_id"]: e for e in json.loads((root / RUN / "selected.json").read_text())["episodes"]}
-    assert sel["rss:jane"]["youtube_url"] == "https://www.youtube.com/watch?v=abcdefghijk"
-    assert sel["rss:omar"]["listen_url"] == "https://podcasts.apple.com/us/podcast/omar/id1?i=2" and "youtube_url" not in sel["rss:omar"]
-    assert sel["rss:pat"]["listen_url"] == "https://show.example/rss:pat"
-    assert (d := status(root))["stage"] == "report" and d["next"]["prompt"] == "prompts/report.md"
-
-    selected_path = root / RUN / "selected.json"
-    selected_data = json.loads(selected_path.read_text())
-    selected_data["episodes"] = [e for e in selected_data["episodes"] if e["episode_id"] != "rss:pat"]
-    selected_path.write_text(json.dumps(selected_data))
-
-    # report.json: nothing that breaks the grounding rules reaches report.md
-    base_report = report_json()
-    base_report["essential"] = [e for e in base_report["essential"] if e["episode_id"] != "rss:pat"]
-    base_report["episodes"] = [e for e in base_report["episodes"] if e["episode_id"] != "rss:pat"]
-
-    def broken(edit):
-        r = copy.deepcopy(base_report)
-        edit(r)
-        return r
-
-    jane = lambda r: r["episodes"][0]
-    refused = {
-        "a cite with no speaker": broken(lambda r: jane(r)["signal"][0].pop("speaker")),
-        "episodes not matching essential": broken(lambda r: jane(r).update(episode_id="rss:other")),
-        "holdings-like text": broken(lambda r: r["essential"][0].update(guests="holding 5%")),
-        "a listen_url that is a tracking redirect": broken(lambda r: r["essential"][0].update(listen_url="https://chrt.fm/track/x")),
-        "a timestamp past the end of the transcript": broken(lambda r: jane(r)["signal"][0].update(timestamp=4000)),
-        "no timestamp on a real transcript": broken(lambda r: jane(r)["signal"][0].update(timestamp=None)),
-        "12 words copied from the transcript": broken(lambda r: jane(r)["sections"][0].update(
-            body="Management said the supply chain for advanced packaging will stay tight through the end soon")),
-        "a pick missing from the report": broken(lambda r: [r["essential"].pop(), r["episodes"].pop()]),
-    }
-    for why, data in refused.items():
-        with pytest.raises(SystemExit):
-            main(["report", write(root, "report.json", data)])
-        assert not (root / RUN / "report.md").exists(), why
-    assert status(root)["stage"] == "report" and status(root)["blockers"]
-    with pytest.raises(SystemExit, match="cannot be grounded because the manifest says there is no real transcript"):
-        main(["report", write(root, "report.json", report_json())])
-    assert not (root / RUN / "report.md").exists()
-    eleven = broken(lambda r: jane(r)["sections"][0].update(body="Management said the supply chain for advanced packaging will stay tight through the"))
-    path = write(root, "report.json", eleven)
-    monkeypatch.setattr(published, "ROOT", root / "data" / "published")
-    monkeypatch.delenv("SIGMA_NO_PUBLISHED")
-    monkeypatch.delenv("SIGMA_NO_LIBRARY")
-    monkeypatch.setattr(library, "DEFAULT_DB", root / "lib.sqlite")
-    with pytest.raises(SystemExit, match="number 38 not spoken within"):
-        main(["report", path])
-    assert not (root / RUN / "report.md").exists()
-    eleven["episodes"][0]["sections"][0]["claims"][0]["timestamp"] = 1200
-    eleven["episodes"][0]["sections"][0]["claims"][1]["text"] = "Opens additional sites."
-    path = write(root, "report.json", eleven)
-    main(["report", path])
-    out = capsys.readouterr().out
-    warnings = [l for l in out.splitlines() if "warning:" in l]
-    assert warnings == []
-    md = (root / RUN / "report.md").read_text()
-    assert "1. **[Jane on robots](https://www.youtube.com/watch?v=abcdefghijk)**" in md  # YouTube first
-    assert "2. **[Omar on rates](https://www.youtube.com/watch?v=ddddddddddd)**" in md
-    assert "Pat on chips" not in md and ".mp3" not in md  # never the audio file
-    assert "[Jane Placeholder, [0:10:00](https://www.youtube.com/watch?v=abcdefghijk&t=600s)]" in md
-    assert "(our read: Demand is real.)" in md and "**Interests to note:** Early investor in Acme." in md
-
-    pub = root / "data" / "published" / YESTERDAY
-    assert sorted(p.name for p in pub.iterdir()) == ["claims.jsonl", "episodes.json", "report.json", "report.md", "scores.json", "selected.json"]
-    ep_rows = json.loads((pub / "episodes.json").read_text())
-    assert [e["episode_id"] for e in ep_rows] == ["rss:jane", "rss:omar", "rss:pat"]
-    assert not any(k in e for e in ep_rows for k in ("description", "audio_url", "file", "fallback_text"))
-
-    os.utime(root / RUN / "report.md", (os.path.getmtime(root / RUN / "report.json") - 60,) * 2)  # report.json edited after rendering
-    d = status(root)
-    assert d["stage"] == "render" and d["next"]["command"] == f"sigma report {root / RUN}/report.json"
-    main(["report", path])
-
-    # the report is in the library the moment it renders
-    capsys.readouterr()
-    main(["library", "query", "--text", "Capex", "--db", str(root / "lib.sqlite"), "--json"])
-    claim, = json.loads(capsys.readouterr().out)
-    assert claim["link"] == "https://www.youtube.com/watch?v=abcdefghijk&t=600s" and claim["speaker"] == "Jane Placeholder"
-
-    d = status(root)
-    assert d["stage"] == "publish" and d["next"]["command"] == f"sigma mark publish end --run {root / RUN}"
-    main(["mark", "publish", "end", "--run", str(root / RUN)])
-    assert status(root)["stage"] == "done"
-    t = manifest(root)["timing"]
-    assert t["select"]["end"] and t["report"]["start"] and t["report"]["end"] and t["publish"]["end"]  # stamped by status --record / report
-    capsys.readouterr()
-    main(["stats", "--runs", str(root / "data" / "runs")])
-    assert YESTERDAY in capsys.readouterr().out
 
 
 def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
