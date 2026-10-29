@@ -129,7 +129,7 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     dmd = (out / "runs/2026-01-09-daily.md").read_text()
     assert "Friday, Jan 9, 2026" in dmd and "Capacity is tight" in dmd and "0:01:01" not in dmd and "1:01" in dmd
     home = (out / "index.html").read_text()
-    assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home and "What the sources say, not advice." in home
+    assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home
     assert "@dming" not in home and "Mingdom" not in home and '<a class="brand" href="/">Sigma</a>' in home
     banned = re.compile(r"\b(agents?|whisper|novelty|verifiable|tiers?|fetched|grounded|pipeline|transcripts?|2026-01-05-weekly|"
                         r"2026-01-09-daily|score|about)\b", re.I)
@@ -287,9 +287,9 @@ def test_influencer_episodes_are_social_videos_and_never_enter_the_ranking(tmp_p
     sm = (out / "sitemap.xml").read_text()
     assert all(f"https://example.invalid{p}" in sm for p in ("/social/", "/social.md", "/episodes/rss_inf.html", "/tickers/INFX.html"))
     assert "Social" in (out / "tickers/NVDA.md").read_text() and "Calls for a long above 180" in (out / "tickers/NVDA.md").read_text()
-    (tmp_path / "published/2026-01-09-daily/scores-influencer.json").unlink()  # no influencer data and no X: no Social page
+    (tmp_path / "published/2026-01-09-daily/scores-influencer.json").unlink()
     main(["site", "--out", str(tmp_path / "bare"), "--published", str(tmp_path / "published")])
-    assert not (tmp_path / "bare/social").exists()
+    assert "<h1>Social</h1>" in (tmp_path / "bare/social/index.html").read_text()
     ed = tmp_path / "published/x/editions"
     ed.mkdir(parents=True)
     (ed / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "signals": [], "posts": [
@@ -497,6 +497,13 @@ def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agen
     make_published(pub)
     site.build(pub, out)
     assert "<h2>Episodes</h2>" in (out / "index.html").read_text() and (out / "signals/index.html").exists() and "No signals are published yet" in (out / "signals/index.html").read_text() and "signals-panel" not in (out / "index.html").read_text()
+    visible_routes = [path for path, _, _ in (*site.NAV_PRIMARY, *site.NAV_MENU, site.NAV_RESEARCH)]
+    visible_routes.extend(("/signals/",))
+    assert all((out / site.file_of(path)).exists() for path in visible_routes)
+    social = (out / "social/index.html").read_text()
+    assert "<h1>Social</h1>" in social and "/x/" not in social
+    assert "What the sources say, not advice." not in (out / "index.html").read_text()
+    assert "Public market signals, each linked to its source." not in (out / "signals/index.html").read_text()
     sig = lambda t, who, st, o="primary": {"id": f"a-{t}{who}", "date": "2026-01-09", "ticker": t, "target": t, "direction": "bullish" if st > 0 else "bearish",
                                           "stance": st, "speaker": who, "role": "X account", "link": f"https://x.com/{who}/status/1", "source_kind": "x",
                                           "source_id": "1", "source_name": who, "origin": o, "horizon_days": 21, "reason": f"Likes {t}"}
@@ -563,8 +570,11 @@ def test_research_posts_are_allowlisted_safe_and_fail_before_replacing_site(tmp_
 
     monkeypatch.setenv("SIGMA_DATA_ROOT", str(data))
     (out / "index.html").write_text("previous valid site")
-    for text in ("Fair value estimate.", "Internal system prompt.", "BLOB_READ_WRITE_TOKEN in private notes.",
-                 "VERCEL_BLOB_RW_store123_secret123", "sk_test_0123456789abcdef", "I own 1200 shares of NVDA."):
+    key_markers = ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY", "ENCRYPTED PRIVATE KEY", "DSA PRIVATE KEY")
+    blocked = ["Fair value estimate.", "Internal system prompt.", "BLOB_READ_WRITE_TOKEN in private notes.",
+               "VERCEL_BLOB_RW_store123_secret123", "sk_test_0123456789abcdef", "I own 1200 shares of NVDA."]
+    blocked.extend(f"-----BEGIN {marker}-----\nsynthetic placeholder\n-----END {marker}-----" for marker in key_markers)
+    for text in blocked:
         post["body"] = text
         (posts_dir / "agent-workflows.json").write_text(json.dumps(post))
         with pytest.raises(ValueError, match="not publishable"):

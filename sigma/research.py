@@ -16,11 +16,6 @@ SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 PRIVATE = re.compile(r"\b(?:system|developer|internal|private)\s+(?:prompt|instruction|strategy|notes?|workflow|data)\b|"
                      r"\b(?:blob[_ -]?read[_ -]?write[_ -]?token|api[_ -]?key|access[_ -]?token|client[_ -]?secret|secret[_ -]?key|bearer)\b|"
                      r"\b(?:account|customer|user)[_ -]?(?:number|id|balance)\b|\bpersonal email\b", re.I)
-SECRET_VALUE = re.compile(r"\bvercel_blob_rw_[a-z0-9_-]{8,}\b|"
-                          r"\b(?:sk|rk)_(?:test|live|proj|ant|service_account)_[a-z0-9_-]{8,}\b|"
-                          r"\bsk-(?:proj|live|ant)-[a-z0-9_-]{8,}\b|"
-                          r"\bgh[pousr]_[a-z0-9]{20,}\b|\bgithub_pat_[a-z0-9_]{20,}\b|\bAKIA[0-9A-Z]{16}\b|"
-                          r"\b[a-z0-9_]*(?:API_KEY|ACCESS_TOKEN|SECRET|PASSWORD|CREDENTIAL|BLOB_RW_TOKEN)[a-z0-9_]*\s*[:=]\s*['\"]?[a-z0-9_./+=-]{8,}", re.I)
 OWNERSHIP = re.compile(r"\b(?:i|we)\s+(?:own|hold|bought|sold|trimmed|added(?:\s+to)?|am\s+long|am\s+short)\b"
                        r"[^.!?]{0,100}\b(?:shares?|stock|position|portfolio|stake|[$]?[A-Z]{1,5}\b)|"
                        r"\b(?:my|our)\s+(?:shares?|stock|position|holdings?|allocation|cost basis)\b", re.I)
@@ -52,7 +47,7 @@ def load(root: Path | None = None) -> list[dict]:
         if errors:
             raise ValueError(f"{p.name}: {errors[0].message}")
         text = " ".join(str(item[k]) for k in ("title", "summary", "body"))
-        if PRIVATE.search(text) or SECRET_VALUE.search(text) or OWNERSHIP.search(text) or OUT_OF_SCOPE.search(text) or private_hits(text):
+        if PRIVATE.search(text) or OWNERSHIP.search(text) or OUT_OF_SCOPE.search(text) or private_hits(text):
             raise ValueError(f"{p.name}: private or fund-related text is not publishable")
         date.fromisoformat(item["date"])
         out.append({"slug": slug, **item})

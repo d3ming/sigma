@@ -416,7 +416,7 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
             f'{ICONS}<script>{THEME_BOOT}</script>{ANALYTICS}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
             f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{menu}{MODE_BUTTON}</div></div></header>'
             f'<main><div class="wrap">{body}</div></main>'
-            f'<footer><div class="wrap">{upd}<span>{esc(SITE)} · What the sources say, not advice.</span>'
+            f'<footer><div class="wrap">{upd}'
             f'<span>{x_link}<a href="{NOTICE_PATH}">Notice</a> · <a href="/llms.txt">llms.txt</a></span></div></footer></body></html>\n')
 
 
@@ -747,12 +747,12 @@ def social_mark(tip: bool = True) -> str:
     return f'<span class="mark social"{t}>{YT_LOGO}</span>'
 
 
-def social_switch(cur: str) -> str:
+def social_switch(cur: str, has_x: bool = True) -> str:
     """YouTube | X, the two sides of Social, at the top of every page of both. Plain links; the page you are on is current."""
     on = ' aria-current="page"'
+    x = f'<a href="/x/"{on if cur == "x" else ""}>{x_mark()}{X_NAME}</a>' if has_x else ""
     return (f'<nav class="seg" aria-label="{SOCIAL_NAME}">'
-            f'<a href="{SOCIAL_PATH}"{on if cur == "videos" else ""}>{social_mark(False)}{VIDEOS_NAME}</a>'
-            f'<a href="/x/"{on if cur == "x" else ""}>{x_mark()}{X_NAME}</a></nav>')
+            f'<a href="{SOCIAL_PATH}"{on if cur == "videos" else ""}>{social_mark(False)}{VIDEOS_NAME}</a>{x}</nav>')
 
 
 SORTS = (("rating", "Rating"), ("newest", "Newest"))
@@ -989,10 +989,10 @@ def index_page(runs: list[dict], reg: dict | None = None, ent: ents.Entities | N
                 updated=latest_issue(runs)["date"])  # the newest daily, or the newest issue when there is no daily; a run holds a date, not a time
 
 
-def social_page(ireg: dict) -> str:
+def social_page(ireg: dict, has_x: bool = True) -> str:
     """The YouTube side of Social: the newest influencer episodes, newest first by default, with the YouTube | X switch on top."""
     rows = "".join(top_entry(e) for e in social_episodes(ireg))
-    body = (f'{social_switch("videos")}<h1>{SOCIAL_NAME}</h1><p class="lede">Videos from creators who pick stocks. They are rated on '
+    body = (f'{social_switch("videos", has_x)}<h1>{SOCIAL_NAME}</h1><p class="lede">Videos from creators who pick stocks. They are rated on '
             f'their calls and the evidence behind them, apart from the interview ranking.</p>')
     body += f'{sort_bar("social", "newest")}<ol class="top" id="social">{rows}</ol>{SORT_JS}' if rows else "<p>No videos yet.</p>"
     return page(f"{SOCIAL_NAME} · {SITE}", body, "social", "Videos from creators who pick stocks, rated apart from the interview ranking.", md="/social.md",
@@ -2504,8 +2504,8 @@ def sitemap_xml(entries: list[tuple]) -> str:
 
 def research_index_page(posts: list[dict]) -> tuple[str, str]:
     if not posts:
-        body = "<h1>Research</h1><p class=\"lede\">Research on methods and tools.</p><p>No research is published yet.</p>"
-        md = doc(["# Research", "", "Research on methods and tools.", "", "No research is published yet."])
+        body = "<h1>Research</h1><p>No research is published yet.</p>"
+        md = doc(["# Research", "", "No research is published yet."])
     else:
         rows = "".join(f'<li><span class="d">{esc(p["date"])}</span><a href="{public_research.post_path(p["slug"])}">{esc(p["title"])}</a>'
                        f'<p class="lede">{esc(p["summary"])}</p></li>' for p in posts)
@@ -2653,8 +2653,11 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     sm.append((md_of("/companies/"), newest))
     emit(NOTICE_PATH, notice_page(), notice_md())
     emit("/find/", find_page(ent, newest_of(*(e["date"] for e in reg.values()))), find_md(ent))
-    if ireg or eds:  # the nav's Social item has a page whenever either side has data
-        emit(SOCIAL_PATH, social_page(ireg), social_md(ireg, eds), newest_of(*(e["date"] for e in ireg.values())))
+    if ireg or eds:
+        emit(SOCIAL_PATH, social_page(ireg, bool(eds)), social_md(ireg, eds), newest_of(*(e["date"] for e in ireg.values())))
+    else:
+        empty_social = f"<h1>{SOCIAL_NAME}</h1><p>No social signals are published yet.</p>"
+        emit(SOCIAL_PATH, page(f"{SOCIAL_NAME} · {SITE}", empty_social, "social", md="/social.md"), doc([f"# {SOCIAL_NAME}", "", "No social signals are published yet."]), newest)
     for e in eds:
         annotate_posts(e["posts"] + e["more"], ent, cos, pub)
         for p in e["posts"] + e["more"]:

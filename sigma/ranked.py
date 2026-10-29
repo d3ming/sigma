@@ -16,10 +16,20 @@ PRIVATE = re.compile(
     r"|\bwe\s+(?:own|hold|bought|sold|trimmed|added\s+to)\s+(?:shares|\$?[A-Z]{1,5}\b)|\bcost\s+basis\b|\bunrealized\b"
     r"|/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/", re.I)
 
+PEM_PRIVATE_KEY = re.compile(r"-----BEGIN (?:(?:ENCRYPTED|RSA|EC|OPENSSH|DSA) )?PRIVATE KEY-----", re.I)
+SECRET_VALUE = re.compile(r"\bvercel_blob_rw_[a-z0-9_-]{8,}\b|"
+                          r"\b(?:sk|rk)_(?:test|live|proj|ant|service_account)_[a-z0-9_-]{8,}\b|"
+                          r"\bsk-(?:proj|live|ant)-[a-z0-9_-]{8,}\b|"
+                          r"\bgh[pousr]_[a-z0-9]{20,}\b|\bgithub_pat_[a-z0-9_]{20,}\b|\bAKIA[0-9A-Z]{16}\b|"
+                          r"\b[a-z0-9_]*(?:API_KEY|ACCESS_TOKEN|SECRET|PASSWORD|CREDENTIAL|BLOB_RW_TOKEN)[a-z0-9_]*\s*[:=]\s*['\"]?[a-z0-9_./+=-]{8,}", re.I)
+
 
 def private_hits(text: str) -> list[str]:
-    """The private-looking phrases in text, at most five, so a check can say what it found."""
-    return [m.group(0) for m in PRIVATE.finditer(text)][:5]
+    """Private text matches and redacted credential markers for publication errors."""
+    hits = [m.group(0) for m in PRIVATE.finditer(text)][:5]
+    if PEM_PRIVATE_KEY.search(text) or SECRET_VALUE.search(text):
+        hits.append("credential material")
+    return hits
 
 
 class RankedError(ValueError):

@@ -349,8 +349,17 @@ def test_published_files_and_the_site_carry_the_links_and_nothing_private(tmp_pa
     claims = [json.loads(line) for line in (dest / "claims.jsonl").read_text().splitlines()]
     b = next(c for c in claims if c["episode_id"] == "rss:b")
     assert b["youtube_url"] == "https://www.youtube.com/watch?v=bbbbbbbbbbb" and b["link"].endswith("bbbbbbbbbbb&t=61s")
-    # influencer scores are published like scores.json, under the same privacy check, and the episode's style travels with it
+    before = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
     manifest = json.loads((run / "manifest.json").read_text())
+    for title in ("our portfolio allocations", "-----BEGIN PRIVATE KEY-----", "sk_test_0123456789abcdef"):
+        manifest["episodes"][0]["title"] = title
+        (run / "manifest.json").write_text(json.dumps(manifest))
+        with pytest.raises(ValueError, match=r"(episodes\.json|claims\.jsonl) looks private"):
+            published.export(run, root=root, resolver=False)
+        assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+    manifest["episodes"][0]["title"] = "A"
+    (run / "manifest.json").write_text(json.dumps(manifest))
+    # influencer scores are published like scores.json, under the same privacy check, and the episode's style travels with it
     manifest["episodes"].append({"episode_id": "yt:i", "title": "I", "source": "Show I", "published": "2026-10-21", "tier": 2, "style": "influencer"})
     (run / "manifest.json").write_text(json.dumps(manifest))
     inf = {"week_of": "2026-10-17", "run_dir": str(run), "ranked_by": "test", "rubric": 1,
@@ -376,6 +385,13 @@ def test_published_files_and_the_site_carry_the_links_and_nothing_private(tmp_pa
     (dest / "stances.jsonl").write_text('{"key": "c-0123456789ab", "labels": []}\n')
     dest, _ = published.export(run, root=root, resolver=False)
     assert (dest / "stances.jsonl").read_text() == '{"key": "c-0123456789ab", "labels": []}\n'
+    before = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
+    (dest / "stances.jsonl").write_text('{"note": "our portfolio allocations"}\n')
+    before_refusal = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
+    with pytest.raises(ValueError, match="stances.jsonl looks private"):
+        published.export(run, root=root, resolver=False)
+    assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before_refusal
+    (dest / "stances.jsonl").write_bytes(before["stances.jsonl"])
     # the site: icons in a fixed order, only the ones that exist, never a javascript: link; the Markdown and JSON carry the same links
     assert names(site.listen_icons(FULL)) == ["Watch on YouTube", "Listen on Apple Podcasts", "Listen on Spotify"]
     assert names(site.listen_icons({"apple_url": FULL["apple_url"]})) == ["Listen on Apple Podcasts"]

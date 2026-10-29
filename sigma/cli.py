@@ -898,7 +898,7 @@ def _main(argv=None):
     hv.add_argument("--dir", help="the session folder (default: this checkout's under ~/.claude/projects)")
     hv.add_argument("--min-age", type=float, default=600, help="skip a session changed in the last N seconds: still running")
     vf = sub.add_parser("verify", help="GET the live site: 200 and milliseconds to the event log; with --run, the home page and the run's page load")
-    vf.add_argument("url", help="the site, e.g. https://sigma.dming.si")
+    vf.add_argument("url", help="the site, e.g. https://sigma.example")
     vf.add_argument("--run", help="the run just published: home and /runs/<run>/ must load, and where that address redirects must exist")
     vf.add_argument("--signals", metavar="DATE", help="the Signals index of DATE must be served at /signals/DATE.json, valid, and listed in /signals/index.json")
     vf.add_argument("--expect", action="append", default=[], help="text the page (with --run, the page that shows the run) must contain; repeatable")

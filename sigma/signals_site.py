@@ -533,9 +533,9 @@ def build(published: Path, out: Path, emit, sm: list, newest: str) -> bool:
     """Write the Signals pages and files; return whether daily data exists."""
     days, _ = load(published)
     if not days:
-        body = '<h1>Signals</h1><p class="lede">Public market signals, each linked to its source.</p><p>No signals are published yet.</p>'
-        md = doc(["# Sigma: Signals", "", "Public market signals, each linked to its source.", "", "No signals are published yet."])
-        emit("/signals/", page(f"Signals · {site.SITE}", body, "signals", "Public market signals, each linked to its source.", md="/signals.md"), md)
+        body = '<h1>Signals</h1><p>No signals are published yet.</p>'
+        md = doc(["# Sigma: Signals", "", "No signals are published yet."])
+        emit("/signals/", page(f"Signals · {site.SITE}", body, "signals", md="/signals.md"), md)
         index = {"schema_version": 1, "base_url": site.BASE_URL, "schema": absu("/signals/schema.json"),
                  "about": "One file per day with every Signals signal. Newest first.", "days": []}
         site.write(out / "signals" / "index.json", json.dumps(index, indent=1, ensure_ascii=False) + "\n")

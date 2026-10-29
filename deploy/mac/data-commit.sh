@@ -9,6 +9,15 @@ DATA=$(cd "$DATA" && pwd -P)
 REPO=$(git -C "$DATA" rev-parse --show-toplevel 2>/dev/null) || { echo "[data] $DATA is not inside a Git repository" >&2; exit 1; }
 REPO=$(cd "$REPO" && pwd -P)
 [[ "$REPO" != "$SIGMA" ]] || { echo "[data] refusing to stage anything from the public Sigma repository" >&2; exit 1; }
+common_dir() {
+  local root=$1 common
+  common=$(git -C "$root" rev-parse --git-common-dir) || return 1
+  [[ "$common" == /* ]] || common="$root/$common"
+  (cd "$common" && pwd -P)
+}
+SIGMA_COMMON=$(common_dir "$SIGMA") || { echo "[data] could not identify the Sigma Git repository" >&2; exit 1; }
+DATA_COMMON=$(common_dir "$REPO") || { echo "[data] could not identify the data Git repository" >&2; exit 1; }
+[[ "$SIGMA_COMMON" != "$DATA_COMMON" ]] || { echo "[data] refusing to stage data from a linked checkout of the public Sigma repository" >&2; exit 1; }
 case "$DATA" in
   "$REPO") REL=.;;
   "$REPO"/*) REL=${DATA#"$REPO"/};;

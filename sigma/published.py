@@ -261,26 +261,36 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
         raise ValueError("[published] the same point is listed twice:\n" + "\n".join(problems[:10]))
     stances = dest / STANCES  # labels (stance.py) are made after the export and outlive it: a re-export keeps them
     kept = stances.read_bytes() if stances.is_file() else None
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.mkdir(parents=True)
-    if kept is not None:
-        stances.write_bytes(kept)
-    written, skipped = [], []
-    for p in srcs:
-        if p.stat().st_size > MAX_BYTES:
-            skipped.append(p.name)
-            continue
-        shutil.copy2(p, dest / p.name)
-        written.append(p.name)
-    if man.exists():
-        (dest / "episodes.json").write_text(json.dumps(episodes(manifest, found), indent=1, ensure_ascii=False) + "\n")
-        written.append("episodes.json")
-    (dest / "claims.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
-    written.append("claims.jsonl")
-    if resolved_themes:
-        (dest / themes.FILE).write_text(json.dumps(resolved_themes, indent=1, ensure_ascii=False) + "\n")
-        written.append(themes.FILE)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+    try:
+        if kept is not None:
+            (stage / STANCES).write_bytes(kept)
+        written, skipped = [], []
+        for p in srcs:
+            if p.stat().st_size > MAX_BYTES:
+                skipped.append(p.name)
+                continue
+            shutil.copy2(p, stage / p.name)
+            written.append(p.name)
+        if man.exists():
+            (stage / "episodes.json").write_text(json.dumps(episodes(manifest, found), indent=1, ensure_ascii=False) + "\n")
+            written.append("episodes.json")
+        (stage / "claims.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
+        written.append("claims.jsonl")
+        if resolved_themes:
+            (stage / themes.FILE).write_text(json.dumps(resolved_themes, indent=1, ensure_ascii=False) + "\n")
+            written.append(themes.FILE)
+        for p in stage.iterdir():
+            if p.is_file() and p.suffix in (".md", ".json", ".jsonl"):
+                if hits := private_hits(p.read_text(encoding="utf-8", errors="replace")):
+                    raise ValueError(f"[published] {p.name} looks private ({hits}); fix it before export")
+        if dest.exists():
+            shutil.rmtree(dest)
+        os.replace(stage, dest)
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage)
     for s in skipped:
         print(f"[published] skipped {s}: over {MAX_BYTES // 1000} KB")
     return dest, written
