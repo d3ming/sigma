@@ -9,7 +9,7 @@ import subprocess
 import pytest
 import yaml
 
-from sigma import links, published, report, showlinks, site
+from sigma import links, published, ranked, report, showlinks, site
 from sigma.digest import render, show_line
 from sigma.ranked import RankedError
 from tests.helpers import REPORT
@@ -351,12 +351,30 @@ def test_published_files_and_the_site_carry_the_links_and_nothing_private(tmp_pa
     assert b["youtube_url"] == "https://www.youtube.com/watch?v=bbbbbbbbbbb" and b["link"].endswith("bbbbbbbbbbb&t=61s")
     before = {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()}
     manifest = json.loads((run / "manifest.json").read_text())
-    for title in ("our portfolio allocations", "-----BEGIN PRIVATE KEY-----", "sk_test_0123456789abcdef"):
+    for title in ("our portfolio allocations", "our\nportfolio: NVDA 25%", "our\tportfolio: NVDA 25%",
+                  "-----BEGIN PRIVATE KEY-----", "sk_test_0123456789abcdef"):
         manifest["episodes"][0]["title"] = title
         (run / "manifest.json").write_text(json.dumps(manifest))
         with pytest.raises(ValueError, match=r"(episodes\.json|claims\.jsonl) looks private"):
             published.export(run, root=root, resolver=False)
         assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+    ranked_data = json.loads((run / "ranked.json").read_text())
+    ranked_data["episodes"][0]["reason"] = "our\nportfolio: NVDA 25%"
+    with pytest.raises(RankedError, match="private text"):
+        ranked.validate(ranked_data)
+    (run / "ranked.json").write_text(json.dumps(ranked_data))
+    with pytest.raises(ValueError, match="ranked.json looks private"):
+        published.export(run, root=root, resolver=False)
+    assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+    ranked_data["episodes"][0]["reason"] = "reason"
+    ranked_data["DATABASE_PASSWORD"] = "synthetic-example-123"
+    (run / "ranked.json").write_text(json.dumps(ranked_data))
+    with pytest.raises(ValueError, match="ranked.json looks private") as exc:
+        published.export(run, root=root, resolver=False)
+    assert "DATABASE_PASSWORD" not in str(exc.value) and "synthetic-example-123" not in str(exc.value)
+    assert {p.name: p.read_bytes() for p in dest.iterdir() if p.is_file()} == before
+    ranked_data.pop("DATABASE_PASSWORD")
+    (run / "ranked.json").write_text(json.dumps(ranked_data))
     manifest["episodes"][0]["title"] = "A"
     (run / "manifest.json").write_text(json.dumps(manifest))
     # influencer scores are published like scores.json, under the same privacy check, and the episode's style travels with it

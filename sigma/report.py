@@ -9,7 +9,7 @@ import jsonschema
 
 from . import links as _links
 from .digest import ts_link
-from .ranked import FORBIDDEN, RankedError
+from .ranked import FORBIDDEN, RankedError, private_hits
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema"
 
@@ -33,6 +33,8 @@ def validate(data: dict, kind: str) -> dict:
     text = json.dumps(data).lower()
     if any(f'"{w}' in text for w in FORBIDDEN):
         raise RankedError(f"{kind}: holdings-like fields are not allowed")
+    if hits := private_hits(data):
+        raise RankedError(f"{kind}: private text is not allowed: {hits}")
     if kind == "selected":
         bad = [e["episode_id"] for e in data["episodes"] if e.get("fallback_text") and "fallback" not in e["why"].lower()]
         if bad:

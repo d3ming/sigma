@@ -330,7 +330,7 @@ def check(doc: dict, published: Path = PUBLISHED) -> list[str]:
             problems.append(f"{r['ticker']}: the aggregate reason is too long")
         if not set(r["signal_ids"]) <= set(ids):
             problems.append(f"{r['ticker']}: the aggregate names a signal the day does not have")
-    if hits := private_hits(json.dumps([doc["signals"], doc.get("tickers", []), doc.get("markets", [])], ensure_ascii=False)):
+    if hits := private_hits([doc["signals"], doc.get("tickers", []), doc.get("markets", [])]):
         problems.append(f"the rows look private: {hits}")
     return problems
 

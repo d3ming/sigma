@@ -236,10 +236,10 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
         previous = json.loads((dest / "episodes.json").read_text())
     except (OSError, ValueError):
         previous = []
-    from .ranked import private_hits
+    from .ranked import private_hits_file
 
     for p in srcs:  # before anything is replaced: a private phrase in any file stops the export
-        if p.suffix in (".md", ".json", ".jsonl") and (hits := private_hits(p.read_text(encoding="utf-8", errors="replace"))):
+        if p.suffix in (".md", ".json", ".jsonl") and (hits := private_hits_file(p)):
             raise ValueError(f"[published] {p.name} looks private ({hits}); fix it in the run folder, never in published/")
     validate_claim_inputs(run_dir)
     found = resolve_links(run_dir, manifest, previous, resolver)
@@ -283,7 +283,7 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
             written.append(themes.FILE)
         for p in stage.iterdir():
             if p.is_file() and p.suffix in (".md", ".json", ".jsonl"):
-                if hits := private_hits(p.read_text(encoding="utf-8", errors="replace")):
+                if hits := private_hits_file(p):
                     raise ValueError(f"[published] {p.name} looks private ({hits}); fix it before export")
         if dest.exists():
             shutil.rmtree(dest)

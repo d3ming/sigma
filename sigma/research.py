@@ -47,7 +47,7 @@ def load(root: Path | None = None) -> list[dict]:
         if errors:
             raise ValueError(f"{p.name}: {errors[0].message}")
         text = " ".join(str(item[k]) for k in ("title", "summary", "body"))
-        if PRIVATE.search(text) or OWNERSHIP.search(text) or OUT_OF_SCOPE.search(text) or private_hits(text):
+        if PRIVATE.search(text) or OWNERSHIP.search(text) or OUT_OF_SCOPE.search(text) or private_hits(item):
             raise ValueError(f"{p.name}: private or fund-related text is not publishable")
         date.fromisoformat(item["date"])
         out.append({"slug": slug, **item})

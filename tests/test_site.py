@@ -573,12 +573,15 @@ def test_research_posts_are_allowlisted_safe_and_fail_before_replacing_site(tmp_
     key_markers = ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY", "ENCRYPTED PRIVATE KEY", "DSA PRIVATE KEY")
     blocked = ["Fair value estimate.", "Internal system prompt.", "BLOB_READ_WRITE_TOKEN in private notes.",
                "VERCEL_BLOB_RW_store123_secret123", "sk_test_0123456789abcdef", "I own 1200 shares of NVDA."]
+    blocked.extend(("our\nportfolio: NVDA 25%", "our\tportfolio: NVDA 25%",
+                    '{"DATABASE_PASSWORD": "synthetic-example-123"}'))
     blocked.extend(f"-----BEGIN {marker}-----\nsynthetic placeholder\n-----END {marker}-----" for marker in key_markers)
     for text in blocked:
         post["body"] = text
         (posts_dir / "agent-workflows.json").write_text(json.dumps(post))
-        with pytest.raises(ValueError, match="not publishable"):
+        with pytest.raises(ValueError, match="not publishable") as exc:
             site.build(tmp_path / "published", out)
+        assert "DATABASE_PASSWORD" not in str(exc.value) and "synthetic-example-123" not in str(exc.value)
         assert (out / "index.html").read_text() == "previous valid site"
 
 

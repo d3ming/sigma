@@ -430,7 +430,7 @@ def merge(run: str | None, x: str | None = None, published: Path = PUBLISHED) ->
         rows, probs = check_output(data, {it["key"]: it for it in src}, us)
         problems += [f"{f.name}: {p}" for p in probs]
         new += rows
-    if hits := private_hits(json.dumps(new, ensure_ascii=False)):
+    if hits := private_hits(new):
         problems.append(f"the reasons look private: {hits}")
     if problems:
         raise StanceError("\n".join(problems[:40]))

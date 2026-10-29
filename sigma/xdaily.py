@@ -562,7 +562,7 @@ def publish_cmd(args) -> None:
     from .ranked import private_hits
 
     public = public_edition(args.date, ed)
-    if hits := private_hits(json.dumps(public, ensure_ascii=False)):
+    if hits := private_hits(public):
         raise SystemExit(f"[x] the edition looks private ({hits}); rewrite those sentences")
     out = edition_path(Path(args.published), args.date)
     out.parent.mkdir(parents=True, exist_ok=True)

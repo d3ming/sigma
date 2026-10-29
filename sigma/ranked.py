@@ -21,15 +21,61 @@ SECRET_VALUE = re.compile(r"\bvercel_blob_rw_[a-z0-9_-]{8,}\b|"
                           r"\b(?:sk|rk)_(?:test|live|proj|ant|service_account)_[a-z0-9_-]{8,}\b|"
                           r"\bsk-(?:proj|live|ant)-[a-z0-9_-]{8,}\b|"
                           r"\bgh[pousr]_[a-z0-9]{20,}\b|\bgithub_pat_[a-z0-9_]{20,}\b|\bAKIA[0-9A-Z]{16}\b|"
-                          r"\b[a-z0-9_]*(?:API_KEY|ACCESS_TOKEN|SECRET|PASSWORD|CREDENTIAL|BLOB_RW_TOKEN)[a-z0-9_]*\s*[:=]\s*['\"]?[a-z0-9_./+=-]{8,}", re.I)
+                          r"['\"]?\b[a-z0-9_]*(?:API_KEY|ACCESS_TOKEN|SECRET|PASSWORD|CREDENTIAL|BLOB_RW_TOKEN)[a-z0-9_]*['\"]?\s*[:=]\s*['\"]?[a-z0-9_./+=-]{8,}", re.I)
 
 
-def private_hits(text: str) -> list[str]:
+def private_hits(value) -> list[str]:
     """Private text matches and redacted credential markers for publication errors."""
-    hits = [m.group(0) for m in PRIVATE.finditer(text)][:5]
-    if PEM_PRIVATE_KEY.search(text) or SECRET_VALUE.search(text):
+    texts = []
+
+    def visit(item):
+        if isinstance(item, dict):
+            for key, child in item.items():
+                key = str(key)
+                if isinstance(child, (str, int, float, bool)) or child is None:
+                    texts.append(f"{key}: {child}")
+                visit(child)
+        elif isinstance(item, (list, tuple)):
+            for child in item:
+                visit(child)
+        elif isinstance(item, str):
+            texts.append(item)
+
+    visit(value)
+    hits = []
+    credentials = False
+    for text in texts:
+        hits.extend(m.group(0) for m in PRIVATE.finditer(text))
+        credentials = credentials or bool(PEM_PRIVATE_KEY.search(text) or SECRET_VALUE.search(text))
+        if len(hits) >= 5:
+            hits = hits[:5]
+    hits = list(dict.fromkeys(hits))[:5]
+    if credentials:
         hits.append("credential material")
     return hits
+
+
+def private_hits_file(path: str | Path) -> list[str]:
+    path = Path(path)
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix == ".md":
+        return private_hits(text)
+    if path.suffix == ".json":
+        try:
+            return private_hits(json.loads(text))
+        except ValueError:
+            return private_hits(text)
+    if path.suffix == ".jsonl":
+        hits = []
+        for line in text.split("\n"):
+            if not line:
+                continue
+            try:
+                hits.extend(private_hits(json.loads(line)))
+            except ValueError:
+                hits.extend(private_hits(line))
+        return hits[:6]
+    return private_hits(text)
 
 
 class RankedError(ValueError):
@@ -65,7 +111,7 @@ def validate(data: dict, ranking: bool = True) -> list[str]:
     for word in FORBIDDEN:
         if f'"{word}' in blob:
             raise RankedError(f"output must not contain holdings data ({word!r})")
-    if hits := private_hits(json.dumps(data, ensure_ascii=False)):
+    if hits := private_hits(data):
         raise RankedError(f"output must not contain private text: {hits}")
     warnings = []
     scores = sorted(e["score"] for e in eps)
