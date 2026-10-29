@@ -183,13 +183,27 @@ else
   git -C "$SIGMA" archive "$SOURCE_SHA" | tar -x -C "$SOURCE"
   mkdir -p "$SOURCE/.vercel"
   [[ ! -f "$SIGMA/.vercel/project.json" ]] || cp "$SIGMA/.vercel/project.json" "$SOURCE/.vercel/project.json"
+  BUILD_DATA_ROOT="$DATA_ROOT"
+  if [[ $MODE == --preflight ]]; then
+    SNAPSHOT_PARENT="${SIGMA_PUBLICATION_DATA_SNAPSHOT_ROOT:-${TMPDIR:-/tmp}}"
+    mkdir -p "$SNAPSHOT_PARENT"
+    BUILD_DATA_ROOT=$(mktemp -d "$SNAPSHOT_PARENT/sigma-publication-data.XXXXXX")
+    (cd "$SOURCE" && SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH=. "$PYTHON" - "$DATA_ROOT" "$BUILD_DATA_ROOT" <<'PY'
+import sys
+from sigma.published import freeze_publication_inputs
+
+freeze_publication_inputs(sys.argv[1], sys.argv[2])
+print("[site] source-grounded publication inputs accepted")
+PY
+    )
+  fi
   if [[ -z $BASE_URL ]]; then
-    BASE_URL=$(cd "$SOURCE" && SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH=. "$PYTHON" -m sigma.site_config) \
+    BASE_URL=$(cd "$SOURCE" && SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" PYTHONPATH=. "$PYTHON" -m sigma.site_config) \
       || { echo "[site] could not resolve the configured base URL from staged source" >&2; exit 1; }
   fi
   OUTPUT="$SOURCE/.vercel/output"
   PYTHON_PATH=${PYTHON:h}
-  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$DATA_ROOT" SIGMA_BASE_URL="$BASE_URL" vercel build --prod) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
+  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_X_DIR="$BUILD_DATA_ROOT/x" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" SIGMA_BASE_URL="$BASE_URL" vercel build --prod) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
     :
   else
     rc=$?

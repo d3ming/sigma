@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import tempfile
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .paths import data_root
 
@@ -143,6 +146,45 @@ def _read_claims(f: Path) -> list[dict]:
     return [json.loads(line) for line in f.read_text().split("\n") if line.strip()]
 
 
+def _export_claims(run_dir: Path, run_name: str, found: dict) -> list[dict]:
+    from . import library
+
+    with tempfile.TemporaryDirectory(prefix="sigma-publication-check-") as temp:
+        db = Path(temp) / "library.sqlite"
+        library.ingest_run(run_dir, db=db, transcripts=False, include_reused_claims=True)
+        rows = []
+        for row in library.query_claims(db=db, limit=0):
+            row.pop("transcript_path", None)
+            row["run"] = run_name
+            youtube = found.get(row.get("episode_id"), {}).get("youtube_url")
+            if youtube and not row.get("youtube_url"):
+                row["youtube_url"], row["link"] = youtube, library.ts_link(youtube, row.get("timestamp"))
+            rows.append(row)
+    return rows
+
+
+def _valid_cached_link(kind: str, url: str, spotify_kind: str | None = None) -> bool:
+    if not isinstance(url, str):
+        return False
+    try:
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or parsed.username or parsed.password or parsed.port:
+            return False
+    except ValueError:
+        return False
+    if kind == "youtube_url":
+        from .links import yt_id
+
+        return parsed.hostname in {"www.youtube.com", "youtube.com", "youtu.be"} and yt_id(url) is not None
+    if kind == "apple_url":
+        return parsed.hostname == "podcasts.apple.com" and "/podcast/" in parsed.path and "/id" in parsed.path
+    if kind == "spotify_url":
+        expected = "show" if spotify_kind == "show" else "episode"
+        return parsed.hostname == "open.spotify.com" and bool(
+            re.fullmatch(rf"/(?:embed/)?{expected}/[A-Za-z0-9]{{22}}", parsed.path))
+    return False
+
+
 def validate_claim_inputs(run_dir: str | Path) -> None:
     """Refuse to publish claims that have not passed their schema and source-grounding checks."""
     from . import ranked, report
@@ -168,6 +210,240 @@ def validate_claim_inputs(run_dir: str | Path) -> None:
             problems = report.verify("report", data, run_dir) + report.warn("report", data, run_dir)
             if problems:
                 raise ValueError("[published] report.json failed claim grounding:\n" + "\n".join(problems[:10]))
+
+
+def validate_publication_inputs(published_root: str | Path, runs_root: str | Path) -> None:
+    from . import links
+
+    published_root, runs_root = Path(published_root).resolve(), Path(runs_root).resolve()
+    claim_files = ("ranked.json", "scores.json", "scores-influencer.json", "report.json")
+    public_fields = set(EPISODE_KEYS) | set(LINK_KEYS)
+    for public_run in sorted(p for p in published_root.iterdir() if p.is_dir()):
+        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files):
+            continue
+        source_run = runs_root / public_run.name
+        if source_run.is_symlink() or not source_run.is_dir() or source_run.resolve().parent != runs_root:
+            raise ValueError(f"[published] source run missing for {public_run.name}")
+        manifest_path = source_run / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(f"[published] source manifest missing for {public_run.name}")
+        for filename in claim_files:
+            public_file, source_file = public_run / filename, source_run / filename
+            if public_file.is_file() != source_file.is_file():
+                raise ValueError(f"[published] {filename} differs from source run {public_run.name}")
+            if public_file.is_file() and public_file.read_bytes() != source_file.read_bytes():
+                raise ValueError(f"[published] {filename} differs from source run {public_run.name}")
+        try:
+            validate_claim_inputs(source_run)
+        except (ValueError, OSError, json.JSONDecodeError) as exc:
+            raise ValueError(f"[published] source claim grounding failed for {public_run.name}") from exc
+        manifest = json.loads(manifest_path.read_text())
+        episodes_file = public_run / "episodes.json"
+        if not episodes_file.is_file():
+            raise ValueError(f"[published] episodes.json missing for {public_run.name}")
+        actual_episodes = json.loads(episodes_file.read_text())
+        if not isinstance(actual_episodes, list):
+            raise ValueError(f"[published] episodes.json differs from source run {public_run.name}")
+        manifest_episodes = {e.get("episode_id"): e for e in manifest.get("episodes", []) if isinstance(e, dict)}
+        found = {}
+        for row in actual_episodes:
+            if not isinstance(row, dict) or set(row) - public_fields or not row.get("episode_id"):
+                raise ValueError(f"[published] episodes.json has unsupported fields for {public_run.name}")
+            episode_id = row["episode_id"]
+            source_episode = manifest_episodes.get(episode_id)
+            if source_episode is None:
+                raise ValueError(f"[published] episodes.json differs from source run {public_run.name}")
+            cached = {key: row[key] for key in LINK_KEYS if key in row}
+            spotify_kind = cached.get("spotify_kind")
+            if spotify_kind is not None and (spotify_kind not in {"show", "episode"} or not cached.get("spotify_url")):
+                raise ValueError(f"[published] episodes.json has an invalid link cache for {public_run.name}")
+            for key in ("youtube_url", "apple_url", "spotify_url"):
+                if key in cached and not _valid_cached_link(key, cached[key], spotify_kind):
+                    raise ValueError(f"[published] episodes.json has an invalid link cache for {public_run.name}")
+            if source_episode.get("youtube_id") and cached.get("youtube_url") and \
+                    links.yt_id(cached["youtube_url"]) != source_episode["youtube_id"]:
+                raise ValueError(f"[published] episodes.json has an invalid link cache for {public_run.name}")
+            found[episode_id] = cached
+        if actual_episodes != episodes(manifest, found):
+            raise ValueError(f"[published] episodes.json differs from source run {public_run.name}")
+        claims_file = public_run / "claims.jsonl"
+        if not claims_file.is_file():
+            raise ValueError(f"[published] claims.jsonl missing for {public_run.name}")
+        actual = _read_claims(claims_file)
+        expected = _export_claims(source_run, public_run.name, found)
+        if actual != expected:
+            raise ValueError(f"[published] claims.jsonl differs from validated source run {public_run.name}")
+
+
+def validate_publication_privacy(published_root: str | Path) -> None:
+    from .ranked import private_hits_file
+
+    root = Path(published_root)
+    for path in sorted(p for p in root.rglob("*") if p.is_file() and p.suffix in {".json", ".jsonl", ".md"}):
+        if private_hits_file(path):
+            raise ValueError(f"[published] public file looks private: {path.relative_to(root)}")
+
+
+def _copy_x_day(source: Path, target: Path, day: str, edition: bool) -> None:
+    scan = source / "scan" / day
+    for name in ("manifest.json", "posts.jsonl", "quoted.jsonl"):
+        path = scan / name
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"[published] X source missing for {day}")
+        (target / "scan" / day).mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target / "scan" / day / name)
+    if edition:
+        path = source / "days" / day / "edition.json"
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"[published] X edition source missing for {day}")
+        (target / "days" / day).mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target / "days" / day / path.name)
+
+
+def validate_publication_outputs(published_root: str | Path, x_root: str | Path) -> None:
+    published_root, x_root = Path(published_root), Path(x_root)
+    scans = set()
+    signal_files = sorted((published_root / "signals").glob("????-??-??.json"))
+    if signal_files:
+        from . import signals_index
+    for f in signal_files:
+        day = f.stem
+        try:
+            actual = json.loads(f.read_text(encoding="utf-8"))
+            generated = datetime.fromisoformat(actual["generated_at"])
+            expected = signals_index.build(day, published_root, now=generated)
+        except (KeyError, OSError, ValueError) as exc:
+            raise ValueError(f"[published] Signals source check failed for {day}") from exc
+        if problems := signals_index.check(actual, published_root):
+            raise ValueError(f"[published] Signals validation failed for {day}: {problems[0]}")
+        if actual != expected:
+            raise ValueError(f"[published] Signals differ from source labels for {day}")
+        if any(row.get("source_kind") == "x" for row in actual.get("signals", [])):
+            scans.add(day)
+
+    editions = published_root / "x" / "editions"
+    if editions.is_dir():
+        from . import xdaily
+
+        for f in sorted(editions.glob("*.json")):
+            day = f.stem
+            try:
+                actual = json.loads(f.read_text(encoding="utf-8"))
+                source = json.loads((x_root / "days" / day / "edition.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise ValueError(f"[published] X edition source check failed for {day}") from exc
+            errors, _ = xdaily.edition_problems(day, source)
+            if errors:
+                raise ValueError(f"[published] X edition failed source grounding for {day}: {errors[0]}")
+            expected = xdaily.public_edition(day, source)
+            if actual != expected:
+                raise ValueError(f"[published] X edition differs from source for {day}")
+            scans.add(day)
+
+    if scans:
+        from . import stance, xdaily
+
+    for day in sorted(scans):
+        scan = x_root / "scan" / day
+        posts = {str(p.get("id")): p for p in xdaily.read_jsonl(scan / "posts.jsonl")}
+        rows = stance.read_jsonl(published_root / "x" / "stances" / f"{day}.jsonl")
+        for row in rows:
+            if not str(row.get("key", "")).startswith("p-"):
+                continue
+            post_id = str(row.get("id") or "")
+            post = posts.get(post_id)
+            if (row.get("key") != stance.post_key(post_id) or post is None or
+                    row.get("handle") != post.get("handle") or row.get("date") != post.get("created_at", "")[:10]):
+                raise ValueError(f"[published] X stance source mismatch for {day}")
+
+
+def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) -> None:
+    data_root, snapshot_root = Path(data_root).resolve(), Path(snapshot_root).resolve()
+    (snapshot_root / "published").mkdir(parents=True, exist_ok=True)
+    for name in ("published", "creators.json", "entities.json", "people.yaml", "sources.yaml", "show_links.yaml",
+                 "x-accounts.json", "research"):
+        source = data_root / name
+        if source.is_symlink() or (source.is_dir() and any(path.is_symlink() for path in source.rglob("*"))):
+            raise ValueError(f"[published] symlink in publication input {name}")
+        if source.is_dir():
+            shutil.copytree(source, snapshot_root / name, dirs_exist_ok=True)
+        elif source.is_file():
+            (snapshot_root / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, snapshot_root / name)
+    site_config = Path(os.environ.get("SIGMA_SITE_CONFIG") or data_root / "site.json").expanduser().resolve()
+    if site_config.is_file():
+        shutil.copy2(site_config, snapshot_root / "site.json")
+    x_source = Path(os.environ.get("SIGMA_X_DIR") or data_root / "x").expanduser().resolve()
+    validate_publication_privacy(snapshot_root / "published")
+    runs = data_root / "runs"
+    for public_run in sorted(p for p in (snapshot_root / "published").iterdir() if p.is_dir()):
+        claim_files = ("ranked.json", "scores.json", "scores-influencer.json", "report.json")
+        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files):
+            continue
+        source_run = runs / public_run.name
+        if source_run.is_symlink() or not source_run.is_dir() or source_run.resolve().parent != runs.resolve():
+            raise ValueError(f"[published] source run missing for {public_run.name}")
+        dest_run = snapshot_root / "runs" / public_run.name
+        dest_run.mkdir(parents=True, exist_ok=True)
+        manifest = source_run / "manifest.json"
+        if manifest.is_symlink() or not manifest.is_file():
+            raise ValueError(f"[published] source manifest missing for {public_run.name}")
+        shutil.copy2(manifest, dest_run / manifest.name)
+        for filename in claim_files:
+            if (public_run / filename).is_file():
+                source = source_run / filename
+                if source.is_symlink() or not source.is_file():
+                    raise ValueError(f"[published] {filename} missing from source run {public_run.name}")
+                shutil.copy2(source, dest_run / filename)
+        data = json.loads(manifest.read_text())
+        cited_episodes = set()
+        for filename in claim_files:
+            source = source_run / filename
+            if not source.is_file():
+                continue
+            for episode in json.loads(source.read_text()).get("episodes", []):
+                if (episode.get("claims") or episode.get("signal") or
+                        any(section.get("claims") for section in episode.get("sections", []))):
+                    if episode.get("episode_id"):
+                        cited_episodes.add(episode["episode_id"])
+        for episode in data.get("episodes", []):
+            if episode.get("episode_id") not in cited_episodes:
+                continue
+            filename = episode.get("file")
+            if not filename:
+                continue
+            source = (source_run / filename).resolve()
+            if source.parent != source_run.resolve() and source_run.resolve() not in source.parents:
+                raise ValueError(f"[published] transcript path escapes source run {public_run.name}")
+            if source.is_file():
+                target = dest_run / source.relative_to(source_run.resolve())
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target)
+    validate_publication_inputs(snapshot_root / "published", snapshot_root / "runs")
+    edition_dir = snapshot_root / "published" / "x" / "editions"
+    edition_days = {p.stem for p in edition_dir.glob("*.json")} if edition_dir.is_dir() else set()
+    signal_days = {p.stem for p in (snapshot_root / "published" / "signals").glob("????-??-??.json")}
+    x_signal_days = set()
+    for path in (snapshot_root / "published" / "signals").glob("????-??-??.json"):
+        day = json.loads(path.read_text(encoding="utf-8"))
+        if any(row.get("source_kind") == "x" for row in day.get("signals", [])):
+            x_signal_days.add(path.stem)
+    x_days = x_signal_days | edition_days
+    if x_days and not x_source.is_dir():
+        raise ValueError("[published] X source root missing")
+    for day in sorted(x_days | {day for day in signal_days if (x_source / "scan" / day / "manifest.json").is_file()}):
+        _copy_x_day(x_source, snapshot_root / "x", day, day in edition_days)
+    previous = {key: os.environ.get(key) for key in ("SIGMA_DATA_ROOT", "SIGMA_X_DIR", "SIGMA_SITE_CONFIG")}
+    os.environ.update(SIGMA_DATA_ROOT=str(snapshot_root), SIGMA_X_DIR=str(snapshot_root / "x"),
+                      SIGMA_SITE_CONFIG=str(snapshot_root / "site.json"))
+    try:
+        validate_publication_outputs(snapshot_root / "published", snapshot_root / "x")
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 def restated_problems(rows: list[dict], where: str) -> list[str]:
@@ -222,7 +498,7 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
     episodes.json and claims.jsonl also carry per-episode listen links (see resolve_links for `resolver`).
     A run with a themes.json also gets the resolved themes.json (themes.py); `top` is the digest's top N that its
     evidence must sit in. An invalid themes.json raises ThemesError before anything is replaced."""
-    from . import library, themes
+    from . import themes
 
     run_dir = Path(run_dir).resolve()
     dest = Path(root or ROOT) / (name or run_dir.name)
@@ -245,18 +521,7 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
     found = resolve_links(run_dir, manifest, previous, resolver)
     youtube = {e["episode_id"]: u for e in episodes(manifest, found) if (u := e.get("youtube_url"))}
     resolved_themes = themes.export(run_dir, top=top, youtube_urls=youtube)
-    # the claims are made, and checked, before the folder is replaced: a refusal leaves the previous export as it was
-    with tempfile.TemporaryDirectory() as d:  # same claim shape as `library export` (schema/library-claim.schema.json)
-        db = Path(d) / "lib.sqlite"
-        library.ingest_run(run_dir, db=db, transcripts=False, include_reused_claims=True)
-        rows = []
-        for row in library.query_claims(db, limit=0):
-            row.pop("transcript_path", None)  # a local path means nothing to a cloud agent
-            row["run"] = dest.name
-            yt = found.get(row.get("episode_id"), {}).get("youtube_url")
-            if yt and not row.get("youtube_url"):  # a video found at export time: claim links open it at the moment
-                row["youtube_url"], row["link"] = yt, library.ts_link(yt, row.get("timestamp"))
-            rows.append(row)
+    rows = _export_claims(run_dir, dest.name, found)
     if problems := restated_problems(rows, f"published/{dest.name}"):  # the publish gate: ingest merges these, so this means a bug
         raise ValueError("[published] the same point is listed twice:\n" + "\n".join(problems[:10]))
     stances = dest / STANCES  # labels (stance.py) are made after the export and outlive it: a re-export keeps them

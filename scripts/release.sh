@@ -336,6 +336,8 @@ def apply(plan_id):
 
 def help_text():
     print("usage: make publish [APPROVE=<plan-id>]")
+    print("Run from clean main matching origin/main; the version tag comes from pyproject.toml.")
+    print("SIGMA_DATA_ROOT supplies private inputs; each published run needs its source under runs/<run>.")
     print("make publish prepares a version tag, release notes, and frozen production build without pushing or uploading.")
     print("After reviewing the saved plan and notes, make publish APPROVE=<full-plan-id> pushes the immutable tag and uploads that exact build.")
 
