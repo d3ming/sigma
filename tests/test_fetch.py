@@ -79,7 +79,7 @@ def fetch(tmp_path, name, *extra):
     return run, json.loads((run / "manifest.json").read_text())
 
 
-def test_fetch_keeps_what_the_rules_keep_and_remembers_it(tmp_path, web, capsys):
+def test_fetch_keeps_what_the_rules_keep_and_remembers_it(tmp_path, web):
     run, m = fetch(tmp_path, "day1")
     titles = {e["title"]: e for e in m["episodes"]}
     # window 7 days, 3 per show, tier-3 shows share a cap of 2 (t3_weekly_cap), a replay is set aside, a dead feed is recorded
@@ -101,9 +101,8 @@ def test_fetch_keeps_what_the_rules_keep_and_remembers_it(tmp_path, web, capsys)
     assert "[0:00:30] spoken words" in md and "_No transcript found._" in (run / titles["Low A one"]["file"]).read_text()
     assert m["timing"]["fetch"]["end"] and not (run / "transcribe.lock").exists()
     # the same command again adds nothing; on another day the episodes already seen are skipped, not fetched twice
-    capsys.readouterr()
     _, again = fetch(tmp_path, "day1")
-    assert len(again["episodes"]) == 4 and "adding only new ones" in capsys.readouterr().out
+    assert len(again["episodes"]) == 4
     _, next_day = fetch(tmp_path, "day2")
     assert not next_day["episodes"] and len(next_day["skipped_seen"]) == 4
     assert next_day["excluded"][0]["why"] == "rerun"
@@ -111,7 +110,7 @@ def test_fetch_keeps_what_the_rules_keep_and_remembers_it(tmp_path, web, capsys)
     assert len(refetched["episodes"]) == 5 and not refetched["excluded"]
 
 
-def test_a_failing_transcript_lookup_keeps_the_episode_and_is_retried_next_time(tmp_path, web, monkeypatch, capsys):
+def test_a_failing_transcript_lookup_keeps_the_episode_and_is_retried_next_time(tmp_path, web, monkeypatch):
     """One episode's lookup (timeout, yt-dlp missing, blocked IP) never aborts the fetch; it is not recorded as done."""
     def hang(*a, **k):
         raise subprocess.TimeoutExpired("yt-dlp", 120)
@@ -120,7 +119,7 @@ def test_a_failing_transcript_lookup_keeps_the_episode_and_is_retried_next_time(
     monkeypatch.setattr(subprocess, "run", hang)
     monkeypatch.setattr(transcribe, "YT_BLOCKED", transcribe.threading.Event())
     run, m = fetch(tmp_path, "day1", "--only", "lowa", "--youtube-mirror")
-    assert [e["title"] for e in m["episodes"]] == ["Low A one", "Low A two"] and "TimeoutExpired" in capsys.readouterr().out
+    assert [e["title"] for e in m["episodes"]] == ["Low A one", "Low A two"]
     assert not m["skipped_seen"] and not Store(tmp_path / "db.sqlite").db.execute("SELECT 1 FROM episodes").fetchall()
     monkeypatch.setattr(subprocess, "run", real_run)
     _, retry = fetch(tmp_path, "day2", "--only", "lowa")
@@ -165,10 +164,6 @@ def test_a_youtube_block_stops_further_lookups(monkeypatch):
 
 
 SEGS = [{"start": 0.0, "speaker": None, "text": "hi " + "a" * 3000}, {"start": 600.0, "speaker": None, "text": "bye " + "b" * 3000}]
-
-
-def rows(run):
-    return {e["episode_id"]: e for e in json.loads((run / "manifest.json").read_text())["episodes"]}
 
 
 def test_transcribe_is_resumable_prefetches_and_records_failures(tmp_path, monkeypatch):

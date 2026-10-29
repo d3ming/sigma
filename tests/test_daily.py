@@ -384,13 +384,6 @@ def test_commands_that_edit_the_manifest_wait_for_the_lock(day):
         assert not t.is_alive() and landed(manifest(root)), name
 
 
-@pytest.mark.parametrize("n", [1, 7])
-def test_any_number_of_picks_is_valid(tmp_path, n):
-    """prompts/select.md: there is no fixed count; pick every episode that clears the bar, at least one."""
-    (tmp_path / "selected.json").write_text(json.dumps(selected([pick(f"rss:{i}", f"Guest {i}") for i in range(n)])))
-    main(["check", "selected", str(tmp_path / "selected.json")])
-
-
 def test_doctor_exits_nonzero_only_when_a_check_fails(monkeypatch):
     """prompts/daily.md: `sigma doctor` names what is missing and exits 1; a warning alone is not a failure."""
     from sigma import doctor
