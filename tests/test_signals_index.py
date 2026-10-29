@@ -5,7 +5,8 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     """stated-rule (PRODUCT-DIRECTION: the index never waits, it writes complete:false and names the source); outside-value
     for the post time: an X post id carries its time (snowflake, ms since 2010-11-04 01:42:54.657 UTC), and the scan
     fixture of test_xdaily gives this id the minute 13:08Z on 2026-10-26. Failure-seen: publication preflight rejected
-    Pacific stance dates as UTC dates; 03:10 UTC on Oct 27 is 20:10 PDT on Oct 26, worked by hand."""
+    Pacific stance dates as UTC dates; 03:10 UTC on Oct 27 is 20:10 PDT on Oct 26, worked by hand. A standalone X
+    stance file also reached Sentiment/creator views without its scan in the frozen publication snapshot."""
     import json
     from datetime import datetime
 
@@ -33,6 +34,25 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     row = {"key": f"p-{post_id}", "id": post_id, "handle": "reader", "date": day,
            "labels": [{"ticker": "NVDA", "stance": 2, "reason": "Expects stronger demand"}]}
     labels.write_text(json.dumps(row) + "\n")
+    standalone_day, standalone_event_day = "2026-10-27", "2026-10-26"
+    standalone_scan = data / "x" / "scan" / standalone_day
+    standalone_scan.mkdir(parents=True)
+    standalone_id = "2115000000000000000"
+    standalone_post = {**post, "id": standalone_id, "created_at": "2026-10-27T03:10:00Z"}
+    standalone_child_id, unrelated_id = "2115000001000000000", "2115000002000000000"
+    standalone_child = {**standalone_post, "id": standalone_child_id, "created_at": "2026-10-27T03:11:00Z",
+                        "in_reply_to_id": standalone_id, "in_reply_to_handle": "reader", "conversation_id": "thread-1"}
+    standalone_post["conversation_id"] = "thread-1"
+    unrelated_post = {**standalone_post, "id": unrelated_id, "handle": "other", "conversation_id": "other-thread"}
+    (standalone_scan / "manifest.json").write_text("{}")
+    standalone_posts = [standalone_post, standalone_child, unrelated_post]
+    (standalone_scan / "posts.jsonl").write_text("".join(json.dumps(p) + "\n" for p in standalone_posts))
+    (standalone_scan / "quoted.jsonl").write_text("")
+    standalone = {"key": f"p-{standalone_id}", "id": standalone_id, "handle": "reader", "date": standalone_event_day,
+                  "thread": [standalone_child_id],
+                  "labels": [{"ticker": "NVDA", "stance": 1, "reason": "Expects continued demand"}]}
+    standalone_file = pub / "x" / "stances" / f"{standalone_day}.jsonl"
+    standalone_file.write_text(json.dumps(standalone) + "\n")
     monkeypatch.setenv("SIGMA_DATA_ROOT", str(data))
     monkeypatch.setenv("SIGMA_X_DIR", str(data / "x"))
     monkeypatch.setattr(signals_index, "DATA", data)
@@ -45,9 +65,35 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     accepted = (frozen / "published" / "signals" / day_file.name).read_bytes()
     assert accepted == day_file.read_bytes()
     assert json.loads(accepted)["signals"][0]["date"] == "2026-10-26"
-    row["date"] = "2026-10-27"
-    labels.write_text(json.dumps(row) + "\n")
-    day_file.write_text(json.dumps(signals_index.build(day, pub, now=now)))
+    assert (frozen / "x" / "scan" / standalone_day / "posts.jsonl").read_bytes() == (standalone_scan / "posts.jsonl").read_bytes()
+    assert standalone_day != standalone["date"]
+
+    standalone_bytes = standalone_file.read_bytes()
+    standalone_file.write_text(json.dumps({**standalone, "thread": [standalone_child_id, unrelated_id]}) + "\n")
     with pytest.raises(ValueError, match="X stance source mismatch"):
-        published.freeze_publication_inputs(data, tmp_path / "refused")
+        published.freeze_publication_inputs(data, tmp_path / "bad-thread")
+    standalone_file.write_bytes(standalone_bytes)
+
+    bundled_file = pub / "x" / "stances" / "bundle.jsonl"
+    bundled_file.write_text(json.dumps(standalone) + "\n")
+    with pytest.raises(ValueError, match="X stance has invalid source filename"):
+        published.freeze_publication_inputs(data, tmp_path / "invalid-filename")
+    bundled_file.unlink()
+
+    missing_day = "2026-10-28"
+    missing = {**standalone, "key": "p-2115080000000000000", "id": "2115080000000000000", "date": standalone_event_day}
+    missing_file = pub / "x" / "stances" / f"{missing_day}.jsonl"
+    missing_file.write_text(json.dumps(missing) + "\n")
+    with pytest.raises(ValueError, match=f"X source missing for {missing_day}"):
+        published.freeze_publication_inputs(data, tmp_path / "missing-source")
+    missing_file.unlink()
+
+    source_posts = (standalone_scan / "posts.jsonl").read_bytes()
+    tampered_post = {**standalone_post, "handle": "different"}
+    (standalone_scan / "posts.jsonl").write_text(json.dumps(tampered_post) + "\n")
+    with pytest.raises(ValueError, match="X stance source mismatch"):
+        published.freeze_publication_inputs(data, tmp_path / "bad-source")
+    assert (frozen / "x" / "scan" / standalone_day / "posts.jsonl").read_bytes() == source_posts
+    (standalone_scan / "posts.jsonl").write_bytes(source_posts)
+    assert (standalone_scan / "posts.jsonl").read_bytes() == source_posts
     assert (frozen / "published" / "signals" / day_file.name).read_bytes() == accepted

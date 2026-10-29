@@ -300,9 +300,47 @@ def _copy_x_day(source: Path, target: Path, day: str, edition: bool) -> None:
         shutil.copy2(path, target / "days" / day / path.name)
 
 
+def _publication_day(value: str) -> bool:
+    try:
+        return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", value)) and datetime.fromisoformat(value).date().isoformat() == value
+    except ValueError:
+        return False
+
+
+def _x_stance_source_rows(published_root: Path) -> tuple[set[str], set[str], list[tuple[str, dict]]]:
+    from . import stance
+
+    scan_days, sentence_days, source_rows = set(), set(), []
+    root = Path(published_root) / "x" / "stances"
+    if not root.is_dir():
+        return scan_days, sentence_days, source_rows
+    for path in sorted(root.glob("*.jsonl")):
+        if not _publication_day(path.stem):
+            raise ValueError(f"[published] X stance has invalid source filename {path.name}")
+        for row in stance.read_jsonl(path):
+            key = row.get("key")
+            if not isinstance(key, str) or not key:
+                raise ValueError(f"[published] X stance has no source key in {path.name}")
+            if key.startswith("p-"):
+                post_id, event_day = str(row.get("id") or ""), str(row.get("date") or "")
+                if key != stance.post_key(post_id) or not post_id.isdigit() or not _publication_day(event_day):
+                    raise ValueError(f"[published] X stance source fields are invalid in {path.name}")
+                scan_days.add(path.stem)
+                source_rows.append((path.stem, row))
+            elif key.startswith("x-"):
+                day = path.stem
+                sentence_days.add(day)
+                source_rows.append((day, row))
+            else:
+                raise ValueError(f"[published] unsupported X stance source key in {path.name}")
+    return scan_days, sentence_days, source_rows
+
+
 def validate_publication_outputs(published_root: str | Path, x_root: str | Path) -> None:
     published_root, x_root = Path(published_root), Path(x_root)
-    scans = set()
+    stance_days, sentence_days, stance_rows = _x_stance_source_rows(published_root)
+    scans = stance_days | sentence_days
+    sentence_sources = {}
     signal_files = sorted((published_root / "signals").glob("????-??-??.json"))
     if signal_files:
         from . import signals_index
@@ -338,24 +376,55 @@ def validate_publication_outputs(published_root: str | Path, x_root: str | Path)
             expected = xdaily.public_edition(day, source)
             if actual != expected:
                 raise ValueError(f"[published] X edition differs from source for {day}")
+            sentence_sources[day] = source
             scans.add(day)
 
     if scans:
         from . import board, stance, xdaily
 
-    for day in sorted(scans):
-        scan = x_root / "scan" / day
-        posts = {str(p.get("id")): p for p in xdaily.read_jsonl(scan / "posts.jsonl")}
-        rows = stance.read_jsonl(published_root / "x" / "stances" / f"{day}.jsonl")
-        for row in rows:
-            if not str(row.get("key", "")).startswith("p-"):
-                continue
-            post_id = str(row.get("id") or "")
-            post = posts.get(post_id)
-            if (row.get("key") != stance.post_key(post_id) or post is None or
-                    row.get("handle") != post.get("handle") or
-                    row.get("date") != stance._pacific_day(post.get("created_at"), board.pacific_tz())):
-                raise ValueError(f"[published] X stance source mismatch for {day}")
+    posts_by_day, thread_members_by_day = {}, {}
+    for day in sorted(stance_days):
+        posts = xdaily.read_jsonl(x_root / "scan" / day / "posts.jsonl")
+        posts_by_day[day] = {str(p.get("id")): p for p in posts}
+        roots = stance._thread_roots(posts)
+        members = {}
+        for post_id, root_id in roots.items():
+            if post_id != root_id:
+                members.setdefault(root_id, []).append(post_id)
+        for member_ids in members.values():
+            member_ids.sort(key=lambda post_id: (str(posts_by_day[day][post_id].get("created_at") or ""),
+                                                 len(post_id), post_id))
+        thread_members_by_day[day] = members
+    for day, row in stance_rows:
+        if not str(row.get("key", "")).startswith("p-"):
+            continue
+        post_id = str(row.get("id") or "")
+        post = posts_by_day[day].get(post_id)
+        thread = row.get("thread")
+        source_thread = thread_members_by_day[day].get(post_id, [])
+        thread_set = set(thread) if isinstance(thread, list) and all(isinstance(item, str) for item in thread) else set()
+        valid_thread = (
+            isinstance(thread, list) and bool(thread) and
+            all(isinstance(item, str) and item.isdigit() for item in thread) and
+            len(set(thread)) == len(thread) and
+            [item for item in source_thread if item in thread_set] == thread
+        ) if "thread" in row else True
+        if (row.get("key") != stance.post_key(post_id) or post is None or
+                row.get("handle") != post.get("handle") or
+                row.get("date") != stance._pacific_day(post.get("created_at"), board.pacific_tz()) or
+                not valid_thread):
+            raise ValueError(f"[published] X stance source mismatch for {day}")
+    if sentence_days:
+        from . import stance, tickers
+
+        for day in sorted(sentence_days):
+            source = sentence_sources.get(day)
+            if source is None:
+                raise ValueError(f"[published] X sentence stance source missing for {day}")
+            keys = {item["key"] for item in stance.x_items(source, tickers.load())}
+            for row_day, row in stance_rows:
+                if row_day == day and str(row.get("key", "")).startswith("x-") and row["key"] not in keys:
+                    raise ValueError(f"[published] X sentence stance source mismatch for {day}")
 
 
 def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) -> None:
@@ -423,13 +492,14 @@ def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) 
     validate_publication_inputs(snapshot_root / "published", snapshot_root / "runs")
     edition_dir = snapshot_root / "published" / "x" / "editions"
     edition_days = {p.stem for p in edition_dir.glob("*.json")} if edition_dir.is_dir() else set()
+    stance_days, sentence_days, _ = _x_stance_source_rows(snapshot_root / "published")
     signal_days = {p.stem for p in (snapshot_root / "published" / "signals").glob("????-??-??.json")}
     x_signal_days = set()
     for path in (snapshot_root / "published" / "signals").glob("????-??-??.json"):
         day = json.loads(path.read_text(encoding="utf-8"))
         if any(row.get("source_kind") == "x" for row in day.get("signals", [])):
             x_signal_days.add(path.stem)
-    x_days = x_signal_days | edition_days
+    x_days = x_signal_days | edition_days | stance_days | sentence_days
     if x_days and not x_source.is_dir():
         raise ValueError("[published] X source root missing")
     for day in sorted(x_days | {day for day in signal_days if (x_source / "scan" / day / "manifest.json").is_file()}):
