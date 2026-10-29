@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import json
 import re
 from pathlib import Path
@@ -82,6 +83,14 @@ class RankedError(ValueError):
     pass
 
 
+@functools.lru_cache(maxsize=None)
+def _validator(path: str):
+    schema = json.loads(Path(path).read_text())
+    cls = jsonschema.validators.validator_for(schema)
+    cls.check_schema(schema)
+    return cls(schema)
+
+
 def load(path: str | Path) -> dict:
     data = json.loads(Path(path).read_text())
     validate(data)
@@ -91,9 +100,8 @@ def load(path: str | Path) -> dict:
 def validate(data: dict, ranking: bool = True) -> list[str]:
     """Raises RankedError on schema or tier-rule violations; returns spread warnings. `ranking=False` is a run's
     scores.json: every episode it scored, so the tier-3 rules for a published ranking do not apply."""
-    schema = json.loads(SCHEMA_PATH.read_text())
     try:
-        jsonschema.validate(data, schema)
+        _validator(str(SCHEMA_PATH)).validate(data)
     except jsonschema.ValidationError as exc:
         where = "/".join(map(str, exc.absolute_path)) or "root"
         raise RankedError(f"schema: {where}: {exc.message}") from None

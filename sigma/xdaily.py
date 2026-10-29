@@ -7,6 +7,7 @@ is private, because it holds post text. Only ids, handles, cashtags and Sigma's 
 """
 from __future__ import annotations
 
+import functools
 import json
 import math
 import os
@@ -98,6 +99,16 @@ def accounts(path: Path | None = None) -> list[dict]:
 SCAN_SKILL = ROOT / "skills" / "x-scan" / "SKILL.md"
 
 
+@functools.lru_cache(maxsize=None)
+def _validator(path: str, definition: str | None = None):
+    schema = json.loads(Path(path).read_text(encoding="utf-8"))
+    if definition:
+        schema = {**schema["$defs"][definition], "$defs": schema["$defs"]}
+    cls = jsonschema.validators.validator_for(schema)
+    cls.check_schema(schema)
+    return cls(schema)
+
+
 def contract_version() -> int:
     """The scan contract's version: `contract_version:` in skills/x-scan/SKILL.md's front matter. A scanner copies it into
     its manifest; bump it when the scan format or rules change in a way the scanner must act on."""
@@ -116,11 +127,10 @@ def scan_problems(d: str, contract: bool = False) -> list[str]:
     if not (sd / "manifest.json").exists():
         hint = "" if os.environ.get("SIGMA_X_DIR") else "; set SIGMA_DATA_ROOT or SIGMA_X_DIR to the private X data directory"
         return [f"no manifest: {sd}/manifest.json (the scanner writes it last){hint}"]
-    schema = json.loads((SCHEMA / "x-scan.schema.json").read_text())
     out = []
     try:
         man = json.loads((sd / "manifest.json").read_text(encoding="utf-8"))
-        jsonschema.validate(man, {**schema["$defs"]["manifest"], "$defs": schema["$defs"]})
+        _validator(str(SCHEMA / "x-scan.schema.json"), "manifest").validate(man)
     except (ValueError, jsonschema.ValidationError) as e:
         return [f"manifest.json: {getattr(e, 'message', e)}"]
     if man["date"] != d:
@@ -138,7 +148,6 @@ def scan_problems(d: str, contract: bool = False) -> list[str]:
         accounts()  # a post by a handle that is no longer listed is not a problem: prep skips it (see prep_cmd)
     except ValueError as e:
         return [str(e)]
-    post = {**schema["$defs"]["post"], "$defs": schema["$defs"]}
     seen = set()
     for name in ("posts.jsonl", "quoted.jsonl"):
         if not (sd / name).exists():
@@ -146,7 +155,7 @@ def scan_problems(d: str, contract: bool = False) -> list[str]:
             continue
         for n, r in enumerate(read_jsonl(sd / name), 1):
             try:
-                jsonschema.validate(r, post)
+                _validator(str(SCHEMA / "x-scan.schema.json"), "post").validate(r)
             except jsonschema.ValidationError as e:
                 out.append(f"{name}:{n}: {e.message}")
                 continue
@@ -460,7 +469,7 @@ def edition_problems(d: str, ed: dict) -> tuple[list[str], list[str]]:
     """(errors, warnings) for an edition against its scan."""
     errs, warns = [], []
     try:
-        jsonschema.validate(ed, json.loads((SCHEMA / "x-edition.schema.json").read_text()))
+        _validator(str(SCHEMA / "x-edition.schema.json")).validate(ed)
     except jsonschema.ValidationError as e:
         return [f"schema: {e.message} at {'/'.join(map(str, e.path))}"], []
     if ed["date"] != d:
