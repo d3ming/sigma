@@ -326,14 +326,14 @@ MODE_BUTTON = ('<div class="mode" role="group" aria-label="Theme">'
 
 # Display names and routes of the sections. /tickers/ is the ticker board; /tags/ lists every ticker, person and company.
 PODCASTS_NAME, X_NAME = "Podcasts", "X"
+FEED_NAME = "Podcasts & YouTube"
 SOCIAL_NAME, SOCIAL_PATH, VIDEOS_NAME = "Social", "/social/", "YouTube"  # Social has two sides: YouTube creators at /social/ and X at /x/ (its own pages, unchanged)
 SENTIMENT_NAME, SENTIMENT_PATH = "Sentiment", "/sentiment/"  # the ticker board
 TICKERS_NAME = "Tickers"  # the list of every ticker with a page, a section of the Tags page; each ticker keeps /tickers/<SYM>.html
 TAGS_NAME, TAGS_PATH = "Tags", "/tags/"
 OLD_BOARD_PATHS = ("/board/", "/tickers/")  # the board's earlier routes: now redirects (noindex) to SENTIMENT_PATH
 # The header: three sections, then a menu for the rest. Each row is (path, display name, key a page passes as `depth_nav`).
-NAV_PRIMARY = (("/", PODCASTS_NAME, "podcasts"), (SOCIAL_PATH, SOCIAL_NAME, "social"), (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"))
-NAV_SIGNALS = (NAV_PRIMARY[0], ("/signals/", "Signals", "signals"), *NAV_PRIMARY[1:])  # the nav once there is Signals data
+NAV_PRIMARY = (("/", FEED_NAME, "podcasts"), ("/x/", X_NAME, "social"))
 NAV_MENU = ((TAGS_PATH, TAGS_NAME, "tags"), ("/themes/", "Themes", "themes"), ("/shows/", "Shows", "shows"), ("/find/", "Find", "find"))
 NAV_RESEARCH = ("/research/", "Research", "research")  # added to the menu with the Signals pages
 MENU_LABEL = "Menu"
@@ -747,7 +747,7 @@ SORTS = (("rating", "Rating"), ("newest", "Newest"))
 SORT_JS = """<script>(()=>{const g=document.querySelector('.sort'),ol=g&&document.getElementById(g.dataset.list);if(!ol)return;
 const K='sigma-sort-'+(g.dataset.key||g.dataset.list),bs=[...g.querySelectorAll('button')],rows=[...ol.children];rows.forEach((r,i)=>r.dataset.i=i);
 function paint(s,save){bs.forEach(b=>b.setAttribute('aria-pressed',b.dataset.s===s));
-rows.slice().sort((a,b)=>(s==='rating'?b.dataset.s-a.dataset.s:a.dataset.d<b.dataset.d?1:a.dataset.d>b.dataset.d?-1:0)||a.dataset.i-b.dataset.i).forEach(r=>ol.append(r));
+rows.slice().sort((a,b)=>(s==='rating'?b.dataset.s-a.dataset.s:(a.dataset.published||a.dataset.d)<(b.dataset.published||b.dataset.d)?1:(a.dataset.published||a.dataset.d)>(b.dataset.published||b.dataset.d)?-1:0)||a.dataset.i-b.dataset.i).forEach(r=>ol.append(r));
 if(save)try{localStorage.setItem(K,s)}catch(e){}}
 g._paint=paint;bs.forEach(b=>b.addEventListener('click',()=>paint(b.dataset.s,1)));let s=g.dataset.default;try{const v=localStorage.getItem(K);if(v==='rating'||v==='newest')s=v}catch(e){}
 g.hidden=false;paint(s)})()</script>"""
@@ -770,7 +770,6 @@ rows.forEach(r=>{const on=(r.dataset.w||r.dataset.d)>=cut&&(!l||(' '+r.dataset.l
 bs.forEach(b=>b.setAttribute('aria-pressed',b.dataset.w===d));if(save)try{localStorage.setItem('sigma-window-2',d)}catch(e){}}
 bs.forEach(b=>b.addEventListener('click',()=>show(b.dataset.w,1)));let w='7';try{w=localStorage.getItem('sigma-window-2')||w}catch(e){}
 document.addEventListener('sigma-lens',()=>show(cur));show(w);
-const st=document.getElementById('top-status');if(st){try{if(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles'}).format(new Date())===st.dataset.date)st.querySelector('.fresh-t').textContent='Updated today'}catch(e){}}
 const hm=location.hash.match(/^#d-(\\d{4}-\\d{2}-\\d{2})$/);if(hm){const t=hm[1],age=(Date.now()-Date.parse(t))/864e5;show(age<=7?'7':age<=30?'30':age<=90?'90':'0');
 const sg=document.querySelector('.sort');sg&&sg._paint&&sg._paint('newest');
 const hit=[...document.querySelectorAll('#top>li')].find(r=>!r.hidden&&r.dataset.d<=t);if(hit){hit.classList.add('hit');hit.scrollIntoView()}}})()</script>"""
@@ -815,48 +814,6 @@ def top_episodes(reg: dict) -> list[dict]:
     return sorted(eps, key=lambda e: (-e["score"], e.get("tier") or 3, "".join(chr(255 - ord(c)) for c in e["date"]), e["id"]))
 
 
-FOLD_DAYS = 14  # one person's other interviews this close to their best one are folded under it
-
-
-def featured(e: dict) -> dict[str, str]:
-    """{person slug: name} for the named claim speakers whose name is in the episode's title: the guest, not the host."""
-    title = f"-{person_slug(e.get('title') or '')}-"
-    return {c["_person_slug"]: c["person"] for c in e["claims"] if c.get("_person_slug") and f"-{c['_person_slug']}-" in title}
-
-
-def fold_top(eps: list[dict]) -> list[tuple[dict, dict[str, list[dict]]]]:
-    """[(episode, {person name: [episodes folded under it]})] in the order given. A guest on twenty shows in one week is listened
-    to once: of the episodes of different shows that feature the same person within FOLD_DAYS of each other, the first in `eps` (the
-    best) keeps its row and the others leave the list. Two episodes of one show never fold: a host named in every title of their own
-    show is not a guest on twenty. An episode folded once is not placed again."""
-    rows, folded = [], set()
-    for i, e in enumerate(eps):
-        if e["id"] in folded:
-            continue
-        also: dict[str, list[dict]] = {}
-        for slug, name in featured(e).items():
-            for o in eps[i + 1:]:
-                if (o["id"] not in folded and o.get("show") != e.get("show") and slug in featured(o) and e["date"] and o["date"]
-                        and abs((date.fromisoformat(e["date"]) - date.fromisoformat(o["date"])).days) <= FOLD_DAYS):
-                    folded.add(o["id"])
-                    also.setdefault(name, []).append(o)
-        rows.append((e, also))
-    return rows
-
-
-def also_with(also: dict[str, list[dict]]) -> str:
-    """The muted line under a kept row: 'Also with Eric Schmidt: Masters of Scale (6), In Good Company (6)'."""
-    lines = []
-    for name, eps in also.items():
-        links = []
-        for o in eps:
-            label = o.get("show") or o.get("title") or o["id"]
-            link = f'<a href="{esc(o["page"])}">{esc(label)}</a>' if o.get("page") else ext_link(o.get("url"), label) or esc(label)
-            links.append(f'{link} ({o["score"]})')
-        lines.append(f'<p class="meta">Also with {esc(name)}: {", ".join(links)}</p>')
-    return "".join(lines)
-
-
 def claims_path(eid: str) -> str:
     """The small fragment of one episode's timestamped summaries (bare HTML, fetched when a home-page row is opened)."""
     return f"/episodes/{quote(slug(eid))}.claims.html"
@@ -868,7 +825,7 @@ def claims_fragment(e: dict) -> str:
             f'<p class="meta"><a href="{esc(e["page"])}">Open the episode page</a></p>\n')
 
 
-def top_entry(e: dict, new_date: str = "", why: str = "", also: dict[str, list[dict]] | None = None, anchor: str = "", expand: bool = False) -> str:
+def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", expand: bool = False) -> str:
     """One episode row: lens marks, show, date, rating and the one-line take. `why` says how a company page found it;
     `also` is the same guest's other episodes folded under this row. `expand` makes the row open to the episode's timestamped
     summaries, loaded from claims_path on the first open (the home page). Without a script the title is still a link to the episode's page."""
@@ -878,15 +835,13 @@ def top_entry(e: dict, new_date: str = "", why: str = "", also: dict[str, list[d
     meta = " · ".join(x for x in [show_name(e), esc(human_date(e["published"])) if e.get("published") else "", esc(why)] if x) + listen_icons(e)
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") else ""
     rated = rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") and isinstance(e.get("score"), int) else "")
-    new = '<span class="new">New</span> ' if new_date and e["date"][:10] == new_date else ""
     picks = f'<ul class="claims influencer">{"".join(claim_li(c) for c in e["claims"][:5])}</ul>' if e.get("influencer") and e["claims"] else ""
     score = e["score"] if isinstance(e.get("score"), int) else ""
-    newest = max([e["date"], *(o["date"] for os in (also or {}).values() for o in os)])  # the Week/Month filter keeps a person whose newer interview is folded
-    win = f' data-w="{esc(newest)}"' if newest != e["date"] else ""
-    fresh = " data-new" if new else ""
     anchor_attr = f' id="{anchor}"' if anchor else ""
-    li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}"{win} data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
-    head = f'<h3>{t}</h3><div class="meta">{rated}{new}{e.get("_marks", "")}{meta}</div>{take}{picks}{also_with(also or {})}'
+    fresh = " data-new" if newest_day and e["date"][:10] == newest_day else ""
+    published = esc(publication_sort_value(e))
+    li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}" data-published="{published}" data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
+    head = f'<h3>{t}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>{take}{picks}'
     body = (f'<p class="meta eps" role="status"></p><div class="epb" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden></div>' if fold else "")
     return f'{li}<div>{head}{body}</div></li>'
 
@@ -903,24 +858,6 @@ def social_episodes(ireg: dict) -> list[dict]:
     return sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)[:SOCIAL_MAX]
 
 
-def newest_status(rows: list, reg: dict) -> str:
-    """The line above the home list: the newest day with an episode in it, how many are new, and how many came out that day.
-    Written from the data, not the clock, so a build is the same any day; the page's script says "Updated today" when that day is today (Pacific)."""
-    if not rows:
-        return ""
-    day = max(e["date"][:10] for e, _ in rows)
-    n_new = sum(1 for e, _ in rows if e["date"][:10] == day)
-    n_day = sum(1 for e in reg.values() if e["date"][:10] == day)
-    more = f" {plural(n_day, 'episode')} came out that day; those rated {BAR} or higher are listed." if n_day > n_new else ""
-    return (f'<p class="fresh" id="top-status" data-date="{esc(day)}"><span class="fresh-t">Last update {esc(human_date(day, weekday=True))}</span>'
-            f' · <b>{n_new} new</b><span class="meta">{esc(more)}</span></p>')
-
-
-def top_rows(reg: dict) -> list[tuple[dict, dict[str, list[dict]]]]:
-    """The home page's rows, newest first (stable: best first within a day)."""
-    return sorted(fold_top(top_episodes(reg)), key=lambda p: p[0]["date"], reverse=True)
-
-
 def run_redirect(r: dict, home_days: set[str]) -> str:
     """Where a daily issue's address sends a reader: its day on the home page (/#d-DATE), or "" when the home page has no row
     that day (nothing that came out that day was rated BAR or higher; the picks may be from the day before). The issue then
@@ -929,24 +866,47 @@ def run_redirect(r: dict, home_days: set[str]) -> str:
     return f"/#d-{day}" if r["kind"] == "daily" and day in home_days else ""
 
 
-def top_html(reg: dict, runs: list[dict] | None = None, ent: ents.Entities | None = None) -> str:
-    """The home page's list of Deep episodes, newest first (a reader can sort it by rating). The newest day's rows are marked new and
-    the first row of each day has an id (d-DATE), so an old daily issue's address lands on its day (run_redirect)."""
-    rows = top_rows(reg)
+def publication_sort_value(episode: dict) -> str:
+    for value in (episode.get("published"), episode.get("date")):
+        if not value:
+            continue
+        raw = str(value)
+        try:
+            moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if len(raw) <= 10:
+            return moment.date().isoformat()
+        moment = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).isoformat(timespec="microseconds")
+    return ""
+
+
+def feed_rows(reg: dict, ireg: dict | None = None) -> list[dict]:
+    selected = {}
+    for episode in [*top_episodes(reg), *social_episodes(ireg or {})]:
+        selected.setdefault(str(episode["id"]), episode)
+    rows = sorted(selected.values(), key=lambda episode: str(episode["id"]))
+    return sorted(rows, key=publication_sort_value, reverse=True)
+
+
+def top_html(reg: dict, runs: list[dict] | None = None, ent: ents.Entities | None = None, ireg: dict | None = None) -> str:
+    rows = feed_rows(reg, ireg)
     if not rows:
         return ""
     tabs = "".join(f'<button type="button" data-w="{w}" aria-pressed="false">{n}</button>' for w, n in WINDOWS)
-    new_date = max(e["date"][:10] for e, _ in rows)
-    seen: set[str] = set()
+    newest_day = max((e["date"][:10] for e in rows), default="")
+    seen = set()
     items = []
-    for e, also in rows:
-        d = e["date"][:10]
-        items.append(top_entry(e, new_date, also=also, anchor="" if d in seen or not d else f"d-{d}", expand=True))
-        seen.add(d)
-    return (f'<div class="top-head"><div class="top-title"><h2>Episodes</h2></div><div class="windows" role="group" aria-label="Time window">{tabs}</div></div>'
-            f'{newest_status(rows, reg)}{lens_bar(ent) if ent else ""}{sort_bar("top", "newest", key="top-2")}'
-            f'<ol class="top" id="top">{"".join(items)}</ol>'
-            f'<p class="meta" id="top-none" hidden>Nothing rated {BAR} or higher in this window.</p>{SORT_JS}{TOP_JS}{EPC_JS}')
+    for episode in rows:
+        day = episode["date"][:10]
+        anchor = f"d-{day}" if day and day not in seen else ""
+        if day:
+            seen.add(day)
+        items.append(top_entry(episode, newest_day, anchor=anchor, expand=True))
+    return (f'<div class="top-head"><div class="top-title"><h2>{FEED_NAME}</h2></div><div class="windows" role="group" aria-label="Time window">{tabs}</div></div>'
+            f'{sort_bar("top", "newest", key="podcasts-youtube-v1")}<ol class="top" id="top">{"".join(items)}</ol>'
+            f'<p class="meta" id="top-none" hidden>No items in this window.</p>{SORT_JS}{TOP_JS}{EPC_JS}')
 
 
 def latest_issue(runs: list[dict]) -> dict:
@@ -955,11 +915,12 @@ def latest_issue(runs: list[dict]) -> dict:
     return max(dated, key=lambda r: (r["date"], r["name"]))
 
 
-def index_page(runs: list[dict], reg: dict | None = None, ent: ents.Entities | None = None, md: str = "/index.md", side: str = "") -> str:
+def index_page(runs: list[dict], reg: dict | None = None, ent: ents.Entities | None = None, md: str = "/index.md", side: str = "", ireg: dict | None = None) -> str:
     """`side` is the Signals panel: with it the page is two columns on a wide screen (podcasts, then the panel), stacked on a phone."""
     if not runs:
-        return page(SITE, "<p>No issues yet.</p>", "podcasts", SUMMARY, md=md)
-    body = top_html(reg or {}, runs, ent)
+        body = top_html(reg or {}, runs, ent, ireg)
+        return page(SITE, body or "<h1>Podcasts &amp; YouTube</h1>", "podcasts", SUMMARY, md=md)
+    body = top_html(reg or {}, runs, ent, ireg)
     rest = ""
     if tr := latest_themes(runs):
         rest += f'<div style="margin-top:{"3.2em" if body else "0"}">{themes_brief(tr)}</div>'
@@ -1366,7 +1327,11 @@ def build_episodes(runs: list[dict]) -> dict:
             if not eid:
                 continue
             e = entry(eid)
-            fill(e, title=c.get("title"), show=c.get("show"), published=c.get("published") or c.get("date"), url=safe_url(c.get("url")),
+            claim_published = c.get("published") or c.get("date")
+            manifest_published = (r["meta"].get(eid) or {}).get("published")
+            if manifest_published and len(str(manifest_published)) > 10 and str(manifest_published)[:10] == str(claim_published or "")[:10]:
+                claim_published = manifest_published
+            fill(e, title=c.get("title"), show=c.get("show"), published=claim_published, url=safe_url(c.get("url")),
                  youtube_url=safe_url(c.get("youtube_url")), transcript_url=safe_url(c.get("transcript_url")))
             if r["name"] not in e["runs"]:
                 e["runs"].append(r["name"])
@@ -1652,7 +1617,7 @@ def creator_md(c: creators.Creator, eps: list[dict], posts: list[dict]) -> str:
                    + [(p["date"], p["id"], f"- {mlink('@' + p['handle'] + ' on X', 'https://x.com/%s/status/%s' % (p['handle'], p['id']))}"
                        f" — {p['date']}, {mt(', '.join(dict.fromkeys(p['tickers'])))}") for p in posts], reverse=True)[:CREATOR_MAX]
     return doc([f"# {mt(c.name)}", "", f"{plural(len(eps), 'video')} and {plural(len(posts), 'X post')} with a view, newest first. "
-                f"[HTML]({absu(creator_path(c.id))}) · [Social]({absu(md_of(SOCIAL_PATH))})", "", NOTE, "", *(i[2] for i in items)])
+                f"[HTML]({absu(creator_path(c.id))}) · [{FEED_NAME}]({absu(md_of('/index.md'))})", "", NOTE, "", *(i[2] for i in items)])
 
 
 def company_label(c: dict) -> str:
@@ -2125,25 +2090,18 @@ def index_md(runs: list[dict], reg: dict, pub: dict, people: dict, ireg: dict | 
     if runs:
         out += ["## Browse", "", f"- [Themes]({absu('/themes.md')})", f"- [Shows]({absu('/shows.md')})", f"- [Companies]({absu('/companies.md')})", f"- [{SENTIMENT_NAME}]({absu(md_of(SENTIMENT_PATH))}): the ranked board", f"- [{TAGS_NAME}]({absu(md_of(TAGS_PATH))}) ({len(pub)} tickers)", f"- [People]({absu('/people.md')}) ({len(people)})",
                 f"- [Episodes]({absu('/episodes.md')}) ({len(reg)})"] \
-            + ([f"- [{SOCIAL_NAME} › {VIDEOS_NAME}]({absu('/social.md')}) ({len(ireg)}): influencer episodes, rated apart"] if ireg else []) \
-            + ([f"- [{SOCIAL_NAME} › {X_NAME}]({absu('/x.md')}): the day's edition from the X accounts Sigma follows"] if eds else []) + ["", "## Issues", ""]
+            + [f"- [{FEED_NAME}]({absu('/index.md')}): selected podcast episodes and creator videos, newest first"] \
+            + ([f"- [{X_NAME}]({absu('/x.md')}): the day's edition from the X accounts Sigma follows"] if eds else []) + ["", "## Issues", ""]
         out += [f"- {mlink(issue_title(r), absu(run_md_path(r['name'])))}: {plural(len(shown(r)), 'episode')}, {plural(len(r['claims']), 'claim')}"
                 for r in runs]
-        cut = (date.fromisoformat(runs[0]["date"][:10]) - timedelta(days=30)).isoformat() if runs[0]["date"] else ""
-        top = sorted(((e, also) for e, also in fold_top(top_episodes(reg)) if e["date"] >= cut), key=lambda p: p[0]["date"], reverse=True)
-        if top:  # the same list as the home page, newest first; the newest day's rows are the new ones
-            day = max(e["date"][:10] for e, _ in top)
-            n_new = sum(1 for e, _ in top if e["date"][:10] == day)
-            n_day = sum(1 for e in reg.values() if e["date"][:10] == day)
-            out += ["", f"## Newest episodes, 30 days to {human_date(runs[0]['date'])}", "",
-                    f"Last update {human_date(day, weekday=True)}: {n_new} new" + (f" ({plural(n_day, 'episode')} came out that day; those rated {BAR} or higher are listed)" if n_day > n_new else "")
-                    + ". Rows marked new are from that day.", ""]
-            for e, also in top:
-                out.append(f"- {'**new** ' if e['date'][:10] == day else ''}{e['score']}/10 {mlink(e['title'] or e['id'], absu(md_of(e['page'])) if e['page'] else e['url'])}, "
-                           f"{mt(e['show'])}, {e['date']}" + (f": {mt(e['reason'])}" if e.get("reason") else ""))
-                out += [f"  - Also with {mt(name)}: " + ", ".join(
-                    f"{mlink(o['show'] or o['id'], absu(md_of(o['page'])) if o['page'] else o['url'])} ({o['score']})" for o in eps)
-                    for name, eps in also.items()]
+        top = feed_rows(reg, ireg)
+        if top:
+            out += ["", f"## {FEED_NAME}", ""]
+            for e in top:
+                title = mlink(e["title"] or e["id"], absu(md_of(e["page"])) if e.get("page") else e.get("url"))
+                platform = "YouTube" if e.get("influencer") else "Podcast"
+                published = e.get("published") or e.get("date")
+                out.append(f"- {platform}: {title}, {mt(e.get('show'))}, {mt(published)}" + (f": {mt(e['reason'])}" if e.get("reason") else ""))
         if wk := [r for r in runs if r["kind"] == "weekly"][:1]:
             out += ["", f"## Latest weekly: {issue_title(wk[0])}", ""]
             out += themes_md(wk[0], reg, 3)
@@ -2177,7 +2135,7 @@ def llms_txt(runs: list[dict], reg: dict, pub: dict, people: dict, ireg: dict | 
            "## Start here", "",
            f"- [llms-full.txt]({absu('/llms-full.txt')}): every claim from every issue as Markdown, newest first, grouped by issue and episode",
            f"- [claims.jsonl]({absu('/claims.jsonl')}): one claim per line with id, text, speaker, person, role, show, date, tickers, link, youtube_url, apple_url, spotify_url, page URLs",
-           f"- [Home]({absu('/index.md')}): " + "overview, the newest episodes and the latest weekly issue", ""]
+           f"- [Home]({absu('/index.md')}): " + "the newest selected podcast and YouTube episodes, followed by the latest weekly issue", ""]
     if signals:
         from . import signals_site
         out += signals_site.llms_section(signals)
@@ -2197,8 +2155,7 @@ def llms_txt(runs: list[dict], reg: dict, pub: dict, people: dict, ireg: dict | 
             f"- [Find]({absu('/find/')}): filter every episode by topic, company, person, show and lens in the browser; the data is [find-index.json]({absu('/find-index.json')})",
             f"- [Issues]({absu('/runs.json')}): list of issues with claim counts (JSON)"]
     if ireg:
-        out.append(f"- [{SOCIAL_NAME} › {VIDEOS_NAME}]({absu('/social.md')}): {plural(len(ireg), 'episode')} from creators who pick stocks, rated apart from the interview ranking; "
-                   "none of them is in the counts, tickers, people, shows or companies above")
+        out.append(f"- [{FEED_NAME}]({absu('/index.md')}): selected interviews and creator videos appear together, newest first")
     if eds:
         out.append(f"- [{SOCIAL_NAME} › {X_NAME}]({absu('/x.md')}): one edition a day from the X accounts Sigma follows, sentences citing the posts behind them "
                    f"([this week]({absu('/x/week.md')}), [archive]({absu('/x/archive.md')}), a day at /x/YYYY-MM-DD.md); the authors' claims, not verified")
@@ -2515,15 +2472,15 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_PRIMARY, NAV_MENU
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_PRIMARY, NAV_MENU)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU)
     identity = load_site_identity()
     BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile, identity.search_api_url
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_PRIMARY, NAV_MENU = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
@@ -2548,7 +2505,7 @@ def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
 
 
 def _build(published: Path, out: Path, entities_file: Path, research_posts: list[dict] | None = None) -> dict:
-    global SITE_YEAR, NAV_PRIMARY, NAV_MENU
+    global SITE_YEAR, NAV_MENU
     from . import signals_site  # imports this module, so not at the top
     runs = load_runs(published)
     research_posts = research_posts or []
@@ -2605,8 +2562,12 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     sm: list[tuple] = []
     adays = signals_site.load(published)[0]  # Signals data adds the Signals panel to the home page and the Signals view to /x/
     signals = bool(adays)
-    NAV_PRIMARY = NAV_SIGNALS
-    NAV_MENU = (*NAV_MENU, NAV_RESEARCH)
+    menu_items = []
+    if signals:
+        menu_items.append(("/signals/", "Signals", "signals"))
+    if research_posts:
+        menu_items.append(NAV_RESEARCH)
+    NAV_MENU = (*NAV_MENU, (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"), *menu_items)
 
     def emit(path: str, html_s: str, md_s: str, last: str = "") -> None:
         """Write an HTML page and its Markdown twin, and list both in the sitemap."""
@@ -2619,7 +2580,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         for f in ASSETS.iterdir():
             shutil.copy(f, out / f.name)
     eds = load_editions(published)
-    emit("/", index_page(runs, reg, ent, side=signals_site.panel(adays)), index_md(runs, reg, pub, people, ireg, eds, adays))
+    emit("/", index_page(runs, reg, ent, side=signals_site.panel(adays), ireg=ireg), index_md(runs, reg, pub, people, ireg, eds, adays))
     signals_site.build(published, out, emit, sm, newest)
     research_html, research_markdown = research_index_page(research_posts)
     emit("/research/", research_html, research_markdown, research_posts[0]["date"] if research_posts else newest)
@@ -2639,17 +2600,16 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     sm.append((md_of("/companies/"), newest))
     emit(NOTICE_PATH, notice_page(), notice_md())
     emit("/find/", find_page(ent, newest_of(*(e["date"] for e in reg.values()))), find_md(ent))
-    if ireg or eds:
-        emit(SOCIAL_PATH, social_page(ireg, bool(eds)), social_md(ireg, eds), newest_of(*(e["date"] for e in ireg.values())))
-    else:
-        empty_social = f"<h1>{SOCIAL_NAME}</h1><p>No social signals are published yet.</p>"
-        emit(SOCIAL_PATH, page(f"{SOCIAL_NAME} · {SITE}", empty_social, "social", md="/social.md"), doc([f"# {SOCIAL_NAME}", "", "No social signals are published yet."]), newest)
+    write(out / file_of(SOCIAL_PATH), redirect_page("/", FEED_NAME, md_of(SOCIAL_PATH)))
+    write(out / file_of(md_of(SOCIAL_PATH)), doc([f"# {FEED_NAME}", "", "Moved to [the home page](/index.md)."]))
     for e in eds:
         annotate_posts(e["posts"] + e["more"], ent, cos, pub)
         for p in e["posts"] + e["more"]:
             p["_creator_path"] = handle_page.get(str(p["handle"]).lower(), "")
         lh, lm = signals_site.lead(adays, e["date"])
         emit(x_day_path(e["date"]), edition_page(e, ent, "day", lh), edition_md(e, ent, lm), e["date"])
+    if not eds:
+        emit("/x/", page(f"X · {SITE}", "<h1>X</h1><p>No editions are published yet.</p>", "social", md="/x.md"), doc(["# X", "", "No editions are published yet."]), newest)
     if eds:
         week = [e for e in eds if e["date"] >= (date.fromisoformat(eds[0]["date"]) - timedelta(days=6)).isoformat()]
         lh, lm = signals_site.lead(adays, eds[0]["date"])
@@ -2666,7 +2626,8 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     write(out / file_of(md_of("/people/")), people_md(people))
     sm.append((md_of("/people/"), newest))
     index = []
-    home_days = {e["date"][:10] for e, _ in top_rows(reg)}
+    home_rows = feed_rows(reg, ireg)
+    home_days = {e["date"][:10] for e in home_rows}
     for r in runs:
         p = run_path(r["name"])
         if to := run_redirect(r, home_days):  # the address lands on that day in the home page's Newest list; the Markdown twin and claims stay
@@ -2723,7 +2684,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     for e in sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True):
         if e["page"]:
             emit(e["page"], episode_page(e, ent, cos), episode_md(e), e["date"])
-    for e, _ in top_rows(reg):  # the summaries a home-page row opens to (top_entry expand)
+    for e in home_rows:  # the summaries a home-page row opens to (top_entry expand)
         if e["page"] and e["claims"] and not e.get("influencer"):
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))
     write(out / "episodes.md", episodes_md(reg))

@@ -97,6 +97,9 @@ def test_fetch_keeps_what_the_rules_keep_and_remembers_it(tmp_path, web):
     assert short["fallback_text"] and not short["has_transcript"] and short["transcript_source"] == "fallback"
     assert not titles["Low A one"]["has_transcript"] and titles["Low A one"]["transcript_source"] is None
     md = (run / good["file"]).read_text()
+    expected_published = (NOW - timedelta(days=1, hours=1)).replace(microsecond=0).isoformat()
+    assert good["published"] == expected_published
+    assert fetch_mod.yaml.safe_load(md.split("---")[1])["published"] == expected_published
     assert md.startswith("---\nepisode_id: " + good["episode_id"] + "\n") and "transcript_source: podcast:transcript" in md
     assert "[0:00:30] spoken words" in md and "_No transcript found._" in (run / titles["Low A one"]["file"]).read_text()
     assert m["timing"]["fetch"]["end"] and not (run / "transcribe.lock").exists()

@@ -36,3 +36,7 @@ The package and command named `wire`, the `podcast-alpha` alias, the `WIRE_*` an
 ## Merge-and-deploy release commands
 
 `make release` and `make release-land` prepared a release PR and deployed while moving `main`. Source review and publication now have separate approval boundaries: a normal PR promotes source, and `make publish` prepares the immutable version tag and frozen publication plan. Direct unapproved uploads are refused. The last merge-and-deploy implementation is `641fec3:scripts/release.sh`.
+
+## Separate podcast and YouTube feeds
+
+The home page listed podcast picks while `/social/` listed YouTube creator videos. Both now share one feed ordered by original publication time, with X separate. Source detail pages, search and Signals data remain available; `/social/` redirects to the combined feed for existing links. The last separate implementation is `4f377a0:sigma/site.py`.

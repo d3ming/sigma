@@ -51,7 +51,7 @@ def same_episode(ep, known) -> bool:
 
 def episode_md(ep, segs: list[dict] | None, tsrc: str | None) -> str:
     front = {"episode_id": ep.id, "title": ep.title, "source": ep.source_name, "source_id": ep.source_id,
-             "tier": ep.tier, "style": ep.style, "published": ep.published_at.date().isoformat(), "url": ep.url,
+             "tier": ep.tier, "style": ep.style, "published": ep.published_at.isoformat(), "url": ep.url,
              "youtube_id": ep.youtube_id, "transcript_source": tsrc or "none"}
     body = ["---", yaml.safe_dump(front, sort_keys=False, allow_unicode=True).strip(), "---", "", f"# {ep.title}", ""]
     if ep.description:
@@ -72,7 +72,7 @@ def write_episode(run_dir: Path, ep: Episode, segs, tsrc, min_chars: int = MIN_T
     (run_dir / name).write_text(episode_md(ep, segs, tsrc))
     print(f"[episode] {ep.source_id}: transcript={tsrc or 'none'}")
     return {"episode_id": ep.id, "file": name, "title": ep.title, "source": ep.source_name, "source_tag": ep.source_id,
-            "via": ep.via or "channel", "tier": ep.tier, "style": ep.style, "published": ep.published_at.date().isoformat(), "url": ep.url,
+            "via": ep.via or "channel", "tier": ep.tier, "style": ep.style, "published": ep.published_at.isoformat(), "url": ep.url,
             "transcript_source": "fallback" if fallback else tsrc, "has_transcript": bool(segs) and not fallback,
             "fallback_text": fallback, "fallback_from": tsrc if fallback else None, "transcript_chars": transcript_chars(segs),
             "transcript_minutes": round(segs[-1]["start"] / 60) if segs and not fallback else 0, "audio_url": ep.audio_url,

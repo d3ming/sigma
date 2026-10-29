@@ -256,50 +256,70 @@ def test_entities_filter_shows_companies_and_lenses(tmp_path):
     assert tk["NVDA"]["claims"] == 2 and tk["NVDA"]["latest_date"] == "2026-01-11" and tk["NVDA"]["md"] == "https://example.invalid/tickers/NVDA.md"
 
 
-def test_influencer_episodes_are_social_videos_and_never_enter_the_ranking(tmp_path):
-    """Social is a top-level section, Videos | X, not part of Podcasts. An influencer episode scored 10 stays out of the
-    Top list, the claims feed, shows, people and every count; it is listed on /social/ (newest first) and its Markdown twin. Podcasts is Deep only."""
+def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate(tmp_path):
+    """Owner-stated rule: podcasts and YouTube videos share one newest-first feed, ordered by publication time; X remains a separate feed."""
     site.ENTITIES_FILE.write_text(json.dumps(ENTITIES))
-    out = build(tmp_path)
+    pub = tmp_path / "published"
+    for make in (make_published, make_daily, make_people, make_speakers):
+        make(pub)
+    weekly_path = pub / "2026-01-05-weekly" / "ranked.json"
+    weekly = json.loads(weekly_path.read_text())
+    weekly["episodes"][0]["published"] = "2026-01-09T20:30:00+00:00"
+    weekly_path.write_text(json.dumps(weekly))
+    claims_path = pub / "2026-01-05-weekly" / "claims.jsonl"
+    claims = [json.loads(line) for line in claims_path.read_text().splitlines()]
+    for claim in claims:
+        if claim.get("episode_id") == EP:
+            claim["published"] = "2026-01-09T20:30:00+00:00"
+    claims_path.write_text("".join(json.dumps(claim) + "\n" for claim in claims))
+    influencer_path = pub / "2026-01-09-daily" / "scores-influencer.json"
+    influencer = json.loads(influencer_path.read_text())
+    influencer["episodes"][0]["published"] = "2026-01-09T17:00:00+00:00"
+    influencer_path.write_text(json.dumps(influencer))
+    episodes_path = pub / "2026-01-09-daily" / "episodes.json"
+    episodes = json.loads(episodes_path.read_text())
+    for episode in episodes:
+        if episode.get("episode_id") == "rss:inf":
+            episode["published"] = "2026-01-09T17:00:00+00:00"
+    episodes_path.write_text(json.dumps(episodes))
+    editions = pub / "x" / "editions"
+    editions.mkdir(parents=True)
+    (editions / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "X edition", "signals": [], "posts": [
+        {"id": "1", "handle": "someone", "cashtags": []}]}))
+    out = tmp_path / "dist"
+    main(["site", "--out", str(out), "--published", str(pub)])
+
     home = (out / "index.html").read_text()
-    assert "Chart week" not in home and 'data-kind' not in home and 'class="kindbar"' not in home and 'id="social"' not in home
-    assert 'data-list="top" data-default="newest" data-key="top-2"' in home and 'data-s="8"' in home  # the home list opens on Newest; Rating is one click away
-    social = (out / "social/index.html").read_text()
-    assert "Chart week" in social and "Calls for a long above 180" in social and 'data-list="social" data-default="newest"' in social
-    assert "Rated 10 out of 10 as social commentary." in social and "worth an hour" not in social
-    assert '<a href="/social/" aria-current="page">Social</a>' in social and '<a href="/social/" aria-current="page"><span class="mark social"' in social
+    feed = home.split('<ol class="top" id="top">', 1)[1].split("</ol>", 1)[0]
+    assert "Boss" in feed and "Chart week" in feed
+    assert feed.index("Boss") < feed.index("Chart week")
+    assert 'data-s="8"' in feed and 'data-s="10"' in feed
+    nav = home.split('<nav aria-label="Main">', 1)[1].split("</nav>", 1)[0]
+    assert 'href="/"' in nav and 'href="/x/">X</a>' in nav
+    social_redirect = (out / "social" / "index.html").read_text()
+    assert 'content="0; url=/"' in social_redirect
+    assert "Moved to [the home page](/index.md)." in (out / "social.md").read_text()
+
+    x_home = (out / "x" / "index.html").read_text()
+    assert "X edition" in x_home and "Chart week" not in x_home and "Boss" not in x_home
+    assert '<a href="/x/" aria-current="page"><span class="mark x"' in x_home
+    for path in ("x/week/index.html", "x/archive/index.html", "x/2026-01-09/index.html"):
+        page = (out / path).read_text()
+        assert 'href="/x/" aria-current="page"><span class="mark x"' in page
+        assert "Chart week" not in page and "Boss" not in page
     assert "Chart week" not in (out / "claims.jsonl").read_text() and "Calls for a long" not in (out / "llms-full.txt").read_text()
     assert not any(x["episode_id"] in ("rss:inf", "rss:inf2") for x in json.loads((out / "episodes.json").read_text())["episodes"])
     assert "Show I" not in (out / "shows.json").read_text() and "Show I" not in (out / "episodes.md").read_text()
     assert "Chart week" not in (out / "runs/2026-01-09-daily.md").read_text()
-    tk = {t["symbol"]: t for t in json.loads((out / "tickers.json").read_text())["tickers"]}
-    assert tk["NVDA"]["claims"] == 2 and "INFX" not in tk  # the ticker index counts interview claims only
+    tickers = {t["symbol"]: t for t in json.loads((out / "tickers.json").read_text())["tickers"]}
+    assert tickers["NVDA"]["claims"] == 2 and "INFX" not in tickers
     nvda = (out / "tickers/NVDA.html").read_text()
     assert "Calls for a long above 180" in nvda and nvda.index("Chips") < nvda.index("<h2>Social</h2>") < nvda.index("Calls for a long")
-    assert "Calls for a long above 180" in (out / "tickers/INFX.html").read_text()  # the chip links somewhere
-    ep = (out / "episodes/rss_inf.html").read_text()
-    assert "Rated as social commentary" in ep and "Rated 10 out of 10 as social commentary." in ep
-    assert "Unscored chart week" not in social and "<h1>Social</h1>" in social and "<title>Social · Sigma</title>" in social
-    assert (out / "social.md").read_text().startswith("# Social")
-    assert "Rated 10/10 as social commentary. Levels on two names" in (out / "social.md").read_text()
-    llms = (out / "llms.txt").read_text()
-    assert "/social.md" in llms and "/social.md" in (out / "index.md").read_text()
-    sm = (out / "sitemap.xml").read_text()
-    assert all(f"https://example.invalid{p}" in sm for p in ("/social/", "/social.md", "/episodes/rss_inf.html", "/tickers/INFX.html"))
+    assert "Calls for a long above 180" in (out / "tickers/INFX.html").read_text()
+    episode = (out / "episodes/rss_inf.html").read_text()
+    assert "Rated as social commentary" in episode and "Rated 10 out of 10 as social commentary." in episode
+    assert "Unscored chart week" not in home
     assert "Social" in (out / "tickers/NVDA.md").read_text() and "Calls for a long above 180" in (out / "tickers/NVDA.md").read_text()
-    (tmp_path / "published/2026-01-09-daily/scores-influencer.json").unlink()
-    main(["site", "--out", str(tmp_path / "bare"), "--published", str(tmp_path / "published")])
-    assert "<h1>Social</h1>" in (tmp_path / "bare/social/index.html").read_text()
-    ed = tmp_path / "published/x/editions"
-    ed.mkdir(parents=True)
-    (ed / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "A day", "signals": [], "posts": [
-        {"id": "1", "handle": "someone", "cashtags": []}]}))
-    main(["site", "--out", str(tmp_path / "xonly"), "--published", str(tmp_path / "published")])
-    for path in ("x/index.html", "x/week/index.html", "x/archive/index.html", "x/2026-01-09/index.html", "social/index.html"):  # Social is current on both sides
-        h = (tmp_path / "xonly" / path).read_text()
-        assert '<a href="/social/" aria-current="page">Social</a>' in h and '<a href="/" aria-current' not in h, path
-        assert h.index('class="seg"') < h.index('class="xtabs"' if path.startswith("x/") else "<h1>"), path
-    assert '<a href="/x/" aria-current="page"><span class="mark x"' in (tmp_path / "xonly/x/week/index.html").read_text()
 
 
 def test_updated_line_is_pacific_time(monkeypatch):
@@ -311,8 +331,7 @@ def test_updated_line_is_pacific_time(monkeypatch):
 
 
 def test_creator_page_lists_videos_and_x_posts_with_a_view_and_is_linked_from_both(tmp_path, monkeypatch):
-    """A creator is one page over their outlets: Social videos of their source and X posts of their handle that hold a view (a
-    stance of 0 holds none), newest first, with no rating of the creator. The Social row and the post's handle link to it."""
+    """A creator page joins their YouTube videos and X posts; the home feed links to it and a post's handle links back."""
     (tmp_path / "sources.yaml").write_text("sources:\n  - {id: show-i, name: Show I, tier: 2, style: influencer, youtube: 'https://y.example/c'}\n")
     (tmp_path / "creators.json").write_text(json.dumps({"creators": [{"id": "show-i", "name": "Ivy Creator", "sources": ["show-i"], "x": ["Someone"]}]}))
     monkeypatch.setattr(site, "SOURCES_FILE", tmp_path / "sources.yaml")
@@ -329,7 +348,7 @@ def test_creator_page_lists_videos_and_x_posts_with_a_view_and_is_linked_from_bo
     h = (out / "creators/show-i.html").read_text()
     assert "<h1>Ivy Creator</h1>" in h and "Chart week" in h and 'href="https://x.com/someone/status/11"' in h and "/status/12" not in h
     assert h.index("/status/11") < h.index("Chart week") and 'href="/tickers/NVDA.html"' in h  # Jan 10 before Jan 8
-    assert 'href="/creators/show-i.html">Show I</a>' in (out / "social/index.html").read_text()
+    assert 'href="/creators/show-i.html">Show I</a>' in (out / "index.html").read_text()
     assert 'href="/creators/show-i.html">@someone</a>' in (out / "x/2026-01-10/index.html").read_text()
     assert "@someone on X" in (out / "creators/show-i.md").read_text() and "/creators/show-i.md" in (out / "sitemap.xml").read_text()
 
@@ -342,47 +361,28 @@ def test_a_claim_with_a_raw_u2028_in_its_text_is_still_read(tmp_path):
     assert [c["id"] for c in site.read_jsonl(p)] == [1, 2]
 
 
-def test_a_guest_on_several_shows_gets_one_top_row_and_a_host_never_folds_his_own_show():
-    """stated-rule: of one person's many interviews in a week, show the best one."""
-    def ep(eid, show, day, score, title, who):
-        return {"id": eid, "show": show, "title": title, "date": f"2026-10-{day:02d}", "published": f"2026-10-{day:02d}", "score": score,
-                "tier": 1, "page": f"/episodes/{eid}.html", "claims": [{"person": who, "_person_slug": site.person_slug(who)}]}
-    reg = {e["id"]: e for e in [
-        ep("best", "Show A", 20, 9, "Eric Schmidt on agents", "Eric Schmidt"),
-        ep("other", "Show B", 25, 7, "Eric Schmidt scores the AI race", "Eric Schmidt"),
-        ep("late", "Show C", 28, 8, "Eric Schmidt again", "Eric Schmidt"),  # within 14 days of "best"
-        ep("old", "Show D", 1, 7, "Eric Schmidt at Davos", "Eric Schmidt"),  # 19 days before "best": its own row
-        ep("h1", "Show E", 21, 7, "Weekly with Pat Host", "Pat Host"),
-        ep("h2", "Show E", 22, 6, "More weekly with Pat Host", "Pat Host")]}  # same show as h1: never folded
-    rows = re.findall(r'<li class="entry[^"]*".*?</li>', site.top_html(reg), re.S)
-    assert [re.search(r'data-src="/episodes/(\w+)\.claims\.html"', r).group(1) for r in rows] == ["h2", "h1", "best", "old"]  # newest first; the fold is the same
-    assert "Also with Eric Schmidt: " in rows[2] and rows[2].count('<a href="/episodes/') == 3
-
-
-def test_home_opens_on_newest_says_when_it_was_updated_and_a_daily_issue_address_lands_on_its_day(tmp_path):
-    """Stated rule (owner, 2026-10-28): no separate latest-issue page; the home opens on Newest, says an update is there, and marks the new rows.
-    The first row of each day has an id, an old daily issue's address redirects to it, and its Markdown twin stays for agents."""
+def test_home_lists_combined_feed_and_keeps_daily_issue_index_and_markdown(tmp_path):
+    """The home lists the selected podcast and YouTube feed; run metadata and Markdown issue links remain available to agents."""
     out = build(tmp_path)
     home, md = (out / "index.html").read_text(), (out / "index.md").read_text()
-    day = re.search(r'id="top-status" data-date="([\d-]+)"', home).group(1)
-    assert "Last update" in home and "Updated today" in home and f'id="d-{day}"' in home and 'data-new' in home  # the script upgrades the text on the day itself
-    assert home.count("data-new") >= 1 and all(f'data-d="{day}"' in r for r in re.findall(r'<li class="entry"[^>]*data-new[^>]*>', home))  # only the newest day is marked
-    assert "Latest issue" not in home and "Daily issues" not in home and "hash.match" in home
-    assert "## Newest episodes" in md and "Latest:" not in md and "**new**" in md and "/runs/2026-01-12-daily.md" in md
+    assert "<h2>Podcasts & YouTube</h2>" in home and "Latest issue" not in home and "Daily issues" not in home
+    assert "## Podcasts & YouTube" in md and "/runs/2026-01-12-daily.md" in md
     assert (out / "runs/2026-01-12-daily.md").exists()
     assert "/runs/2026-01-12-daily/claims.jsonl" in (out / "runs.json").read_text()  # the agent index still lists the issue and its claims
 
 
 def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragment(tmp_path):
-    """Stated rule (owner, 2026-10-28): clicking a podcast card on the home page expands it to the episode's timestamped summaries.
+    """Clicking a podcast card on the home page expands it to the episode's timestamped summaries.
     The summaries are not in the page (137 KB at the time of writing) but in one small fragment per row, fetched when a row is opened
     or, for the newest day, when the browser is idle. The title stays a link to the episode's page without a script (the script turns it
     into a disclosure button); a row with no summaries, or an influencer's, does not fold."""
     out = build(tmp_path)
     home = (out / "index.html").read_text()
     rows = re.findall(r'<li class="entry[^"]*".*?</li>', home, re.S)
-    assert rows and all(r.startswith('<li class="entry fold"') and '<div class="epb" data-src="/episodes/' in r and " hidden></div>" in r
-                        and "<details" not in r and re.search(r'<h3><a href="/episodes/[^"]+\.html">', r) for r in rows)
+    podcast_rows = [r for r in rows if '<div class="epb" data-src="/episodes/' in r]
+    assert podcast_rows and all(r.startswith('<li class="entry fold"') and " hidden></div>" in r
+                                and "<details" not in r and re.search(r'<h3><a href="/episodes/[^"]+\.html">', r) for r in podcast_rows)
+    assert any("Chart week" in r and "fold" not in r for r in rows)
     srcs = re.findall(r'<div class="epb" data-src="([^"]+)" data-page="([^"]+)"', home)
     assert srcs and len({s for s, _ in srcs}) == len(srcs)
     for src, page in srcs:
@@ -393,7 +393,7 @@ def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragm
         assert claim not in home  # the summaries are not inlined
         assert claim in (out / site.file_of(page)).read_text()  # and they are the episode's own page's
     assert 'role="status"' in home and "li.fold" in home and "aria-expanded" in home  # the script and its status line ride with the rows
-    assert 'class="entry fold"' not in (out / "social/index.html").read_text()  # only the home page's rows fold
+    assert 'content="0; url=/"' in (out / "social/index.html").read_text()
     assert ".claims" not in (out / "sitemap.xml").read_text() and ".claims" not in (out / "llms.txt").read_text()  # the fragments are not pages
     no_claims = site.top_entry({"id": "rss:z", "title": "No summaries", "page": "/episodes/rss_z.html", "claims": [], "date": "2026-01-01",
                                 "published": "2026-01-01", "score": 8, "show": "S"}, expand=True)
@@ -438,18 +438,18 @@ def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tm
 
 
 def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agent_files(tmp_path):
-    """Stated rule (owner, 2026-10-28): the home page stays the podcast home and carries a collapsible Signals panel beside it, /signals/
+    """The home page carries a collapsible Signals panel beside the combined podcast and YouTube feed; /signals/
     shows at least three picks (the weak ones labelled lower confidence), and agents get stable JSON, a schema, llms.txt and a
     Markdown twin. With no Signals data the home has no panel."""
     pub, out = tmp_path / "published", tmp_path / "dist"
     make_published(pub)
     site.build(pub, out)
-    assert "<h2>Episodes</h2>" in (out / "index.html").read_text() and (out / "signals/index.html").exists() and "No signals are published yet" in (out / "signals/index.html").read_text() and "signals-panel" not in (out / "index.html").read_text()
+    assert "<h2>Podcasts & YouTube</h2>" in (out / "index.html").read_text() and (out / "signals/index.html").exists() and "No signals are published yet" in (out / "signals/index.html").read_text() and "signals-panel" not in (out / "index.html").read_text()
     visible_routes = [path for path, _, _ in (*site.NAV_PRIMARY, *site.NAV_MENU, site.NAV_RESEARCH)]
     visible_routes.extend(("/signals/",))
     assert all((out / site.file_of(path)).exists() for path in visible_routes)
     social = (out / "social/index.html").read_text()
-    assert "<h1>Social</h1>" in social and "/x/" not in social
+    assert 'content="0; url=/"' in social
     assert "What the sources say, not advice." not in (out / "index.html").read_text()
     assert "Public market signals, each linked to its source." not in (out / "signals/index.html").read_text()
     sig = lambda t, who, st, o="primary": {"id": f"a-{t}{who}", "date": "2026-01-09", "ticker": t, "target": t, "direction": "bullish" if st > 0 else "bearish",
@@ -469,7 +469,7 @@ def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agen
         assert xh.count('class="card') >= 3 and xh.index('class="card') < xh.index("<h2>A day</h2>")
     assert "Daily picks" in (out / "x.md").read_text() and "\n## A day" in (out / "x.md").read_text()
     home = (out / "index.html").read_text()
-    assert "<h2>Episodes</h2>" in home and '<details class="signals-panel" id="signals-panel" open>' in home and "All of today" in home
+    assert "<h2>Podcasts & YouTube</h2>" in home and '<details class="signals-panel" id="signals-panel" open>' in home and "All of today" in home
     # the panel and its tape hold X signals only, say so with the X mark, and link each ticker to its signal on the day page
     assert 'aria-label="X signals"' in home and 'class="tape"' in home and 'href="/signals/2026-01-09/#s-AAA"' in home
     assert "ZZZ" not in home[home.index('<details class="signals-panel"'):] .split("</details>")[0] and "ZZZ" in (out / "signals" / "index.html").read_text()
