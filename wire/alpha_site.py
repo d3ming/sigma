@@ -407,9 +407,10 @@ def day_page(day: dict, days: list[str], home: bool) -> str:
 
 def day_md(day: dict, days: list[str], home: bool) -> str:
     c = day.get("counts", {})
+    day_json = absu(f"/alpha/{day['date']}.json")
     out = [f"# Alpha, {human_date(day['date'], True)}" if not home else "# Wire: Alpha", "", "> " + SUMMARY, "", site.NOT_ADVICE, ""]
     out += [f"{plural(c.get('signals', len(day['signals'])), 'signal')}. "
-            f"This day as JSON: [{day['date']}.json]({absu(f'/alpha/{day['date']}.json')}); all days: [index.json]({absu('/alpha/index.json')}); "
+            f"This day as JSON: [{day['date']}.json]({day_json}); all days: [index.json]({absu('/alpha/index.json')}); "
             f"schema: [schema.json]({absu('/alpha/schema.json')}); index of the whole site: [llms.txt]({absu('/llms.txt')}).", ""]
     if not day.get("complete"):
         out += ["**Incomplete day.** " + "; ".join(f"{mt(m.get('source'))}: {mt(m.get('reason'))}" for m in day.get("missing", [])), ""]

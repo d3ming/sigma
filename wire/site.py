@@ -767,7 +767,8 @@ def sort_bar(list_id: str, default: str, key: str = "") -> str:
     Both the home page's list and /social/ open on Newest (owner: the home page is where a reader checks what came out today; Rating is one click away). The reader's
     pick is kept per list in the browser (`wire-sort-<list id>`)."""
     btns = "".join(f'<button type="button" data-s="{k}" aria-pressed="{"true" if k == default else "false"}">{n}</button>' for k, n in SORTS)
-    return f'<div class="seg sort" role="group" aria-label="Sort" data-list="{list_id}" data-default="{default}"{f' data-key="{key}"' if key else ""} hidden>{btns}</div>'
+    key_attr = f' data-key="{key}"' if key else ""
+    return f'<div class="seg sort" role="group" aria-label="Sort" data-list="{list_id}" data-default="{default}"{key_attr} hidden>{btns}</div>'
 
 
 BAR = 6  # the publish bar in prompts/select.md (6 and up, was 7): an episode at or above it is worth an hour
@@ -892,7 +893,8 @@ def top_entry(e: dict, new_date: str = "", why: str = "", also: dict[str, list[d
     newest = max([e["date"], *(o["date"] for os in (also or {}).values() for o in os)])  # the Week/Month filter keeps a person whose newer interview is folded
     win = f' data-w="{esc(newest)}"' if newest != e["date"] else ""
     fresh = " data-new" if new else ""
-    li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}"{win} data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{f' id="{anchor}"' if anchor else ""}>'
+    anchor_attr = f' id="{anchor}"' if anchor else ""
+    li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}"{win} data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
     head = f'<h3>{t}</h3><div class="meta">{rated}{new}{e.get("_marks", "")}{meta}</div>{take}{picks}{also_with(also or {})}'
     body = (f'<p class="meta eps" role="status"></p><div class="epb" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden></div>' if fold else "")
     return f'{li}<div>{head}{body}</div></li>'
