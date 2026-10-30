@@ -63,6 +63,23 @@ def publication_manifest(path, source_sha, artifact_hash):
     return {"source_sha": source_sha, "publication_hash": artifact_hash, "files": files}
 
 
+def private_data_state(*args):
+    helper = root / "deploy" / "mac" / "data-commit.sh"
+    try:
+        result = subprocess.run([str(helper), *args], cwd=root, text=True, capture_output=True)
+    except OSError as exc:
+        refuse(f"private data helper could not run: {exc}")
+    sys.stdout.write(result.stdout)
+    sys.stderr.write(result.stderr)
+    if result.returncode:
+        refuse("private data landing failed; version tag and deployment were not attempted")
+    main = re.search(r"(?m)^\[data\] main: ([0-9a-f]{40}|[0-9a-f]{64})$", result.stdout)
+    tree = re.search(r"(?m)^\[data\] owned tree: ([0-9a-f]{40}|[0-9a-f]{64})$", result.stdout)
+    if not main or not tree:
+        refuse("private data helper did not report its main commit and owned tree")
+    return {"main": main.group(1), "tree": tree.group(1)}
+
+
 def tag_remote(tag):
     refs = git("ls-remote", "origin", f"refs/tags/{tag}", f"refs/tags/{tag}^{{}}", check=False)
     if refs.returncode not in (0, 2):
@@ -199,6 +216,7 @@ def prepare():
     tag = version_tag()
     existing = check_tag_for_prepare(tag, head, email)
     project_path, project_id, team_id = linked_project()
+    data_before = private_data_state("--plan")
     print("[publish] building and checking the frozen production publication")
     result = subprocess.run([str(deploy), "--preflight", head], cwd=root, text=True, capture_output=True)
     output = result.stdout + result.stderr
@@ -212,6 +230,9 @@ def prepare():
     artifact = state / "publication" / artifact_hash / ".vercel" / "output"
     if not artifact.is_dir() or publication_hash(artifact) != artifact_hash:
         refuse("frozen publication is missing or changed")
+    data_after = private_data_state("--plan")
+    if data_before["tree"] != data_after["tree"]:
+        refuse("private data changed during the production build; prepare a new publication")
     manifest = publication_manifest(artifact, head, artifact_hash)
     manifest_text = json.dumps(manifest, indent=2, sort_keys=True) + "\n"
     manifest_hash = hashlib.sha256(manifest_text.encode()).hexdigest()
@@ -233,10 +254,12 @@ def prepare():
         f"Frozen publication content: `{artifact_hash}`.\n"
     )
     payload = {
-        "schema": 1,
+        "schema": 2,
         "source_sha": head,
         "tag": tag,
         "artifact_hash": artifact_hash,
+        "data_main": data_after["main"],
+        "data_tree": data_after["tree"],
         "manifest_sha256": manifest_hash,
         "project_hash": project_hash,
         "project_id": project_id,
@@ -275,6 +298,8 @@ def load_plan(plan_id):
         manifest_text = manifest_path.read_text(encoding="utf-8")
     except (OSError, ValueError):
         refuse(f"plan {plan_id} or its release notes are missing")
+    if plan.get("schema") != 2 or not re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", str(plan.get("data_tree", ""))):
+        refuse("saved plan predates private data synchronization; prepare a new plan")
     payload = {key: value for key, value in plan.items() if key != "plan_id"}
     expected = hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     if plan.get("plan_id") != plan_id or expected != plan_id:
@@ -326,6 +351,12 @@ def apply(plan_id):
                 refuse(f"local version tag {plan['tag']} exists with a different or lightweight target")
             validate_tag_object(git("rev-parse", f"refs/tags/{plan['tag']}").stdout.strip(), plan["tag"], email, head)
         else:
+            local = None
+    data = private_data_state("--expect-tree", plan["data_tree"])
+    if data["tree"] != plan["data_tree"]:
+        refuse("private data tree differs from the prepared publication")
+    if remote is None:
+        if local is None:
             notes_path = plans / f"{plan_id}.md"
             git("-c", "user.name=Sigma", "-c", f"user.email={email}", "tag", "-a", "--cleanup=verbatim", plan["tag"], "-F", str(notes_path))
         git("push", "origin", f"refs/tags/{plan['tag']}:refs/tags/{plan['tag']}")
@@ -338,8 +369,8 @@ def help_text():
     print("usage: make publish [APPROVE=<plan-id>]")
     print("Run from clean main matching origin/main; the version tag comes from pyproject.toml.")
     print("SIGMA_DATA_ROOT supplies private inputs; each published run needs its source under runs/<run>.")
-    print("By default, make publish prepares, validates, tags, and deploys the exact frozen production build.")
-    print("Use make publish PREPARE_ONLY=1 to inspect a plan without pushing or uploading.")
+    print("By default, make publish prepares, validates, saves private data, tags, and deploys the exact frozen production build.")
+    print("Use make publish PREPARE_ONLY=1 to inspect a plan without saving private data or pushing a tag/site.")
     print("Use make publish APPROVE=<full-plan-id> to apply a previously inspected plan and its exact frozen build.")
 
 
