@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). The owner reviews the initial `seed` proposal into `develop` before it lands.
+Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Source changes go directly to `develop`; releases are reviewed from `develop` into `main`.
 
 ## Set up
 
@@ -38,7 +38,7 @@ in the commit message.
 
 ## Proposing a change
 
-Send the initial launch changes to `seed` for the complete review into `develop`. Keep source lists and editorial output in your configured data root; suggest generic examples instead of submitting a real follow list. Never commit `data/`, `runs/`, publication output, transcripts, `.env` content or local reference copies.
+Push changes to `develop` and propose a release PR into `main`. Keep source lists and editorial output in your configured data root; suggest generic examples instead of submitting a real follow list. Never commit `data/`, `runs/`, publication output, transcripts, `.env` content or local reference copies.
 
 Run `scripts/setup.sh` once to install the local hooks. Before pushing, run `scripts/check.sh` and exercise the affected command with real or clearly identified example inputs. Record the command, output and limits in the commit body. A passing offline suite does not prove a live deployment.
 

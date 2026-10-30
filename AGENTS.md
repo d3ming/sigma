@@ -3,11 +3,10 @@
 Sigma finds evidence-backed signals for the US stock market and publishes research on methods and tooling. A stranger can clone it,
 supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
 
-Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR; merging does not publish. Private migration notes never enter the public repository or its history.
-
-Source reaches `main` through a reviewed PR; merging does not publish. Production publication uses `make publish` and
-the owner's approval of its exact version tag and frozen artifact plan. Never enable automatic Git deployments or
-call an uploader to bypass that approval.
+Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
+PR authorizes its publication with `make publish`; the command freezes and validates the build, saves private data
+to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
+disabled. Private migration notes never enter this repository or its history.
 
 This file holds only what a capable agent would get wrong here without being told. The code and each command's
 `--help` own the rest.

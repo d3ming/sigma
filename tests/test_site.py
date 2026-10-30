@@ -320,9 +320,17 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     home = (out / "index.html").read_text()
     feed = home.split('<ol class="top" id="top">', 1)[1].split("</ol>", 1)[0]
     assert "Boss" in feed and "Chart week" in feed and "Amazon earnings" in feed and "Google earnings" in feed
-    google_row = next(row for row in feed.split("<li") if "Google earnings" in row)
+    cards = re.findall(r'<li class="entry[^\"]*".*?</li>', feed, re.S)
+    assert cards and all('class="epc-t"' in row and 'aria-expanded="false"' in row and 'class="epb"' in row and " hidden>" in row
+                        for row in cards)
+    google_row = next(row for row in cards if "Google earnings" in row)
     assert 'data-d="2026-01-09"' in google_row
     assert "Show I · Jan 9, 2026" in google_row
+    assert f'data-src="{site.claims_path("yt:google")}"' in google_row and 'class="claims influencer"' not in google_row
+    creator_without_claims = next(row for row in cards if "Creator four" in row)
+    assert "No transcript claims are available." in creator_without_claims and 'aria-expanded="false"' in creator_without_claims
+    podcast_without_claims = next(row for row in cards if "Interview four" in row)
+    assert "No transcript claims are available." in podcast_without_claims and 'aria-expanded="false"' in podcast_without_claims
     google_page = (out / site.file_of(site.episode_path("yt:google"))).read_text()
     assert "Show I · Jan 9, 2026" in google_page
     find_rows = {e["i"]: e for e in json.loads((out / "find-index.json").read_text())["eps"]}
@@ -421,22 +429,22 @@ def test_home_lists_combined_feed_and_keeps_daily_issue_index_and_markdown(tmp_p
 
 
 def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragment(tmp_path):
-    """Clicking a podcast card on the home page expands it to the episode's timestamped summaries.
-    The summaries are not in the page (137 KB at the time of writing) but in one small fragment per row, fetched when a row is opened
-    or, for the newest day, when the browser is idle. The title stays a link to the episode's page without a script (the script turns it
-    into a disclosure button); a row with no summaries, or an influencer's, does not fold."""
+    """Failure-seen (live home feed): every podcast and creator card has a closed detail control; claims load from small fragments."""
     out = build(tmp_path)
     home = (out / "index.html").read_text()
     rows = re.findall(r'<li class="entry[^"]*".*?</li>', home, re.S)
-    podcast_rows = [r for r in rows if '<div class="epb" data-src="/episodes/' in r]
-    assert podcast_rows and all(r.startswith('<li class="entry fold"') and " hidden></div>" in r
-                                and "<details" not in r and re.search(r'<h3><a href="/episodes/[^"]+\.html">', r) for r in podcast_rows)
-    assert any("Chart week" in r and "fold" not in r for r in rows)
-    srcs = re.findall(r'<div class="epb" data-src="([^"]+)" data-page="([^"]+)"', home)
+    assert rows and all(r.startswith('<li class="entry fold"') and 'class="epc-t"' in r and 'aria-expanded="false"' in r
+                        and 'class="epb"' in r and " hidden>" in r for r in rows)
+    assert all(re.search(r'<h3><a href="[^"]+">', r) for r in rows)
+    creator_claims = next(r for r in rows if "Chart week" in r)
+    assert 'class="claims influencer"' not in creator_claims and f'data-src="{site.claims_path("rss:inf")}"' in creator_claims
+    srcs = re.findall(r'<div class="epb"[^>]*data-src="([^"]+)"[^>]*data-page="([^"]+)"', home)
     assert srcs and len({s for s, _ in srcs}) == len(srcs)
     for src, page in srcs:
         frag = (out / site.file_of(src)).read_text()
-        assert frag.startswith('<ul class="claims"><li><p>') and 'class="ts"' in frag  # the summaries, each with its timestamp link
+        assert frag.startswith('<ul class="claims') and 'class="ts"' in frag
+        if src == site.claims_path("rss:inf"):
+            assert frag.startswith('<ul class="claims influencer">')
         assert f'<a href="{page}">Open the episode page</a>' in frag
         claim = re.search(r"<li><p>(.*?)</p>", frag).group(1)
         assert claim not in home  # the summaries are not inlined
@@ -448,8 +456,10 @@ def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragm
                                 "published": "2026-01-01", "score": 8, "show": "S"}, expand=True)
     influencer = site.top_entry({"id": "rss:y", "title": "Creator video", "page": "/episodes/rss_y.html", "claims": [{"person": "P"}], "date": "2026-01-01",
                                  "published": "2026-01-01", "score": 8, "show": "S", "influencer": True}, expand=True)
-    assert "epb" not in influencer and "fold" not in influencer
-    assert 'class="entry"' in no_claims and "epb" not in no_claims and '<a href="/episodes/rss_z.html">No summaries</a>' in no_claims
+    assert 'class="entry fold"' in no_claims and 'aria-expanded="false"' in no_claims and "No transcript claims are available." in no_claims
+    assert '<a href="/episodes/rss_z.html">No summaries</a>' in no_claims
+    assert 'class="entry fold"' in influencer and 'aria-expanded="false"' in influencer and 'data-src="/episodes/rss_y.claims.html"' in influencer
+    assert '<ul class="claims influencer">' not in influencer and '<a href="/episodes/rss_y.html">Creator video</a>' in influencer
 
 
 def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tmp_path, monkeypatch):

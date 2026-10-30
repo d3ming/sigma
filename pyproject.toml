@@ -1,6 +1,6 @@
 [project]
 name = "sigma-signals"
-version = "0.2.0"
+version = "0.2.1"
 description = "Cited podcast and X signals checked against their sources"
 readme = "README.md"
 license = "MIT"

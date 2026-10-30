@@ -15,7 +15,15 @@ shape as `rank/batch-N-out.json` (`schema/ranked.schema.json`). Cite timestamps 
 
 ## 1. Extract the picks
 
-A claim is one pick or one checkable fact behind it. Skip intros, sponsors, channel business and general market chatter.
+First make an internal ticker-by-ticker call inventory from the full transcript. For every ticker, note the speaker's
+actual investment view and each material action or condition with its timestamp: current buy/add, sell/trim, short,
+avoid, hold, planned entry or exit, and what would change the call. Include a transaction the public speaker says they
+personally made; it is source evidence, not private owner data. Do not infer an action from the title, price movement,
+performance claims, or a positive company fact alone.
+
+Then write the claims. A claim is one ticker's investment view or one checkable fact behind it. Combine related
+actions for the same ticker in one concise claim where useful, retaining their timestamps. Prioritize the strongest
+distinct ticker views before background facts; skip intros, sponsors, channel business and general market chatter.
 
 - `ticker`: the tickers it is about. Every claim here names at least one.
 - `claim`: one falsifiable sentence in your words that says what the creator called: the direction (long, short,
@@ -29,7 +37,9 @@ A claim is one pick or one checkable fact behind it. Skip intros, sponsors, chan
 - `verifiable` 0-3: 0 hype, 1 vague ("looks strong"), 2 checkable with effort, 3 a level, date or estimate that can be
   checked against prices or a filing.
 
-At most 5 claims, best first. Never copy 12 or more words in a row from the transcript.
+At most 5 claims, best first. Consider every ticker in the inventory before selecting claims; when there are more than
+five, prioritize distinct tickers' clearest investment views over extra background facts. Never copy 12 or more words
+in a row from the transcript.
 
 ## 2. Score each episode 1-10
 
@@ -57,17 +67,24 @@ Bands:
 - **3-4**: mostly opinion, recap of price moves, a list of names without reasons, or off the week's news.
 - **1-2**: hype, clickbait, a sponsor pitch, or nothing usable.
 
-For every score of 8 or more, the reason says why it is not one band higher.
-
 ## 3. What this rubric does not score
 
 Track record. A creator's own account of past wins ("my last call made 40 percent") is unchecked: give it no credit and
 no claim. A later rubric version will check past calls against prices; until then a score is about the episode alone.
 
-No transcript: score on title and description only, say so in the reason, and give no claims.
+No transcript: score only what the title and description support, briefly say the transcript is unavailable in the reason,
+and give no claims.
 
 ## 4. Write it up
 
-- `reason`: one line, under 240 characters: which picks, what backed them, why this band.
-- Never write advice to buy or sell in `reason` or `claim`; report what the creator called.
-- Never include holdings, weights or portfolio data.
+- `reason`: one viewer-facing line under 240 characters. For every primary ticker in the claims, name its stance with
+  the exact five-point wording from `prompts/stance.md` (`strongly bearish`, `bearish`, `neutral`, `bullish`, or
+  `strongly bullish`), then give the source-backed action or thesis and a useful caveat. Example:
+  `XYZ — strongly bullish: creator added after hours, citing demand, but gave no exit level.` If views differ by time
+  horizon, keep both stances and label the horizons instead of forcing them into one direction.
+- Keep the 1-10 quality score separate from the investment stance. Do not use `reason` to apologize for a rating,
+  explain a score band, or repeat the rubric. A strong score does not mean bullish; a useful bearish call can score
+  highly.
+- Never write advice in Sigma's voice. Attribute the view to the creator in `reason` and `claim`.
+- Public statements about a speaker's own trades may be included with attribution. Never include the owner's private
+  holdings, account balances or position weights.

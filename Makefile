@@ -8,6 +8,6 @@ preview-logs:
 	@scripts/preview.sh logs
 
 .PHONY: publish
-export APPROVE
+export APPROVE PREPARE_ONLY
 publish:
 	@sh scripts/release.sh
