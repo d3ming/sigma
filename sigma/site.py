@@ -68,15 +68,7 @@ header.site .wrap{display:flex;align-items:center;justify-content:space-between;
 nav{display:flex;flex-wrap:wrap;gap:6px 14px}
 nav a{font:500 var(--text-caption) var(--font-mono);color:var(--text-muted);text-decoration:none;letter-spacing:.06em;text-transform:uppercase}
 nav a:hover,nav a[aria-current]{color:var(--accent)}
-.menu{position:relative}
-.menu summary{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;color:var(--text-muted);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);cursor:pointer;list-style:none}
-.menu summary::-webkit-details-marker{display:none}
-.menu summary svg{width:16px;height:16px;display:block}
-.menu summary:hover,.menu[open] summary,.menu:has([aria-current]) summary{color:var(--accent)}
-.menu summary:focus-visible{outline:var(--line-2) solid var(--accent);outline-offset:2px}
-.menu ul{position:absolute;right:0;top:calc(100% + 8px);z-index:30;min-width:180px;margin:0;padding:var(--space-2) 0;list-style:none;background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);box-shadow:0 8px 24px rgb(0 0 0/.18)}
-.menu a{display:block;padding:var(--space-2) var(--space-4);font:500 var(--text-caption) var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);text-decoration:none}
-.menu a:hover,.menu a[aria-current]{color:var(--accent)}
+@media(max-width:600px){header.site .wrap{flex-wrap:wrap;gap:var(--space-4)}.bar{width:100%;justify-content:space-between;gap:var(--space-3)}nav{flex-wrap:nowrap;gap:var(--space-4)}}
 .theme-switch{position:relative;display:inline-flex}
 .theme-switch summary{display:inline-flex;align-items:center;justify-content:center;width:30px;height:28px;color:var(--text-muted);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);cursor:pointer;list-style:none}
 .theme-switch summary::-webkit-details-marker{display:none}
@@ -335,16 +327,7 @@ SENTIMENT_NAME, SENTIMENT_PATH = "Sentiment", "/sentiment/"  # the ticker board
 TICKERS_NAME = "Tickers"  # the list of every ticker with a page, a section of the Tags page; each ticker keeps /tickers/<SYM>.html
 TAGS_NAME, TAGS_PATH = "Tags", "/tags/"
 OLD_BOARD_PATHS = ("/board/", "/tickers/")  # the board's earlier routes: now redirects (noindex) to SENTIMENT_PATH
-# The header: three sections, then a menu for the rest. Each row is (path, display name, key a page passes as `depth_nav`).
-NAV_PRIMARY = (("/", FEED_NAME, "podcasts"), ("/x/", X_NAME, "social"))
-NAV_MENU = ((TAGS_PATH, TAGS_NAME, "tags"), ("/themes/", "Themes", "themes"), ("/shows/", "Shows", "shows"), ("/find/", "Find", "find"))
-NAV_RESEARCH = ("/research/", "Research", "research")  # added to the menu with the Signals pages
-MENU_LABEL = "Menu"
-# A native <details> is the menu: it opens and closes with Enter or Space on the button and works without a script. The script only
-# adds what a menu is expected to do: close on Escape (focus back on the button) and when anything outside it is clicked.
-MENU_JS = ("<script>(()=>{const m=document.querySelector('.menu');if(!m)return;"
-           "document.addEventListener('click',e=>{if(m.open&&!m.contains(e.target))m.open=false});"
-           "m.addEventListener('keydown',e=>{if(e.key==='Escape'&&m.open){m.open=false;m.querySelector('summary').focus()}})})()</script>")
+NAV_PRIMARY = (("/", "Podcasts & video", "podcasts"), ("/x/", X_NAME, "social"), (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"))
 
 DAILY_RUNS: set[str] = set()  # names of the daily issues, set by build(): a claim never links one as an issue page (see run_redirect)
 SITE_YEAR = 0  # the year of the newest data; set by build(). A date in that year is shown without it.
@@ -388,8 +371,6 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
     cur = ' aria-current="page"'
     link = lambda h, n, k: f'<a href="{h}"{cur if k == depth_nav else ""}>{n}</a>'
     links = "".join(link(*r) for r in NAV_PRIMARY)
-    menu = (f'<details class="menu"><summary aria-label="{MENU_LABEL}" title="{MENU_LABEL}">{_ICON}<path d="M4 7h16M4 12h16M4 17h16"/></svg></summary><ul>'
-            + "".join(f"<li>{link(*r)}</li>" for r in NAV_MENU) + f"</ul></details>{MENU_JS}")
     when = updated_text(updated)
     upd = f'<p class="upd">{esc(when)}</p>' if when else ""
     d = f'<meta name="description" content="{esc(desc)}">' if desc else ""
@@ -403,7 +384,7 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
             f'<link rel="preconnect" href="https://fonts.googleapis.com">'
             f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
             f'{ICONS}<script>{THEME_BOOT}</script>{ANALYTICS}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
-            f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{menu}{MODE_BUTTON}</div></div></header>'
+            f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{MODE_BUTTON}</div></div></header>'
             f'<main><div class="wrap">{body}</div></main>'
             f'<footer><div class="wrap">{upd}'
             f'<span>{x_link}<a href="{NOTICE_PATH}">Notice</a> · <a href="/llms.txt">llms.txt</a></span></div></footer></body></html>\n')
@@ -768,14 +749,21 @@ def sort_bar(list_id: str, default: str, key: str = "") -> str:
 
 WINDOWS = (("7", "Week"), ("30", "Month"), ("90", "3 months"), ("0", "All"))
 TOP_JS = """<script>(()=>{const rows=[...document.querySelectorAll('#top>li')],none=document.getElementById('top-none'),bs=[...document.querySelectorAll('.windows button')];
-let cur='7';function show(d,save){cur=d;const cut=+d?new Date(Date.now()-d*864e5).toISOString().slice(0,10):'',l=window.sigmaLens?sigmaLens.get():'';let n=0;
-rows.forEach(r=>{const on=(r.dataset.w||r.dataset.d)>=cut&&(!l||(' '+r.dataset.l+' ').includes(' '+l+' '));r.hidden=!on;n+=on});none.hidden=n>0;
-bs.forEach(b=>b.setAttribute('aria-pressed',b.dataset.w===d));if(save)try{localStorage.setItem('sigma-window-2',d)}catch(e){}}
-bs.forEach(b=>b.addEventListener('click',()=>show(b.dataset.w,1)));let w='7';try{w=localStorage.getItem('sigma-window-2')||w}catch(e){}
-document.addEventListener('sigma-lens',()=>show(cur));show(w);
-const hm=location.hash.match(/^#d-(\\d{4}-\\d{2}-\\d{2})$/);if(hm){const t=hm[1],age=(Date.now()-Date.parse(t))/864e5;show(age<=7?'7':age<=30?'30':age<=90?'90':'0');
-const sg=document.querySelector('.sort');sg&&sg._paint&&sg._paint('newest');
-const hit=[...document.querySelectorAll('#top>li')].find(r=>!r.hidden&&r.dataset.d<=t);if(hit){hit.classList.add('hit');hit.scrollIntoView()}}})()</script>"""
+bs.forEach(button=>button.dataset.label=button.textContent);
+function cutoff(days){if(!+days)return '';const parts=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date()).map(part=>[part.type,part.value]));
+return new Date(Date.parse(parts.year+'-'+parts.month+'-'+parts.day+'T00:00:00Z')-(days-1)*864e5).toISOString().slice(0,10)}
+let cur='7';function show(days,save){cur=days;const cut=cutoff(days),lens=window.sigmaLens?sigmaLens.get():'';let count=0;
+const matches=row=>!lens||(' '+row.dataset.l+' ').includes(' '+lens+' ');
+rows.forEach(row=>{const on=(row.dataset.w||row.dataset.d)>=cut&&matches(row);row.hidden=!on;count+=on});none.hidden=count>0;
+bs.forEach(button=>{const start=cutoff(button.dataset.w),total=rows.filter(row=>(row.dataset.w||row.dataset.d)>=start&&matches(row)).length;
+button.textContent=button.dataset.label+' ('+total+')';button.setAttribute('aria-pressed',String(button.dataset.w===days))});
+if(save)try{localStorage.setItem('sigma-window-2',days)}catch(e){}}
+bs.forEach(button=>button.addEventListener('click',()=>show(button.dataset.w,1)));let days='7';try{days=localStorage.getItem('sigma-window-2')||days}catch(e){}
+document.addEventListener('sigma-lens',()=>show(cur));show(days);
+const hash=location.hash.match(/^#d-(\\d{4}-\\d{2}-\\d{2})$/);if(hash){const target=hash[1];show(target>=cutoff('7')?'7':target>=cutoff('30')?'30':target>=cutoff('90')?'90':'0');
+const sort=document.querySelector('.sort');sort&&sort._paint&&sort._paint('newest');
+const hit=[...document.querySelectorAll('#top>li')].find(row=>!row.hidden&&row.dataset.d<=target);if(hit){hit.classList.add('hit');hit.scrollIntoView()}}})()</script>"""
+
 
 
 # An opened home-page row (li.fold) fills from its own small fragment (claims_path): about 2 KB, 6 KB at most, against 137 KB for every row's
@@ -981,164 +969,98 @@ def themes_page(runs: list[dict]) -> str:
 
 # ---------------------------------------------------------------- ticker board (the Tickers page)
 
-BOARD_CSS = """\
-.board-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-3) var(--space-5);margin:var(--space-6) 0 var(--space-2)}
-.board-head h2{margin:0;flex:1;min-width:9rem}
-.board-head .windows button{min-height:34px}
-.board-cols,.board summary{display:grid;grid-template-columns:4.4rem minmax(0,1fr) 3.4rem 5.2rem 8rem 3.6rem 3.6rem 3.4rem;gap:0 var(--space-3);align-items:center}
-.board-cols{margin-top:var(--space-5);padding:0 0 var(--space-2) 18px;font:500 var(--text-micro) var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);border-bottom:var(--line-1) solid var(--border)}
-.board-cols .r{text-align:right}
-.board{list-style:none;padding:0;margin:0;display:flex;flex-direction:column}
-.board.rev{flex-direction:column-reverse}
-.board>li{border-bottom:var(--line-1) solid var(--border)}
-.board summary{position:relative;padding:var(--space-3) 0 var(--space-3) 18px;cursor:pointer;list-style:none;font:400 var(--text-detail) var(--font-mono)}
+BOARD_CSS = """
+.board-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--space-3);margin:var(--space-6) 0 var(--space-3)}
+.board-head h2{margin:0;flex:1}
+.board-cols,.board summary{display:grid;grid-template-columns:4.4rem minmax(0,1fr) 10rem 5rem 4rem;gap:var(--space-3);align-items:center;padding:var(--space-3) 0 var(--space-3) 18px}
+.board-cols{font:500 var(--text-caption) var(--font-mono);color:var(--text-muted)}
+.board{list-style:none;margin:0;padding:0}
+.board>li{border-top:var(--line-1) solid var(--border)}
+.board summary{position:relative;cursor:pointer;list-style:none}
 .board summary::-webkit-details-marker{display:none}
-.board summary::before{content:"";position:absolute;left:3px;top:calc(var(--space-3) + 10px);width:6px;height:6px;margin-top:-5px;border:solid var(--text-muted);border-width:0 var(--line-2) var(--line-2) 0;transform:rotate(-45deg);transition:transform var(--motion)}
+.board summary::before{content:"";position:absolute;left:2px;top:1.3em;width:6px;height:6px;border:solid var(--text-muted);border-width:0 var(--line-1) var(--line-1) 0;transform:rotate(-45deg)}
 .board details[open]>summary::before{transform:rotate(45deg)}
 .board summary:hover .bt{color:var(--accent)}
 .board summary:focus-visible{outline:var(--line-2) solid var(--accent);outline-offset:-2px}
-.bt{font:600 var(--text-row) var(--font-mono);letter-spacing:.02em}
-.bnone{display:grid;grid-template-columns:4.4rem minmax(0,1fr) 3.4rem;gap:0 var(--space-3);align-items:center;padding:var(--space-3) 0 var(--space-3) 18px}
-.bnone .bs{color:var(--text-muted);font-weight:400}
-.bt a{text-decoration:none}
-.bn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 var(--text-detail) var(--font-sans);color:var(--text-muted)}
-.bs{font-weight:600;font-size:var(--text-row);text-align:right;font-variant-numeric:tabular-nums}
-.bs.pos,.st.pos{color:var(--positive)}.bs.neg,.st.neg{color:var(--negative)}.bs.zero{color:var(--text-muted)}
-.bmeta{display:contents}
-.bmeta>*{text-align:right;color:var(--text-muted);font-variant-numeric:tabular-nums}
-.bb{position:relative;display:block;height:8px;background:var(--surface-2);border-radius:var(--radius-xs)}
-.bb::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:var(--line-1);background:var(--border-strong)}
-.bb i{position:absolute;top:0;bottom:0}
-.bb .bull{left:50%;width:calc(var(--w) * 50%);background:var(--positive);border-radius:0 var(--radius-xs) var(--radius-xs) 0}
-.bb .bear{right:50%;width:calc(var(--w) * 50%);background:var(--negative);border-radius:var(--radius-xs) 0 0 var(--radius-xs)}
-.bx{white-space:nowrap;font-weight:600}.bx a{text-decoration:none;color:inherit}.bx.pos{color:var(--positive)}.bx.neg{color:var(--negative)}.bx.mix{color:var(--signals)}.bx.none{color:var(--text-muted);font-weight:400}.bx .tl,.sent .tl{font-weight:400;color:var(--text-muted);font-variant-numeric:tabular-nums}.lo .tl::after{content:" ●";font-size:.7em;vertical-align:.1em}
-.bx-more{margin:var(--space-5) 0 0}.bx-more summary{cursor:pointer;font:500 var(--text-detail) var(--font-mono)}.bx-more ul{list-style:none;padding:0;margin:var(--space-3) 0}.bx-more li{padding:var(--space-2) 0;border-bottom:var(--line-1) solid var(--border)}
+.bt{font:600 var(--text-row) var(--font-mono)}.bt a{text-decoration:none}
+.bn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:400 var(--text-detail) var(--font-sans);color:var(--text-muted)}
+.bs,.st{font:500 var(--text-detail) var(--font-mono)}
+.bs.pos,.st.pos{color:var(--positive)}.bs.neg,.st.neg{color:var(--negative)}.bs.mix{color:var(--warning)}.bs.neu,.st.zero{color:var(--text-muted)}
+.bmeta{display:contents}.bm,.bl{font:400 var(--text-detail) var(--font-mono);color:var(--text-muted)}
+.sent-votes{margin:0 0 var(--space-3) 18px;color:var(--text-muted);font:400 var(--text-detail) var(--font-mono)}
 .bi{list-style:none;margin:0;padding:0 0 var(--space-3) 18px}
 .bi li{padding:var(--space-2) 0 var(--space-2) var(--space-3);border-left:var(--line-1) solid var(--border)}
-.bi .by{margin:0}
-.bi .st{font-weight:600}
 .bi p{margin:2px 0 0;font-size:var(--text-row)}
-@media (max-width:600px){
-.board-cols{display:none}
-.board summary{grid-template-columns:4.6rem 3.4rem minmax(0,1fr);grid-template-areas:"t s b" "n n n" "m m m";gap:2px var(--space-3)}
-.board summary .bt{grid-area:t}.board summary .bs{grid-area:s}.board summary .bb{grid-area:b}.board summary .bn{grid-area:n}
-.bmeta{display:flex;flex-wrap:wrap;gap:0 var(--space-3);grid-area:m}
-.bmeta>*{text-align:left}
-.bmeta .bx::before{content:"X ";color:var(--text-muted);font-weight:400}
-.bmeta .bm::after{content:" " attr(data-u)}
-.bmeta .bl::before{content:"last "}
-}
+@media(max-width:600px){.board-cols{display:none}.board summary{grid-template-columns:4.8rem minmax(0,1fr);grid-template-areas:"t s" "n n" "m m";gap:2px var(--space-3)}.board .bt{grid-area:t}.board .bn{grid-area:n}.board .bs{grid-area:s}.board .bmeta{display:flex;grid-area:m;gap:var(--space-4)}.board .bi{padding-left:0}}
 """
 
-BOARD_JS = """<script>(()=>{const l=document.getElementById('board'),bs=[...document.querySelectorAll('.board-head button')];if(!l)return;
-bs.forEach(b=>b.addEventListener('click',()=>{l.classList.toggle('rev',b.dataset.o==='bear');bs.forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}))})()</script>"""
+BOARD_JS = """<script>(()=>{const list=document.getElementById('board'),buttons=[...document.querySelectorAll('[data-o]')];if(!list)return;
+const rows=[...list.children];buttons.forEach(button=>button.addEventListener('click',()=>{const order=button.dataset.o;
+rows.slice().sort((a,b)=>(order==='bull'?+b.dataset.net-a.dataset.net:order==='bear'?+a.dataset.net-b.dataset.net:+b.dataset.voices-a.dataset.voices)).forEach(row=>list.append(row));
+buttons.forEach(other=>other.setAttribute('aria-pressed',String(other===button)))}))})()</script>"""
 
 
 def short_date(iso: str) -> str:
-    """Oct 24, without the year: the board only holds the last 90 days."""
+    """A short month and day."""
     return human_date(iso).rsplit(",", 1)[0]
 
 
-def board_row(r: dict, side: float, page_sym: str = "", x: dict | None = None, xday: str = "") -> str:
-    """One ticker: a summary line (ticker, company, net, bull/bear bar, mentions, sources, last seen) that opens onto its top items."""
-    cls = "pos" if r["net"] >= 0.05 else "neg" if r["net"] <= -0.05 else "zero"
-    w = lambda v: f"{min(v / side, 1):.3f}" if side else "0"
-    bar = (f'<span class="bb" role="img" aria-label="Bullish {r["bull"]:.1f}, bearish {r["bear"]:.1f}">'
-           f'<i class="bear" style="--w:{w(r["bear"])}"></i><i class="bull" style="--w:{w(r["bull"])}"></i></span>')
+def board_row(r: dict, page_sym: str = "") -> str:
+    label = r["label"]
+    cls = signals_sentiment.CLASS[r["label"]]
+    name = r.get("market_label") or r["ticker"]
+    title = f'<a href="{esc(ticker_path(page_sym))}">{esc(name)}</a>' if page_sym else esc(name)
     items = "".join(
-        f'<li><div class="by"><span class="st {"pos" if i["stance"] > 0 else "neg"}">{i["stance"]:+d}</span>'
-        + " · ".join(f"<b>{esc(x)}</b>" if k == 0 else esc(x) for k, x in enumerate(
-            dict.fromkeys(x for x in (i["who"], i["where"], short_date(i["date"])) if x)))
-        + (f' {ext_link(i["link"], "Open", "ts")}' if safe_url(i["link"]) else "")
-        + f'</div><p>{esc(i["reason"])}</p></li>' for i in r["items"])
-    t = f'<a href="{esc(ticker_path(page_sym))}">{esc(r["ticker"])}</a>' if page_sym else esc(r.get("label") or r["ticker"])
-    return (f'<li><details><summary><span class="bt">{t}</span><span class="bn">{esc(r["name"])}</span>'
-            f'<span class="bs {cls}">{r["net"]:+.1f}</span>{bar}<span class="bmeta">{x_cell(x, xday)}<span class="bm" data-u="{plural(r["mentions"], "mention").split(" ", 1)[1]}">{r["mentions"]}</span>'
-            f'<span class="bm" data-u="{plural(r["sources"], "source").split(" ", 1)[1]}">{r["sources"]}</span><span class="bl">{esc(short_date(r["last"]))}</span></span></summary>'
-            f'<ul class="bi">{items}</ul></details></li>')
+        f'<li><b>{esc(item["speaker"])}</b> · <span class="st {"pos" if item["vote"] > 0 else "neg" if item["vote"] < 0 else "zero"}">{esc(signals_sentiment.label_for(item["vote"]))}</span>'
+        + "".join(f'<p>{esc(short_date(source["date"]))}'
+                  + (f' · {esc(source["where"])}' if source["where"] and source["where"] != item["speaker"] else "")
+                  + (f' · {ext_link(source["link"], "Source", "ts")}' if safe_url(source["link"]) else "")
+                  + f' · {esc(signals_sentiment.label_for(source["stance"]))}: {esc(source["reason"])}</p>'
+                  for source in item["evidence"]) + '</li>' for item in r["items"])
+    votes = f'{r["bull"]} bullish · {r["bear"]} bearish' + (f' · {r["neutral"]} neutral' if r["neutral"] else "")
+    return (f'<li data-net="{r["net"]}" data-voices="{r["sources"]}"><details><summary><span class="bt">{title}</span>'
+            f'<span class="bn">{esc(r["name"])}</span><span class="bs {cls}">{esc(label)}</span>'
+            f'<span class="bmeta"><span class="bm">{r["sources"]} {"voice" if r["sources"] == 1 else "voices"}</span><span class="bl">{esc(short_date(r["last"]))}</span></span>'
+            f'</summary><p class="sent-votes">{votes}</p><ul class="bi">{items}</ul></details></li>')
 
 
-def x_cell(x: dict | None, day: str) -> str:
-    """The board's X column: the day's X read of this ticker (signals_sentiment.py), linked to its row on the Signals day page. Empty
-    when X had no call on it that day: an empty cell says nothing either way."""
-    if not x or not day:
-        return '<span class="bx none">–</span>'
-    sid = x["ticker"].lstrip("@")
-    lo = " lo" if x["confidence"] == "low" else ""
-    return (f'<span class="bx {signals_sentiment.CLASS[x["label"]]}{lo}"><a href="/signals/{day}/#s-{esc(sid)}" title="{esc(x["reason"])}">'
-            f'{esc(signals_sentiment.badge(x))} <span class="tl">{esc(signals_sentiment.tally(x))}</span></a></span>')
 
 
-def x_others(xrows: list[dict], day: str) -> str:
-    """Tickers X had a lean or a split on that have no board row (their X posts were all mild views, which the board scores at 0)."""
-    if not xrows:
-        return ""
-    lis = "".join(f'<li{" class=lo" if x["confidence"] == "low" else ""}><a class="chip" href="/signals/{day}/#s-{esc(x["ticker"])}">{esc(x["ticker"])}</a> '
-                  f'<span class="bx {signals_sentiment.CLASS[x["label"]]}">{esc(signals_sentiment.head(x))}</span>'
-                  f'<br><span class="why">{esc(x["reason"])}</span></li>' for x in xrows)
-    return (f'<details class="bx-more"><summary>X on {esc(short_date(day))}: {plural(len(xrows), "other ticker")} without a board row</summary>'
-            f'<p class="meta">Only mild X views, scored zero here. Strongest first.</p><ul>{lis}</ul></details>')
 
 
-def board_html(sc: dict, pub: dict | None = None, xs: dict | None = None) -> str:
-    """The board page for a scoreboard from board.build: most bullish first, a switch to read it from the bearish end.
-    `pub` maps the SEC spelling of each ticker that has a page on the site (BRK-B) to the page's own symbol (BRK.B); only those get a link."""
-    rows, market = sc["rows"], sc.get("market") or []
-    live = [m for m in market if m["items"]]
-    side = max([max(r["bull"], r["bear"]) for r in rows + live] or [0])
-    xday = (xs or {}).get("day", "")
-    xmap = {norm_ticker(x["ticker"]): x for x in (xs or {}).get("tickers", [])}
-    xmk = {x["ticker"]: x for x in (xs or {}).get("markets", [])}
-    cols = lambda first, second: (f'<div class="board-cols" aria-hidden="true"><span>{first}</span><span>{second}</span><span class="r">Net</span>'
-                                  f'<span>Bull / bear</span><span class="r" title="Today\'s X read, one vote per speaker">X{" " + esc(short_date(xday)) if xday else ""}</span>'
-                                  '<span class="r">Mentions</span><span class="r">Sources</span><span class="r">Last</span></div>')
-    none = lambda m: (f'<li class="bnone"><span class="bt">{esc(m["label"])}</span><span class="bn">{esc(m["name"])}</span>'
-                      '<span class="bs">–</span></li>')
-    mk = (f'<div class="board-head"><h2>Market</h2></div>{cols("Read", "Covers")}<ol class="board">'
-          + "".join(board_row(m, side, "", xmk.get(m["ticker"]), xday) if m["items"] else none(m) for m in market) + "</ol>") if live else ""
-    seen = {norm_ticker(r["ticker"]) for r in rows}
-    others = [x for x in (xs or {}).get("tickers", []) if norm_ticker(x["ticker"]) not in seen and (x["label"] != "Neutral" or x["speakers"] > 1)]
-    xnote = (f' · <a href="/signals/{xday}/">X column</a>: the day\'s X read, kept apart from Net' if xday else "")
-    body = (f'<h1>{SENTIMENT_NAME}</h1><p class="meta">As of {esc(human_date(sc["as_of"]))} · {NOT_ADVICE}{xnote}</p>{mk}'
-            '<div class="board-head"><h2>Tickers</h2><div class="windows" role="group" aria-label="Order">'
-            '<button type="button" data-o="bull" aria-pressed="true">Bullish</button>'
-            '<button type="button" data-o="bear" aria-pressed="false">Bearish</button></div></div>'
-            + (f'{cols("Ticker", "Company")}<ol class="board" id="board">{"".join(board_row(r, side, (pub or {}).get(r["ticker"], ""), xmap.get(norm_ticker(r["ticker"])), xday) for r in rows)}</ol>{BOARD_JS}{x_others(others, xday)}'
-               if rows else "<p>No stances yet.</p>"))
+def board_html(sc: dict, pub: dict | None = None) -> str:
+    market = sc.get("market") or []
+    market_html = ('<h2>Market</h2><ol class="board">' + "".join(board_row(row) for row in market) + '</ol>') if market else ""
+    columns = '<div class="board-cols" aria-hidden="true"><span>Ticker</span><span>Company</span><span>Sentiment</span><span>Voices</span><span>Last</span></div>'
+    controls = ('<div class="seg" role="group" aria-label="Sentiment order"><button type="button" data-o="voices" aria-pressed="true">Most voices</button>'
+                '<button type="button" data-o="bull" aria-pressed="false">Bullish</button><button type="button" data-o="bear" aria-pressed="false">Bearish</button></div>')
+    rows = sc["rows"]
+    body = (f'<h1>{SENTIMENT_NAME}</h1><p class="meta">Past {sc["days"]} days · {esc(human_date(sc["as_of"]))}</p>{market_html}'
+            f'<div class="board-head"><h2>Tickers</h2>{controls}</div>'
+            + (columns + '<ol class="board" id="board">' + "".join(board_row(row, page_sym=(pub or {}).get(row["ticker"], "")) for row in rows) + '</ol>' + BOARD_JS
+               if rows else '<p>No directional views in this window.</p>'))
     return page(f"{SENTIMENT_NAME} · {SITE}", body, "sentiment", md=md_of(SENTIMENT_PATH),
-                updated=newest_of(*(r["last"] for r in rows + live)) or sc["as_of"])
+                updated=newest_of(*(row["last"] for row in rows + market)) or sc["as_of"])
 
 
-def board_md(sc: dict, pages: dict | None = None, xs: dict | None = None) -> str:
-    """The same board for an agent: one line per ticker, most bullish first. `pages` maps tickers that have a page on the site to that page's symbol."""
-    out = [f"# {SENTIMENT_NAME}", "", f"As of {human_date(sc['as_of'])}. {NOT_ADVICE} Every ticker, person and company: [{TAGS_NAME}]({absu(md_of(TAGS_PATH))}). "
-           f"Claim counts per ticker: [JSON]({absu('/tickers.json')}).", ""]
-    live = [m for m in sc.get("market") or [] if m["items"]]
-    xday = (xs or {}).get("day", "")
-    xmap = {norm_ticker(x["ticker"]): x for x in (xs or {}).get("tickers", [])} | {x["ticker"]: x for x in (xs or {}).get("markets", [])}
-    xtxt = lambda r: (f"; X {xday}: {xr['label']} {signals_sentiment.tally(xr)}" if (xr := xmap.get(r["ticker"]) or xmap.get(norm_ticker(r["ticker"]))) else "")
-    line = lambda name, r: (f"{name} ({ml(r['name'])}): net {r['net']:+.1f}, bullish {r['bull']:.1f}, bearish {r['bear']:.1f}, "
-                            f"{plural(r['mentions'], 'mention')}, {plural(r['sources'], 'source')}, last {r['last']}{xtxt(r)}")
-    if live:
-        out += ["## Market", ""] + [f"- {line(m['label'], m)}" for m in live] + (["", "## Tickers", ""] if sc["rows"] else [])
-    out += [f"- {line(mlink(r['ticker'], absu(ticker_path(pages[r['ticker']], 'md'))) if r['ticker'] in (pages or {}) else r['ticker'], r)}"
-            for r in sc["rows"]]
-    seen = {norm_ticker(r["ticker"]) for r in sc["rows"]}
-    others = [x for x in (xs or {}).get("tickers", []) if norm_ticker(x["ticker"]) not in seen and (x["label"] != "Neutral" or x["speakers"] > 1)]
-    if xday:
-        out += ["", f"The X figure is the day's X read per ticker ([{xday}]({absu('/signals/' + xday + '/')})), kept apart from net. {signals_sentiment.TALLY_NOTE}"]
-    if others:
-        out += ["", f"## X on {xday}: tickers without a board row", "", "Only mild X views so far, which the board scores at zero. Strongest first.", ""]
-        out += [f"- {x['ticker']} {x['label']} {signals_sentiment.tally(x)}: {mt(x['reason'])}" for x in others]
+def board_md(sc: dict) -> str:
+    out = [f"# {SENTIMENT_NAME}", "", f"Past {sc['days']} days, as of {human_date(sc['as_of'])}.", ""]
+    for row in [*(sc.get("market") or []), *sc["rows"]]:
+        out += [f"## {row.get('market_label') or row['ticker']}: {row['label']}", "",
+                f"{row['bull']} bullish, {row['bear']} bearish, {row['neutral']} neutral; {plural(row['sources'], 'voice')}.", ""]
+        for item in row["items"]:
+            out += [f"- {mt(item['speaker'])}: {signals_sentiment.label_for(item['vote'])}"]
+            out += [f"  - {mlink(source['date'], source['link']) if safe_url(source['link']) else source['date']}: {signals_sentiment.label_for(source['stance'])} · {mt(source['reason'])}"
+                    for source in item["evidence"]]
+        out += [""]
     return doc(out)
 
 
-def board_pages(published: Path, reg: dict, ireg: dict, pages: dict, xs: dict | None = None) -> tuple[str, str]:
-    """(HTML, Markdown) of the board: every stance label scored against the episodes the site lists (Deep from reg,
-    Social from ireg), as of today."""
-    episodes = {**{k: ("deep", e["score"]) for k, e in reg.items()}, **{k: ("social", e["score"]) for k, e in ireg.items()}}
-    sc = board.build(published, episodes)
-    return board_html(sc, pages, xs), board_md(sc, pages, xs)
+def board_pages(published: Path, reg: dict, ireg: dict, pages: dict) -> tuple[str, str]:
+    episodes = {**{key: ("deep", episode["score"]) for key, episode in reg.items()},
+                **{key: ("social", episode["score"]) for key, episode in ireg.items()}}
+    scores = board.build(published, episodes)
+    return board_html(scores, pages), board_md(scores)
 
 
 # ---------------------------------------------------------------- paths and URLs
@@ -2465,15 +2387,15 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS)
     identity = load_site_identity()
     BASE_URL, SITE, MAKER, X_PROFILE = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
@@ -2498,7 +2420,7 @@ def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
 
 
 def _build(published: Path, out: Path, entities_file: Path, research_posts: list[dict] | None = None) -> dict:
-    global SITE_YEAR, NAV_MENU
+    global SITE_YEAR
     from . import signals_site  # imports this module, so not at the top
     runs = load_runs(published)
     research_posts = research_posts or []
@@ -2555,12 +2477,6 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     sm: list[tuple] = []
     adays = signals_site.load(published)[0]  # Signals data adds the Signals panel to the home page and the Signals view to /x/
     signals = bool(adays)
-    menu_items = []
-    if signals:
-        menu_items.append(("/signals/", "Signals", "signals"))
-    if research_posts:
-        menu_items.append(NAV_RESEARCH)
-    NAV_MENU = (*NAV_MENU, (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"), *menu_items)
 
     def emit(path: str, html_s: str, md_s: str, last: str = "") -> None:
         """Write an HTML page and its Markdown twin, and list both in the sitemap."""
@@ -2609,8 +2525,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         emit("/x/", edition_page(eds[0], ent, "today", lh), edition_md(eds[0], ent, lm), eds[0]["date"])
         emit("/x/week/", week_page(week, ent), week_md(week), eds[0]["date"])
         emit("/x/archive/", archive_page(eds), archive_md(eds), eds[0]["date"])
-    xs = ({"day": (d := max(adays)), "tickers": signals_site.sentiment_rows(adays[d]), "markets": signals_site.sentiment_rows(adays[d], True)} if adays else None)
-    bh, bm = board_pages(published, reg, ireg, {norm_ticker(t): t for t in (*ipub, *pub)}, xs)  # every ticker that has a page, Social-only ones included
+    bh, bm = board_pages(published, reg, ireg, {norm_ticker(t): t for t in (*ipub, *pub)})
     emit(SENTIMENT_PATH, bh, bm)
     for old in OLD_BOARD_PATHS:  # not in the sitemap: they only point on
         write(out / file_of(old), redirect_page(SENTIMENT_PATH, SENTIMENT_NAME, md_of(old)))

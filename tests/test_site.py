@@ -352,6 +352,7 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert '<option value="4">Rated 4+</option>' in (out / "find/index.html").read_text()
     nav = home.split('<nav aria-label="Main">', 1)[1].split("</nav>", 1)[0]
     assert 'href="/"' in nav and 'href="/x/">X</a>' in nav
+    assert 'href="/sentiment/">Sentiment</a>' in nav and 'aria-label="Menu"' not in home
     social_redirect = (out / "social" / "index.html").read_text()
     assert 'content="0; url=/"' in social_redirect
     assert "Moved to [the home page](/index.md)." in (out / "social.md").read_text()
@@ -512,7 +513,7 @@ def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agen
     make_published(pub)
     site.build(pub, out)
     assert "<h2>Podcasts & YouTube</h2>" in (out / "index.html").read_text() and (out / "signals/index.html").exists() and "No signals are published yet" in (out / "signals/index.html").read_text() and "signals-panel" not in (out / "index.html").read_text()
-    visible_routes = [path for path, _, _ in (*site.NAV_PRIMARY, *site.NAV_MENU, site.NAV_RESEARCH)]
+    visible_routes = [path for path, _, _ in site.NAV_PRIMARY]
     visible_routes.extend(("/signals/",))
     assert all((out / site.file_of(path)).exists() for path in visible_routes)
     social = (out / "social/index.html").read_text()

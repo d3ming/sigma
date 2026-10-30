@@ -44,3 +44,18 @@ The home page listed podcast picks while `/social/` listed YouTube creator video
 ## Hosted transcript search
 
 Find's hosted transcript search returned short excerpts and timestamp links from a private search index. It added a serverless function and a separate Blob upload flow. It was removed as unnecessary; the local library continues to ingest and search transcripts. The last public copies are `9fc0a80:api/search.py` and `9fc0a80:sigma/searchindex.py`.
+
+## Secondary navigation menu
+
+The header menu listed Tags, Themes, Shows, Find, daily Signals and Research beside Sentiment. It obscured the main
+reading paths and advertised sparse browsing views. The header now links directly to Podcasts & video, X and
+Sentiment. Existing detail pages and data exports remain available through source links and old URLs. The last menu
+implementation is at `51bc256:sigma/site.py`.
+
+## Weighted sentiment Net and separate X column
+
+The Sentiment board summed quality- and age-weighted claims, ignored mild X views, and showed a separate daily X
+label beside that total. Repeated claims could outweigh independent speakers and the two readings could disagree.
+Sentiment now uses the same per-speaker voting rule for video and X, with a five-point stance or Mixed and source
+evidence, over the past 30 days. Stored labels and video ratings are unchanged. The former model is at
+`51bc256:sigma/board.py` and its display is at `51bc256:sigma/site.py`.
