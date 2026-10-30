@@ -77,9 +77,11 @@ and give no claims.
 
 ## 4. Write it up
 
-- `reason`: one viewer-facing line under 240 characters. Lead with ticker, direction and the speaker's action; add the
-  brief thesis or caveat. Example: `XYZ: said they bought more after hours and are still adding; expects demand to
-  grow, but gave no exit level.`
+- `reason`: one viewer-facing line under 240 characters. For every primary ticker in the claims, name its stance with
+  the exact five-point wording from `prompts/stance.md` (`strongly bearish`, `bearish`, `neutral`, `bullish`, or
+  `strongly bullish`), then give the source-backed action or thesis and a useful caveat. Example:
+  `XYZ — strongly bullish: creator added after hours, citing demand, but gave no exit level.` If views differ by time
+  horizon, keep both stances and label the horizons instead of forcing them into one direction.
 - Keep the 1-10 quality score separate from the investment stance. Do not use `reason` to apologize for a rating,
   explain a score band, or repeat the rubric. A strong score does not mean bullish; a useful bearish call can score
   highly.
