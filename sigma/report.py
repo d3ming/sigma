@@ -346,6 +346,9 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                     cur += _TENS[x]
                 elif x == "hundred" and cur < 100:
                     cur = (cur or 1) * 100
+                elif x == "thousand" and 100 <= cur < 1000:
+                    out.append((ts, _num_key(cur)))
+                    cur *= 1000
                 elif x == "and" and cur >= 100 and j + 1 < n and (words[j + 1][0] in _UNITS or words[j + 1][0] in _TENS):
                     pass
                 elif x == "and" and cur > 0 and j + 2 < n and [words[j + 1][0], words[j + 2][0]] == ["a", "half"]:

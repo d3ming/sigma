@@ -203,7 +203,7 @@ PY
   fi
   OUTPUT="$SOURCE/.vercel/output"
   PYTHON_PATH=${PYTHON:h}
-  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_X_DIR="$BUILD_DATA_ROOT/x" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" SIGMA_BASE_URL="$BASE_URL" vercel build --prod) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
+  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_X_DIR="$BUILD_DATA_ROOT/x" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" SIGMA_BASE_URL="$BASE_URL" vercel build --yes --target production) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
     :
   else
     rc=$?

@@ -29,6 +29,19 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     (scan / "manifest.json").write_text("{}")
     (scan / "posts.jsonl").write_text(json.dumps(post) + "\n")
     (scan / "quoted.jsonl").write_text("")
+    claim = {"episode_id": "rss:four", "timestamp": 60, "text": "Expects NVDA demand to rise", "score": 4,
+             "source": "ranked", "date": day, "speaker": "Jane Doe", "title": "Jane Doe on NVDA", "show": "Market Hour",
+             "link": "https://example.com/episode?t=60"}
+    score_four_pub = tmp_path / "score-four-published"
+    run = score_four_pub / day
+    run.mkdir(parents=True)
+    low_claim = {**claim, "episode_id": "rss:three", "score": 3, "text": "Below the feed rating floor"}
+    (run / "claims.jsonl").write_text("".join(json.dumps(c) + "\n" for c in (claim, low_claim)))
+    from sigma import stance
+    labels = [{"key": stance.claim_key(c["episode_id"], c["timestamp"], c["text"]), "labels": [
+        {"ticker": "NVDA", "stance": 1, "reason": "Expects stronger demand"}
+    ]} for c in (claim, low_claim)]
+    (run / "stances.jsonl").write_text("".join(json.dumps(row) + "\n" for row in labels))
     labels = pub / "x" / "stances" / f"{day}.jsonl"
     labels.parent.mkdir(parents=True)
     row = {"key": f"p-{post_id}", "id": post_id, "handle": "reader", "date": day,
@@ -57,6 +70,9 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     monkeypatch.setenv("SIGMA_X_DIR", str(data / "x"))
     monkeypatch.setattr(signals_index, "DATA", data)
     now = datetime.fromisoformat("2026-10-27T06:00:00+00:00")
+    signals, _ = signals_index.podcast_rows(score_four_pub, day, stance.labelled(score_four_pub), {"NVDA": "NVIDIA"}, {"NVDA": "NVIDIA"})
+    assert any(s["source_kind"] == "podcast" and s["source_id"] == "rss:four" for s in signals)
+    assert not any(s["source_id"] == "rss:three" for s in signals)
     day_file = pub / "signals" / f"{day}.json"
     day_file.parent.mkdir()
     day_file.write_text(json.dumps(signals_index.build(day, pub, now=now)))

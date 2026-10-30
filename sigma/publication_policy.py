@@ -1,0 +1,1 @@
+MIN_SCORE = 4

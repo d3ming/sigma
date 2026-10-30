@@ -26,7 +26,7 @@ This builds an empty desk without network access, private files or model credent
 
 Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market sweep and [source-reading](skills/source-reading/SKILL.md) to read the underlying evidence across source types. [The source comparison](docs/source-research.md) explains the design choices.
 
-Start with `sigma --help` and `sigma doctor`. An agent follows [the daily prompt](prompts/daily.md), using the next action returned by `sigma status`; the [X workflow](skills/x-daily/SKILL.md) does the same for X. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
+Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily update skill](skills/daily-update/SKILL.md), which coordinates video ingest, the podcast issue, and the independent X scan. The existing [daily prompt](prompts/daily.md) and [X workflow](skills/x-daily/SKILL.md) remain their task instructions. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
 
 Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
 

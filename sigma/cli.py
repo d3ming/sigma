@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import events, steplog, verify
 from .config import STYLES
-from .fetch import daily, fetch, transcribe_run
+from .fetch import DEFAULT_AUDIO_MINUTES, daily, fetch, transcribe_run
 from .paths import data_root
 from .triage import DEFAULT_TOP
 from .whisper import BACKEND_CHOICES
@@ -650,7 +650,8 @@ def _main(argv=None):
     add_fetch_args(f)
     t = sub.add_parser("transcribe", help="whisper untranscribed episodes in a run folder; resumable, run it detached")
     t.add_argument("run")
-    t.add_argument("--minutes", type=float, default=900)
+    t.add_argument("--minutes", type=float, default=DEFAULT_AUDIO_MINUTES,
+                   help="source-audio minutes to transcribe (default: 3600; not wall-clock time)")
     t.add_argument("--per-episode", type=float)
     t.add_argument("--db", help="also record transcript_source in this SQLite DB")
     t.add_argument("--force", action="store_true", help="ignore a stale transcribe.lock")
@@ -684,7 +685,8 @@ def _main(argv=None):
     d = sub.add_parser("daily", help="people first, then channels, for the last --hours; queues transcribe in the background")
     add_fetch_args(d)
     d.add_argument("--hours", type=float, default=72)
-    d.add_argument("--minutes", type=float, default=900, help="whisper budget for the queued transcribe")
+    d.add_argument("--minutes", type=float, default=DEFAULT_AUDIO_MINUTES,
+                   help="source-audio minutes for the queued transcribe (default: 3600; not wall-clock time)")
     d.add_argument("--no-transcribe", action="store_true")
     d.add_argument("--news", action="store_true", help="queued transcribe also whispers news shows, last (default: skip)")
     d.add_argument("--top", type=int, default=DEFAULT_TOP, help="queued transcribe whispers only the top N by triage score, plus core people")

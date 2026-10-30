@@ -117,8 +117,8 @@ def test_the_default_triage_cap_is_wide_and_every_gap_has_a_reason(monkeypatch, 
     monkeypatch.setattr(cli, "transcribe_run", lambda a: got.update(transcribe=a))
     main(["daily"])
     main(["transcribe", "x"])
-    assert (got["daily"].top, got["daily"].minutes, got["daily"].hours) == (DEFAULT_TOP, 900, 72)
-    assert (got["transcribe"].top, got["transcribe"].minutes) == (DEFAULT_TOP, 900)
+    assert (got["daily"].top, got["daily"].minutes, got["daily"].hours) == (DEFAULT_TOP, 3600, 72)
+    assert (got["transcribe"].top, got["transcribe"].minutes) == (DEFAULT_TOP, 3600)
     monkeypatch.setattr(cli, "transcribe_run", real)
     eps = [ep(f"rss:e{i}", f"Founder {i} on chips", f"show{i}") for i in range(4)]
     run = make_run(tmp_path / "r", [*eps, ep("rss:n", "Halftime", "cnbc-halftime"), ep("rss:rr", "Replay of old", "show9")],
