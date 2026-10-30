@@ -1,0 +1,28 @@
+[project]
+name = "sigma-signals"
+version = "0.2.0"
+description = "Cited podcast and X signals checked against their sources"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10,<3.15"
+keywords = ["signals", "podcasts", "transcription", "whisper", "investing", "llm-agents"]
+dependencies = ["feedparser>=6", "youtube-transcript-api>=1.0", "yt-dlp", "pyyaml", "requests", "jsonschema"]
+
+[project.urls]
+Homepage = "https://github.com/d3ming/sigma"
+Documentation = "https://github.com/d3ming/sigma/blob/develop/docs/architecture.md"
+
+[project.optional-dependencies]
+whisper = ["faster-whisper>=1.2", "av<16"]
+mac = ["mlx-whisper"]
+dev = ["pytest"]
+
+[project.scripts]
+sigma = "sigma.cli:main"
+
+[tool.setuptools]
+packages = ["sigma"]
+
+[tool.pytest.ini_options]
+filterwarnings = ["ignore::DeprecationWarning:feedparser"]

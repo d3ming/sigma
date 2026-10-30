@@ -1,0 +1,21 @@
+{
+  "buildCommand": "python3 -m sigma.site --out dist",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "git": {
+    "deploymentEnabled": false
+  },
+  "redirects": [
+    {
+      "source": "/alpha/:path*",
+      "destination": "/signals/:path*",
+      "permanent": true
+    }
+  ],
+  "functions": {
+    "api/search.py": {
+      "excludeFiles": "{{data,.local,dist,published,sigma,docs,tests,prompts,schema,deploy,web,site-assets,skills,.github,.pytest_cache,examples}/**,.env*,**/.env*,.private-words,**/.private-words,PLAN.md,**/PLAN.md,followlist*,**/followlist*}"
+    }
+  }
+}

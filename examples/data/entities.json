@@ -1,0 +1,14 @@
+{
+  "topic_names": {},
+  "topic_groups": [],
+  "show_topics": {},
+  "companies": {},
+  "people": {},
+  "lenses": {
+    "signals": {
+      "name": "Signals",
+      "mark": "S",
+      "public_ticker": true
+    }
+  }
+}

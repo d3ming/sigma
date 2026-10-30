@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Stance labels, written by a reader agent (prompts/stance.md) to <run>/stance/out-N.json; the merged rows in published/<run>/stances.jsonl and published/x/stances/<date>.jsonl are the same objects, one per line",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["key", "labels"],
+    "additionalProperties": false,
+    "properties": {
+      "key": {"type": "string", "pattern": "^([cx]-[0-9a-f]{12}|p-[0-9]{5,25})$", "description": "the item's key from in-N.json, copied"},
+      "labels": {
+        "type": "array", "maxItems": 8,
+        "description": "one per ticker the item is about, and one for each market target it takes a view on (@MARKET, @RATES, @CREDIT); a podcast claim needs one for each of its ticker candidates (a market target is optional); an X sentence or post may have none (no view, no label)",
+        "items": {
+          "type": "object",
+          "required": ["ticker", "stance", "reason"],
+          "additionalProperties": false,
+          "properties": {
+            "ticker": {"type": "string", "minLength": 1, "maxLength": 12, "description": "a US-listed ticker, or @MARKET (US stocks overall), @RATES (rates, the Fed, Treasuries), @CREDIT (spreads, high yield, private credit)"},
+            "stance": {"type": "integer", "minimum": -2, "maximum": 2, "description": "-2 clearly bearish, -1 leaning bearish, 0 neutral or a mention, 1 leaning bullish, 2 clearly bullish"},
+            "reason": {"type": "string", "minLength": 3, "maxLength": 200, "description": "under 15 words, in your own words"},
+            "origin": {"enum": ["primary", "recap"], "description": "optional, for a label with a stance other than 0: primary when the speaker is first-hand (an operator on their own business, a data source, giving their own view); recap when relaying news or someone else's view. The Signals index (sigma signals-index) uses it; where it is missing a default rule decides."},
+            "horizon_days": {"enum": [5, 21, 63], "description": "optional, for a label with a stance other than 0: the trading days the view is about (5 a week, 21 a month, 63 a quarter), the nearest to what the speaker implies"},
+            "target": {"type": "string", "minLength": 2, "maxLength": 60, "description": "optional: the company, or the sector or theme, the view is about, in words, when the ticker alone does not say it (an ETF, a market target, a supply-chain read)"}
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+#!/bin/sh
+# Runs the test suite before every `git push`; a failure blocks the push. Installed by scripts/setup.sh
+# (core.hooksPath=.githooks). Skip once, knowingly, with `git push --no-verify`.
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"
