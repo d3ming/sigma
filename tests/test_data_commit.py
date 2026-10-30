@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "data-commit.sh"
+CODE = Path(__file__).parent.parent
 pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")
 
 
@@ -29,16 +30,6 @@ def private_source(tmp_path):
     subprocess.run(["git", "clone", "-q", str(origin), str(source)], check=True, capture_output=True)
     git("config", "user.name", "Fixture", cwd=source)
     git("config", "user.email", "fixture@example.invalid", cwd=source)
-    code = tmp_path / "public-sigma"
-    code.mkdir()
-    git("init", "-q", "--initial-branch=main", cwd=code)
-    git("config", "user.name", "Fixture", cwd=code)
-    git("config", "user.email", "fixture@example.invalid", cwd=code)
-    deploy = code / "deploy" / "mac"
-    deploy.mkdir(parents=True)
-    shutil.copy(SCRIPT, deploy / "data-commit.sh")
-    git("add", "deploy/mac/data-commit.sh", cwd=code)
-    git("commit", "-qm", "fixture script", cwd=code)
     data = source / "sigma"
     data.mkdir()
     (data / "site.json").write_text('{"version":1}\n')
@@ -58,7 +49,7 @@ def private_source(tmp_path):
     git("commit", "-qm", "fixture baseline", cwd=source)
     git("push", "-q", "-u", "origin", "main", cwd=source)
     git("switch", "-q", "-c", "sigma-ingest", cwd=source)
-    return origin, source, data, code
+    return origin, source, data, CODE
 
 
 def invoke(source, data, code, *args):
@@ -132,14 +123,10 @@ def test_conflict_with_new_private_main_stops_without_changing_source(tmp_path):
     (data / "site.json").write_text('{"version":"ingest"}\n')
     git("add", "sigma/site.json", cwd=source)
     git("commit", "-qm", "ingest site config", cwd=source)
-    head_before = git("rev-parse", "HEAD", cwd=source)
     sibling = source / "research" / "keep.txt"
     sibling.parent.mkdir()
     sibling.write_text("unrelated dirty file\n")
-    status_before = git("status", "--porcelain", cwd=source)
-    files_before = working_files(source)
-
-    other = tmp_path / "other-writer"
+    other = tmp_path / "concurrent-main"
     subprocess.run(["git", "clone", "-q", str(origin), str(other)], check=True, capture_output=True)
     git("config", "user.name", "Fixture", cwd=other)
     git("config", "user.email", "fixture@example.invalid", cwd=other)
@@ -147,15 +134,16 @@ def test_conflict_with_new_private_main_stops_without_changing_source(tmp_path):
     git("add", "sigma/site.json", cwd=other)
     git("commit", "-qm", "concurrent main change", cwd=other)
     git("push", "-q", "origin", "main", cwd=other)
-
+    head_before = git("rev-parse", "HEAD", cwd=source)
+    status_before = git("status", "--porcelain", cwd=source)
+    files_before = working_files(source)
     result = invoke(source, data, code, "conflicting landing")
-
     assert result.returncode == 1
     assert "conflicts with private main" in result.stderr
     assert git("rev-parse", "HEAD", cwd=source) == head_before
     assert git("status", "--porcelain", cwd=source) == status_before
     assert working_files(source) == files_before
-    main = git("rev-parse", "refs/remotes/origin/main", cwd=source)
+    main = git("rev-parse", "refs/heads/main", cwd=origin)
     assert git("show", f"{main}:sigma/site.json", cwd=source) == '{"version":"main"}'
     assert sibling.read_text() == "unrelated dirty file\n"
     assert git("branch", "--list", "sigma-data-*", cwd=source) == ""
@@ -173,14 +161,11 @@ def test_data_commit_refuses_preexisting_staged_files_without_touching_them(tmp_
     assert "pre-existing staged files" in result.stderr
     assert git("diff", "--cached", "--binary", cwd=source) == before
     assert git("rev-parse", "HEAD", cwd=source) == git("rev-parse", "refs/remotes/origin/main", cwd=source)
-
-
-def test_data_commit_refuses_deleting_private_data_without_a_saved_copy(tmp_path):
-    _, source, data, code = private_source(tmp_path)
+    git("reset", "-q", "HEAD", "--", "research/staged.json", cwd=source)
     (data / "site.json").unlink()
-    result = invoke(source, data, code)
-    assert result.returncode == 1
-    assert "delete private data without a saved copy" in result.stderr
+    deleted = invoke(source, data, code)
+    assert deleted.returncode == 1
+    assert "delete private data without a saved copy" in deleted.stderr
     assert git("rev-parse", "HEAD", cwd=source) == git("rev-parse", "refs/remotes/origin/main", cwd=source)
     assert git("show", "refs/remotes/origin/main:sigma/site.json", cwd=source) == '{"version":1}'
 
@@ -218,6 +203,11 @@ def test_data_commit_refuses_private_path_in_linked_public_worktree(tmp_path):
     git("add", "deploy/mac/data-commit.sh", cwd=public)
     git("commit", "-qm", "fixture", cwd=public)
     git("push", "-q", "-u", "origin", "main", cwd=public)
+    public_data = public / "private-data"
+    public_data.mkdir()
+    refused = invoke(public, public_data, public, "must refuse public repository data")
+    assert refused.returncode == 1
+    assert "public Sigma repository" in refused.stderr
     git("worktree", "add", "-q", "-b", "linked-data", str(linked), "main", cwd=public)
     git("branch", "--set-upstream-to=origin/main", "linked-data", cwd=public)
     data = linked / "private-data"
