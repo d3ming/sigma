@@ -197,9 +197,10 @@ min-height:34px;padding:6px 13px;cursor:pointer}
 .top .entry[data-new]{border-left:3px solid var(--accent);padding-left:14px;background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 7%,transparent),transparent 70%)}
 .top .entry.hit{outline:2px solid var(--accent);outline-offset:4px}
 .top.js .entry.fold{cursor:pointer}.top.js .entry.fold .epb,.top.js .entry.fold .eps{cursor:auto}.top.js .entry.fold a{cursor:pointer}
-.entry.fold h3{position:relative}
-.epc-t{display:block;width:100%;margin:0;padding:0 1.8em 0 0;border:0;background:none;color:inherit;font:inherit;letter-spacing:inherit;text-align:left;text-wrap:inherit;cursor:pointer}
-.epc-t::after{content:"";position:absolute;right:.4em;top:.4em;width:.5em;height:.5em;border:solid var(--text-muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
+.entry.fold h3{position:relative;padding-right:2em}
+.epc-t{position:absolute;right:0;top:50%;display:none;width:1.6em;height:1.6em;transform:translateY(-50%);padding:0;border:0;background:none;color:inherit;cursor:pointer}
+.top.js .entry.fold .epc-t{display:inline-flex;align-items:center;justify-content:center}
+.epc-t::after{content:"";width:.5em;height:.5em;border:solid var(--text-muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
 .epc-t[aria-expanded=true]::after{transform:rotate(45deg)}
 .epc-t:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 .epb{margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
@@ -784,14 +785,14 @@ const hit=[...document.querySelectorAll('#top>li')].find(r=>!r.hidden&&r.dataset
 # that is not on a link or a control. A failed fragment says so, links the page, and is tried again on the next open, not on every hover.
 EPC_AHEAD = 8
 EPC_JS = """<script>(()=>{const top=document.getElementById('top');const rows=top&&[...top.querySelectorAll('li.fold')];if(!rows||!rows.length)return;const cache={},bad={};
-const get=(r,retry)=>{const u=r.querySelector('.epb').dataset.src;if(retry)delete bad[u];return cache[u]||(cache[u]=fetch(u,{credentials:'same-origin'}).then(x=>{if(!x.ok)throw 0;return x.text()}).catch(e=>{delete cache[u];bad[u]=1;throw e}))};
-const load=r=>{const b=r.querySelector('.epb'),st=r.querySelector('.eps');if(r.dataset.done)return;st.className='meta eps busy';st.textContent='Loading summaries\u2026';
-get(r,1).then(h=>{if(r.dataset.done)return;r.dataset.done='1';b.innerHTML=h;st.className='meta eps';st.textContent=''}).catch(()=>{if(b.hidden)return;st.className='meta eps';st.textContent='Could not load the summaries. ';const a=document.createElement('a');a.href=b.dataset.page;a.textContent='Open the episode page';st.append(a,'.')})};
-const flip=r=>{const t=r.querySelector('.epc-t'),b=r.querySelector('.epb'),o=t.getAttribute('aria-expanded')!=='true';t.setAttribute('aria-expanded',o);b.hidden=!o;if(o)load(r);else{const st=r.querySelector('.eps');if(!r.dataset.done){st.textContent='';st.className='meta eps'}}};
-top.classList.add('js');rows.forEach((r,i)=>{const h=r.querySelector('h3'),a=h.querySelector('a'),b=r.querySelector('.epb');if(!a||!b)return;const t=document.createElement('button');t.type='button';t.className='epc-t';t.textContent=a.textContent;b.id='epb'+i;t.setAttribute('aria-controls',b.id);t.setAttribute('aria-expanded','false');h.replaceChild(t,a)});
+const get=(r,retry)=>{const u=r.querySelector('.epb').dataset.src;if(!u)return Promise.resolve('');if(retry)delete bad[u];return cache[u]||(cache[u]=fetch(u,{credentials:'same-origin'}).then(x=>{if(!x.ok)throw 0;return x.text()}).catch(e=>{delete cache[u];bad[u]=1;throw e}))};
+const load=r=>{const b=r.querySelector('.epb'),st=r.querySelector('.eps');if(r.dataset.done||!b.dataset.src)return;st.className='meta eps busy';st.textContent='Loading summaries\u2026';
+get(r,1).then(h=>{if(r.dataset.done)return;r.dataset.done='1';st.remove();b.insertAdjacentHTML('beforeend',h)}).catch(()=>{if(b.hidden)return;st.className='meta eps';st.textContent='Could not load the summaries. ';const a=document.createElement('a');a.href=b.dataset.page;a.textContent='Open the episode page';st.append(a,'.')})};
+const flip=r=>{const t=r.querySelector('.epc-t'),b=r.querySelector('.epb'),o=t.getAttribute('aria-expanded')!=='true';t.setAttribute('aria-expanded',o);b.hidden=!o;if(o)load(r);else{const st=r.querySelector('.eps');if(st&&!r.dataset.done){st.textContent='';st.className='meta eps'}}};
+top.classList.add('js');
 top.addEventListener('click',ev=>{const r=ev.target.closest&&ev.target.closest('li.fold');if(!r||!r.querySelector('.epc-t'))return;const t=ev.target;
 if(t.closest('.epb,.eps')||t.closest('a,input,select,textarea,[tabindex]')||(String(getSelection())&&!t.closest('.epc-t')))return;flip(r)});
-const near=ev=>{const r=ev.target.closest&&ev.target.closest('li.fold');if(r&&r.querySelector('.epb').hidden&&!bad[r.querySelector('.epb').dataset.src])get(r).catch(()=>{})};
+const near=ev=>{const r=ev.target.closest&&ev.target.closest('li.fold'),b=r&&r.querySelector('.epb');if(b&&b.dataset.src&&b.hidden&&!bad[b.dataset.src])get(r).catch(()=>{})};
 ['pointerover','pointerdown','focusin'].forEach(n=>top.addEventListener(n,near));
 const q=rows.filter(r=>r.hasAttribute('data-new')).slice(0,%d);const idle=window.requestIdleCallback||(f=>setTimeout(f,300));
 const next=()=>{const r=q.shift();if(r)get(r).catch(()=>{}).then(()=>idle(next,{timeout:3000}))};idle(next,{timeout:3000});
@@ -823,7 +824,8 @@ def claims_path(eid: str) -> str:
 
 def claims_fragment(e: dict) -> str:
     """What an opened home-page row shows: the episode's summaries with their timestamps, then the way to its own page."""
-    return (f'<ul class="claims">{"".join(claim_li(c) for c in e["claims"])}</ul>'
+    cls = "claims influencer" if e.get("influencer") else "claims"
+    return (f'<ul class="{cls}">{"".join(claim_li(c) for c in e["claims"])}</ul>'
             f'<p class="meta"><a href="{esc(e["page"])}">Open the episode page</a></p>\n')
 
 
@@ -833,7 +835,7 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     summaries, loaded from claims_path on the first open (the home page). Without a script the title is still a link to the episode's page."""
     title = e.get("title") or e["id"]
     t = f'<a href="{esc(e["page"])}">{esc(title)}</a>' if e.get("page") else (ext_link(e.get("url"), title) or esc(title))
-    fold = bool(expand and e.get("page") and e.get("claims") and not e.get("influencer"))
+    fold = bool(expand)
     meta = " · ".join(x for x in [show_name(e), esc(human_date(board.publication_day(e["published"]))) if e.get("published") else "", esc(why)] if x) + listen_icons(e)
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") else ""
     rated = rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") and isinstance(e.get("score"), int) else "")
@@ -843,8 +845,18 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     fresh = " data-new" if newest_day and e["date"][:10] == newest_day else ""
     published = esc(publication_sort_value(e))
     li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}" data-published="{published}" data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
-    head = f'<h3>{t}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>{take}{picks}'
-    body = (f'<p class="meta eps" role="status"></p><div class="epb" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden></div>' if fold else "")
+    panel_id = f'epb-{quote(str(e["id"]), safe="")}'
+    toggle = f'<button type="button" class="epc-t" aria-label="Toggle details for {esc(title)}" aria-controls="{panel_id}" aria-expanded="false"></button>' if fold else ""
+    head = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>{"" if fold else take}{"" if fold else picks}'
+    if fold:
+        if e.get("page") and e.get("claims"):
+            details = f'<div class="epb" id="{panel_id}" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden>{take}<p class="meta eps" role="status"></p></div>'
+        else:
+            static_details = take or '<p class="meta">No transcript claims are available.</p>'
+            details = f'<div class="epb" id="{panel_id}" hidden>{static_details}</div>'
+    else:
+        details = ""
+    body = details
     return f'{li}<div>{head}{body}</div></li>'
 
 
@@ -2666,7 +2678,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         if e["page"]:
             emit(e["page"], episode_page(e, ent, cos), episode_md(e), e["date"])
     for e in home_rows:  # the summaries a home-page row opens to (top_entry expand)
-        if e["page"] and e["claims"] and not e.get("influencer"):
+        if e["page"] and e["claims"]:
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))
     write(out / "episodes.md", episodes_md(reg))
     sm.append(("/episodes.md", newest))
