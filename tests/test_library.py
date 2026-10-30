@@ -73,17 +73,17 @@ def lib(tmp_path, capsys):
 def test_ingest_is_idempotent_replaces_changed_claims_and_leaves_the_run_alone(tmp_path, lib, capsys):
     run = make_run(tmp_path / "runs")
     before_files = {p.name: p.stat().st_mtime_ns for p in run.iterdir()}
-    main(["library", "ingest", str(run), "--db", lib.db])
+    main(["library", "ingest", str(run), "--no-transcripts", "--db", lib.db])
     assert "2 episodes, 4 claims" in capsys.readouterr().out
     first = lib("stats")
     assert first["episodes"] == 2 and first["claims"] == 4
-    main(["library", "ingest", str(run), "--db", lib.db])
+    main(["library", "ingest", str(run), "--no-transcripts", "--db", lib.db])
     assert lib("stats") == first  # the same run twice changes nothing
     ranked = json.loads((run / "ranked.json").read_text())
     ranked["episodes"][0]["claims"][0]["claim"] = "Rubin ramps in Q3."
     (run / "ranked.json").write_text(json.dumps(ranked))
     before_files["ranked.json"] = (run / "ranked.json").stat().st_mtime_ns
-    main(["library", "ingest", str(run), "--db", lib.db])
+    main(["library", "ingest", str(run), "--no-transcripts", "--db", lib.db])
     assert lib("query", "--text", "Rubin") and not lib("query", "--text", "sold out")  # replaced, not appended
     assert {p.name: p.stat().st_mtime_ns for p in run.iterdir()} == before_files
     fresh = str(tmp_path / "claims-only.sqlite")
@@ -94,7 +94,7 @@ def test_ingest_is_idempotent_replaces_changed_claims_and_leaves_the_run_alone(t
 
 
 def test_query_by_ticker_person_date_show_and_text(tmp_path, lib):
-    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--db", lib.db])
+    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--no-transcripts", "--db", lib.db])
     nv = lib("query", "--ticker", "NVDA")
     assert [c["speaker"] for c in nv] == ["Jensen Huang"] and nv[0]["tickers"] == ["NVDA", "private:Foo"]
     assert [(c["source"], c["matched_by"]) for c in nv] == [("ranked", "tag")]
@@ -116,7 +116,7 @@ def test_query_by_ticker_person_date_show_and_text(tmp_path, lib):
 
 def test_a_ticker_found_in_untagged_text_must_look_like_a_ticker(tmp_path, lib):
     """Claims with no ticker tags are searched by text: the symbol must stand alone, short ones need a $."""
-    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--db", lib.db])
+    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--no-transcripts", "--db", lib.db])
     con = library.connect(lib.db, write=True)
     with con:
         for t in ("Right now demand is strong.", "Input costs fell.", "AI spend is up; NOW is a winner.", "Bought $NOW and $AI.",
@@ -187,7 +187,7 @@ def test_reading_while_an_ingest_holds_the_write_lock_and_a_missing_library(tmp_
     with pytest.raises(SystemExit, match="no library at"):
         lib("query")
     assert not (tmp_path / "lib.sqlite").exists()
-    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--db", lib.db])
+    main(["library", "ingest", str(make_run(tmp_path / "runs")), "--no-transcripts", "--db", lib.db])
     writer = sqlite3.connect(lib.db, isolation_level=None)
     writer.execute("BEGIN IMMEDIATE")
     writer.execute("INSERT INTO claims(episode_id, run, source, text) VALUES ('ep1','y','report','pending')")

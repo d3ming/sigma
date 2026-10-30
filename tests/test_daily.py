@@ -157,6 +157,15 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     distant = {"episode_id": "synthetic", "signal": [{"text": "Raised 1.5 billion", "timestamp": 121}], "sections": []}
     assert len(report_mod._number_warnings(wrong, spoken[:1])) == 1
     assert len(report_mod._number_warnings(distant, spoken[:1])) == 1
+    spoken_amount = report_mod.spoken_numbers([(w, 284) for w in "a hundred thousand units are available".split()])
+    correct_amount = {"episode_id": "synthetic", "signal": [{"text": "Amount is $100,000", "timestamp": 404}], "sections": []}
+    coefficient_amount = {"episode_id": "synthetic", "signal": [{"text": "Amount is 100 thousand dollars", "timestamp": 404}], "sections": []}
+    wrong_amount = {"episode_id": "synthetic", "signal": [{"text": "Amount is $100,001", "timestamp": 404}], "sections": []}
+    outside_window = {"episode_id": "synthetic", "signal": [{"text": "Amount is $100,000", "timestamp": 405}], "sections": []}
+    assert report_mod._number_warnings(correct_amount, spoken_amount) == []
+    assert report_mod._number_warnings(coefficient_amount, spoken_amount) == []
+    assert len(report_mod._number_warnings(wrong_amount, spoken_amount)) == 1
+    assert len(report_mod._number_warnings(outside_window, spoken_amount)) == 1
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     path = write(root, "report.json", report_json())
     captions = {"abcdefghijk": [(540, "our capex is 450 billion dollars"), (1140, "gross margin is 38 percent")],  # a minute early

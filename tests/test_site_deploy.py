@@ -12,7 +12,7 @@ pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="site-deploy
 FAKE = """#!/bin/sh
 case "$1" in
   build)
-    [ "$2" = "--prod" ] || exit 8
+    [ "$2" = "--yes" ] && [ "$3" = "--target" ] && [ "$4" = "production" ] || exit 8
     echo build >> "$FAKE_BUILD_LOG"
     [ -f "$SIGMA_DATA_ROOT/site.json" ] && grep -q 'Sigma fixture' "$SIGMA_DATA_ROOT/site.json" || exit 12
     if [ "${FAKE_REQUIRE_FROZEN:-0}" = "1" ]; then
