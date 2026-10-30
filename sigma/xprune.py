@@ -255,9 +255,10 @@ def _edition_sync_days(published: Path, gone: set[str]) -> set[str]:
     return days
 
 
-def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) -> None:
+def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) -> set[str]:
     if not days:
-        return
+        return set()
+    emptied = set()
     original = xdaily.x_dir()
     with tempfile.TemporaryDirectory(prefix="sigma-x-prune-") as tmp:
         staged = Path(tmp) / "x"
@@ -271,7 +272,10 @@ def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) 
                 source = _read(source_path)
                 if not isinstance(source, dict):
                     raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition is missing or unreadable")
-                source, _ = drop_from_edition(source, gone)
+                source, dropped = drop_from_edition(source, gone)
+                allow_empty_signals = bool(dropped and not source.get("signals"))
+                if allow_empty_signals:
+                    emptied.add(day)
                 real_scan, staged_scan = original / "scan" / day, staged / "scan" / day
                 manifest = real_scan / "manifest.json"
                 if not manifest.is_file():
@@ -285,7 +289,7 @@ def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) 
                     kept = [row for row in xdaily.read_jsonl(real_file) if str(row.get("id")) not in gone]
                     (staged_scan / name).write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in kept), encoding="utf-8")
                 try:
-                    errors, _ = xdaily.edition_problems(day, source)
+                    errors, _ = xdaily.edition_problems(day, source, allow_empty_signals=allow_empty_signals)
                     if errors:
                         raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition fails its source check")
                     xdaily.public_edition(day, source)
@@ -296,9 +300,10 @@ def _preflight_public_editions(published: Path, gone: set[str], days: set[str]) 
                 os.environ.pop("SIGMA_X_DIR", None)
             else:
                 os.environ["SIGMA_X_DIR"] = old_x_dir
+    return emptied
 
 
-def _sync_public_editions(published: Path, days: set[str]) -> None:
+def _sync_public_editions(published: Path, days: set[str], empty_signal_days: set[str] = frozenset()) -> None:
     for day in sorted(days):
         public_path = xdaily.edition_path(published, day)
         source_path = xdaily.day_dir(day) / "edition.json"
@@ -310,7 +315,7 @@ def _sync_public_editions(published: Path, days: set[str]) -> None:
         if not isinstance(source, dict):
             raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition is unreadable")
         try:
-            errors, _ = xdaily.edition_problems(day, source)
+            errors, _ = xdaily.edition_problems(day, source, allow_empty_signals=day in empty_signal_days)
             if errors:
                 raise SystemExit(f"[x] cannot refresh published X edition {day}: private edition fails its source check")
             expected = xdaily.public_edition(day, source)
@@ -340,14 +345,14 @@ def prune(d: str, published: Path, force: bool = False) -> dict:
     res = {"gone": len(gone)}
     if gone:
         edition_days = _edition_sync_days(published, gone)
-        _preflight_public_editions(Path(published), gone, edition_days)
+        empty_signal_days = _preflight_public_editions(Path(published), gone, edition_days)
         ed = _prune_editions(published, gone)
         res |= {k: v for k, v in ed.items() if k not in {"keys", "rekeys"}}
         res["stance_rows"], stance_days = _prune_stances(published, gone, ed["keys"], ed["rekeys"])
         private, affected_days = _prune_private(gone)
         res |= private
         edition_days |= affected_days | set(ed["keys"])
-        _sync_public_editions(published, edition_days)
+        _sync_public_editions(published, edition_days, empty_signal_days)
         res["signals_signals"] = signals_index.prune(published, gone, edition_days | stance_days)
     res["check_ids"] = len(published_ids(published, d))
     return res

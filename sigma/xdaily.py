@@ -13,6 +13,7 @@ import math
 import os
 import re
 import statistics
+from decimal import Decimal
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -448,7 +449,24 @@ NUM = re.compile(r"(?<![\w.])[$€£]?\d[\d,]*(?:\.\d+)?\s?(?:%|x|bn|b|m|k|B|M|K
 
 
 def norm_num(s: str) -> str:
-    return re.sub(r"[$€£,\s]", "", s).lower().rstrip("x")
+    token = re.sub(r"[,\s]", "", s).lower()
+    currency = token[0] if token[:1] in "$€£" else ""
+    if currency:
+        token = token[1:]
+    suffix = token[-1:] if token[-1:] in "%x" else ""
+    if suffix:
+        token = token[:-1]
+    scale = {"bn": Decimal(1_000_000_000), "b": Decimal(1_000_000_000),
+             "m": Decimal(1_000_000), "k": Decimal(1_000)}
+    if not suffix and token[-2:] == "bn":
+        magnitude, token = "bn", token[:-2]
+    elif not suffix and token[-1:] in {"b", "m", "k"}:
+        magnitude, token = token[-1:], token[:-1]
+    else:
+        magnitude = ""
+    value = Decimal(token) * scale.get(magnitude, Decimal(1))
+    dimension = "percent" if suffix == "%" else "multiple" if suffix == "x" else "amount"
+    return f"{currency}:{dimension}:{value.normalize()}"
 
 
 def words(s: str) -> list[str]:
@@ -465,7 +483,7 @@ def copied_run(sentence: str, source: str, n: int = QUOTE_WORDS) -> str | None:
     return None
 
 
-def edition_problems(d: str, ed: dict) -> tuple[list[str], list[str]]:
+def edition_problems(d: str, ed: dict, allow_empty_signals: bool = False) -> tuple[list[str], list[str]]:
     """(errors, warnings) for an edition against its scan."""
     errs, warns = [], []
     try:
@@ -483,7 +501,7 @@ def edition_problems(d: str, ed: dict) -> tuple[list[str], list[str]]:
         q = quoted.get(p.get("quoted_id") or "")
         return p["text"] + ("\n" + q["text"] if q else "")
 
-    if not ed["signals"]:
+    if not ed["signals"] and not allow_empty_signals:
         errs.append("signals: the edition needs at least one Signals sentence")
     runs = [t for i, t in enumerate(s.get("theme") for s in ed["signals"]) if i == 0 or t != ed["signals"][i - 1].get("theme")]
     if any(runs.count(t) > 1 for t in runs if t):
@@ -500,8 +518,8 @@ def edition_problems(d: str, ed: dict) -> tuple[list[str], list[str]]:
         have = {norm_num(m) for m in NUM.findall(cited)}
         for num in NUM.findall(s["text"]):
             k = norm_num(num)
-            if len(re.sub(r"\D", "", k)) >= 2 or "%" in k or "$" in num:
-                if k not in have and k.rstrip("bmk%") not in {h.rstrip("bmk%") for h in have}:
+            if len(re.sub(r"\D", "", k)) >= 2 or "%" in num or "x" in num.lower() or "$" in num:
+                if k not in have:
                     media = any(posts[c].get("media") for c in s["cites"])
                     errs.append(f'{where}: "{num.strip()}" is not in the text of the cited posts'
                                 + (" (if it came from a chart: figures from charts are not allowed)" if media else ""))

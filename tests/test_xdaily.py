@@ -15,7 +15,7 @@ def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_p
     monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
     sd = tmp_path / "scan" / "2026-10-26"
     sd.mkdir(parents=True)
-    text = "Anthropic S-1: H1 revenue $16.3B, compute commitments of $265.6B with Google, Amazon and Microsoft."
+    text = "Anthropic S-1: H1 revenue $16.3B, compute commitments of $265.6B with Google, Amazon and Microsoft, plus a $50m deal and 5%."
     post = {"id": "2114705686513033360", "handle": "someanalyst", "created_at": "2026-10-26T13:08:00Z", "text": text,
             "metrics": {"like": 10, "repost": 1}, "media": [{"type": "photo"}]}
     nulls = {**post, "id": "2114705686513033361", "lang": None, "conversation_id": None}  # X sometimes returns neither: both are optional
@@ -44,6 +44,12 @@ def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_p
           "posts": [{"id": post["id"]}]}
     errs, _ = xdaily.edition_problems("2026-10-26", ed)
     assert len(errs) == 1 and "$300B" in errs[0]  # the chart-free text says 265.6B, so 300B has no source
+    ed["signals"][0]["text"] = "The cited post reports a $50m deal and 5%."
+    assert xdaily.edition_problems("2026-10-26", ed) == ([], [])
+    ed["signals"][0]["text"] = "The cited post reports a $50b deal."
+    assert any("$50b" in error for error in xdaily.edition_problems("2026-10-26", ed)[0])
+    ed["signals"][0]["text"] = "The cited post reports a 5x deal."
+    assert any("5x" in error for error in xdaily.edition_problems("2026-10-26", ed)[0])
     ed["signals"][0]["text"] = "Posters fixed on $265.6B of compute commitments and $16.3B of first-half revenue."
     assert xdaily.edition_problems("2026-10-26", ed) == ([], [])
     out = json.dumps(xdaily.public_edition("2026-10-26", ed))
@@ -111,7 +117,7 @@ def test_a_post_the_scan_reports_gone_leaves_every_file_sigma_keeps_and_the_next
     (previous_scan / "manifest.json").write_text(json.dumps({"date": previous, "window_start": "2026-10-24T12:00:00Z",
         "window_end": previous + "T12:00:00Z", "accounts_ok": 1, "accounts_requested": 1}))
     (x / "days" / previous).mkdir()
-    previous_ed = {"date": previous, "signals": [{"text": "Readers discuss a changing market event today.", "cites": [previous_selected]}],
+    previous_ed = {"date": previous, "signals": [{"text": "One cited post reports a changing market event.", "cites": [unlabelled_gone]}],
                    "posts": [{"id": previous_selected}]}
     (x / "days" / previous / "edition.json").write_text(json.dumps(previous_ed))
     (pub / "x/editions" / f"{previous}.json").write_text(json.dumps(xdaily.public_edition(previous, previous_ed)))
@@ -168,6 +174,9 @@ def test_a_post_the_scan_reports_gone_leaves_every_file_sigma_keeps_and_the_next
     previous_after = json.loads((pub / "x/editions" / f"{previous}.json").read_text())
     previous_source = json.loads((x / "days" / previous / "edition.json").read_text())
     assert previous_after == xdaily.public_edition(previous, previous_source)
+    assert previous_after["signals"] == [] and previous_after["posts"][0]["id"] == previous_selected
+    assert xdaily.edition_problems(previous, previous_source)[0][0].startswith("signals:")
+    assert xdaily.edition_problems(previous, previous_source, allow_empty_signals=True) == ([], [])
     assert previous_after["posts_read"] == 32
     assert previous_after["more"] == previous_public["more"]
     validate_projection()
