@@ -234,7 +234,7 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
     assert {e["episode_id"] for e in json.loads((later / "rank" / "eval-in.json").read_text())} == {"rss:b", "rss:d"}
     read_batches(later)
     # blind re-scores: d 6 -> 5 and b 8 -> 6. By hand: mean (-1 - 2) / 2 = -1.5, mean absolute (1 + 2) / 2 = 1.5, one within
-    # 1 point, and only d crosses the site's bar of 6 (select.md: candidates score 6 or more)
+    # 1 point, and only d crosses the curated-selection cutoff of 6 (select.md: candidates score 6 or more)
     (later / "rank" / "eval-out.json").write_text(json.dumps([{"episode_id": "rss:d", "score": 5, "reason": "again"},
                                                               {"episode_id": "rss:b", "score": 6, "reason": "again"}]))
     capsys.readouterr()

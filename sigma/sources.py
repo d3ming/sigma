@@ -19,9 +19,10 @@ from pathlib import Path
 from .config import Source, load_sources
 from .entities import ENTITIES_FILE, slug
 from .links import _get, similar
+from .publication_policy import MIN_SCORE
 from .showlinks import fill, name_like
 
-PROMOTE_MIN_EPISODES, PROMOTE_MEAN, PROMOTE_SHARE = 3, 6.0, 0.5  # tier 2 -> 1: 3+ scored, mean 6+ and half at the site bar
+PROMOTE_MIN_EPISODES, PROMOTE_MEAN, PROMOTE_SHARE = 3, 6.0, 0.5
 DEMOTE_MIN_EPISODES, DEMOTE_MEAN = 5, 5.0  # tier 1 -> 2: 5+ scored and a mean under 5
 YOUTUBE = re.compile(r"(?:youtube\.com|youtu\.be)/", re.I)
 APPLE = re.compile(r"podcasts\.apple\.com/.*?/id(\d+)", re.I)
@@ -205,7 +206,6 @@ def advice(tier: int, scores: list[int], bar: int) -> str:
 
 
 def review_cmd(args) -> None:
-    from . import site
     from .site import person_slug
 
     sources, _ = load_sources(args.sources)
@@ -221,9 +221,9 @@ def review_cmd(args) -> None:
         sc = scores.get(s.id, [])
         gaps = [g for g, bad in (("topics", not (ents.get("show_topics") or {}).get(person_slug(s.name))),
                                  ("links", not all((links.get(s.id) or {}).get(f) for f in ("apple", "youtube")))) if bad]
-        rows.append((s, sc, advice(s.tier, sc, site.BAR), gaps))
-    print(f"{'source':34} tier  n  mean  >={site.BAR}  advice")
+        rows.append((s, sc, advice(s.tier, sc, MIN_SCORE), gaps))
+    print(f"{'source':34} tier  n  mean  >={MIN_SCORE}  advice")
     for s, sc, adv, gaps in sorted(rows, key=lambda r: (r[0].tier, r[0].id)):
         mean = f"{statistics.mean(sc):4.1f}" if sc else "   -"
-        share = f"{sum(x >= site.BAR for x in sc)}/{len(sc)}" if sc else "-"
+        share = f"{sum(x >= MIN_SCORE for x in sc)}/{len(sc)}" if sc else "-"
         print(f"{s.name[:34]:34} {s.tier:>4} {len(sc):>2}  {mean}  {share:>4}  {adv}" + (f"  (missing: {', '.join(gaps)})" if gaps else ""))

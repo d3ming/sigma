@@ -18,6 +18,7 @@ from . import entities as ents
 from .creators import norm_show
 from .tickers import normalize as norm_ticker
 from . import signals_sentiment
+from .publication_policy import MIN_SCORE
 from . import research as public_research
 from .paths import data_root
 from .site_config import load as load_site_identity
@@ -769,7 +770,6 @@ def sort_bar(list_id: str, default: str, key: str = "") -> str:
     return f'<div class="seg sort" role="group" aria-label="Sort" data-list="{list_id}" data-default="{default}"{key_attr} hidden>{btns}</div>'
 
 
-BAR = 6  # the publish bar in prompts/select.md (6 and up, was 7): an episode at or above it is worth an hour
 WINDOWS = (("7", "Week"), ("30", "Month"), ("90", "3 months"), ("0", "All"))
 TOP_JS = """<script>(()=>{const rows=[...document.querySelectorAll('#top>li')],none=document.getElementById('top-none'),bs=[...document.querySelectorAll('.windows button')];
 let cur='7';function show(d,save){cur=d;const cut=+d?new Date(Date.now()-d*864e5).toISOString().slice(0,10):'',l=window.sigmaLens?sigmaLens.get():'';let n=0;
@@ -804,7 +804,7 @@ const next=()=>{const r=q.shift();if(r)get(r).catch(()=>{}).then(()=>idle(next,{
 
 
 def rating_hint(n) -> str:
-    return f"Rated {n} out of 10. {BAR} or more is worth an hour of your time."
+    return f"Rated {n} out of 10."
 
 
 def rating_bar(e: dict, hint: str = "") -> str:
@@ -817,7 +817,7 @@ def rating_bar(e: dict, hint: str = "") -> str:
 
 def top_episodes(reg: dict) -> list[dict]:
     """Every scored episode at or above the bar, best first, then better tier, then newest (as rank-merge orders)."""
-    eps = [e for e in reg.values() if isinstance(e.get("score"), int) and e["score"] >= BAR]
+    eps = [e for e in reg.values() if isinstance(e.get("score"), int) and e["score"] >= MIN_SCORE]
     return sorted(eps, key=lambda e: (-e["score"], e.get("tier") or 3, "".join(chr(255 - ord(c)) for c in e["date"]), e["id"]))
 
 
@@ -861,13 +861,14 @@ def influencer_hint(n) -> str:
 
 
 def social_episodes(ireg: dict) -> list[dict]:
-    """The newest SOCIAL_MAX influencer episodes, newest first (a reader can sort them by rating)."""
-    return sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)[:SOCIAL_MAX]
+    """The newest SOCIAL_MAX rated influencer episodes at the feed floor, newest first."""
+    eligible = (e for e in ireg.values() if isinstance(e.get("score"), int) and e["score"] >= MIN_SCORE)
+    return sorted(eligible, key=lambda e: (e["date"], e["id"]), reverse=True)[:SOCIAL_MAX]
 
 
 def run_redirect(r: dict, home_days: set[str]) -> str:
     """Where a daily issue's address sends a reader: its day on the home page (/#d-DATE), or "" when the home page has no row
-    that day (nothing that came out that day was rated BAR or higher; the picks may be from the day before). The issue then
+    that day (nothing that came out that day met the feed rating floor; the picks may be from the day before). The issue then
     keeps its own page, so its address never lands on an anchor that is not there."""
     day = r["date"][:10]
     return f"/#d-{day}" if r["kind"] == "daily" and day in home_days else ""
@@ -946,9 +947,9 @@ def index_page(runs: list[dict], reg: dict | None = None, ent: ents.Entities | N
 def social_page(ireg: dict, has_x: bool = True) -> str:
     """The YouTube side of Social: the newest influencer episodes, newest first by default, with the YouTube | X switch on top."""
     rows = "".join(top_entry(e) for e in social_episodes(ireg))
-    body = (f'{social_switch("videos", has_x)}<h1>{SOCIAL_NAME}</h1><p class="lede">Videos from creators who pick stocks. They are rated on '
+    body = (f'{social_switch("videos", has_x)}<h1>{SOCIAL_NAME}</h1><p class="lede">Videos from creators who pick stocks, rated {MIN_SCORE} or higher on '
             f'their calls and the evidence behind them, apart from the interview ranking.</p>')
-    body += f'{sort_bar("social", "newest")}<ol class="top" id="social">{rows}</ol>{SORT_JS}' if rows else "<p>No videos yet.</p>"
+    body += f'{sort_bar("social", "newest")}<ol class="top" id="social">{rows}</ol>{SORT_JS}' if rows else f"<p>No videos rated {MIN_SCORE} or higher yet.</p>"
     return page(f"{SOCIAL_NAME} · {SITE}", body, "social", "Videos from creators who pick stocks, rated apart from the interview ranking.", md="/social.md",
                 updated=newest_of(*(e["date"] for e in ireg.values())))
 
@@ -1588,7 +1589,8 @@ def x_views(published: Path) -> dict[str, list[dict]]:
 
 def creator_items(c: creators.Creator, ireg: dict, views: dict, show_owner: dict) -> tuple[list[dict], list[dict]]:
     """(videos, posts) of one creator: Social episodes of its sources' shows, and the posts of its handles that hold a view."""
-    eps = [e for e in ireg.values() if show_owner.get(norm_show(e.get("show"))) == c.id]
+    eps = [e for e in ireg.values() if isinstance(e.get("score"), int) and e["score"] >= MIN_SCORE
+           and show_owner.get(norm_show(e.get("show"))) == c.id]
     posts = [p for h in c.x for p in views.get(h.lower(), [])]
     return eps, posts
 
@@ -1712,7 +1714,7 @@ function row(e){const li=document.createElement('li'),d=document.createElement('
 li.className='entry';a.href=e.i;a.textContent=e.t;h.append(a);m.className='meta';
 e.l.forEach(l=>{const k=document.createElement('span');k.className='mark '+l;k.textContent=(D.lenses[l]||{}).mark||l;const L=D.lenses[l]||{},t=(L.name||l)+': '+(L.about||'');k.dataset.tip=t;k.setAttribute('aria-label',t);k.setAttribute('role','img');k.tabIndex=0;m.append(k)});
 m.append([e.s,e.d&&(MO[+e.d.slice(5,7)-1]+' '+(+e.d.slice(8))+', '+e.d.slice(0,4))].filter(Boolean).join(' \u00b7 '));
-if(e.r){const b=document.createElement('span');b.className='meter';b.style.setProperty('--n',e.r);b.setAttribute('role','img');const h='Rated '+e.r+' out of 10. __BAR__ or more is worth an hour of your time.';b.dataset.tip=h;b.tabIndex=0;b.setAttribute('aria-label',h);m.prepend(b)}
+if(e.r){const b=document.createElement('span');b.className='meter';b.style.setProperty('--n',e.r);b.setAttribute('role','img');const h='Rated '+e.r+' out of 10.';b.dataset.tip=h;b.tabIndex=0;b.setAttribute('aria-label',h);m.prepend(b)}
 d.append(h,m);
 if(e.c.length){const w=document.createElement('div');w.className='meta';e.c.slice(0,6).forEach(c=>{const x=document.createElement('a');x.className='chip';x.href='/companies/'+encodeURIComponent(c);x.textContent=D.companies[c]||c;w.append(x,' ')});d.append(w)}
 li.append(d);return li}
@@ -1772,12 +1774,12 @@ def find_page(ent: ents.Entities, updated: str = "") -> str:
             + sel("f-person", "Person", "Any person") + sel("f-show", "Show", "Any show")
             + '<select id="f-days" aria-label="Time window"><option value="0">All time</option><option value="7">Past week</option>'
               '<option value="30">Past month</option><option value="90">Past 3 months</option></select>'
-              '<select id="f-min" aria-label="Rating"><option value="0">Any rating</option><option value="6">Rated 6+</option>'
+              f'<select id="f-min" aria-label="Rating"><option value="0">Any rating</option><option value="{MIN_SCORE}">Rated {MIN_SCORE}+</option>'
               '<option value="8">Rated 8+</option></select></div>'
             '<p class="meta" id="f-count" aria-live="polite"></p><ol class="top" id="f-out" style="margin-top:.6em"></ol>'
             '<button type="button" class="more-btn" id="f-more" hidden>Show more</button>'
             '<noscript><p>Search needs JavaScript. Browse <a href="/shows/">shows</a>, <a href="/tags/#companies">companies</a> or '
-            '<a href="/tags/#people">people</a> instead.</p></noscript>' + FIND_JS.replace("__BAR__", str(BAR)).replace("__SEARCH_API__", esc(SEARCH_API_URL)))
+            '<a href="/tags/#people">people</a> instead.</p></noscript>' + FIND_JS.replace("__SEARCH_API__", esc(SEARCH_API_URL)))
     return page(f"Find · {SITE}", body, "find", "Search every episode by topic, company, person, show and lens.", md="/find.md", updated=updated)
 
 
@@ -2080,7 +2082,7 @@ def episodes_md(reg: dict) -> str:
 
 def social_md(ireg: dict, eds: list[dict] | None = None) -> str:
     eps = social_episodes(ireg)
-    out = ["# Social", "", f"Videos from creators who pick stocks, newest first ({plural(len(eps), 'episode')}). They are rated on their calls and the "
+    out = ["# Social", "", f"Videos from creators who pick stocks, rated {MIN_SCORE} or higher, newest first ({plural(len(eps), 'episode')}). They are rated on their calls and the "
            f"evidence behind them, apart from the interview ranking. [HTML]({absu(SOCIAL_PATH)}) · [Site index]({absu('/llms.txt')})"
            + (f" · The other side of Social: [X]({absu('/x.md')})" if eds else ""), "", NOTE, ""]
     for e in eps:

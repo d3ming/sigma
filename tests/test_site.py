@@ -275,7 +275,18 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     influencer_path = pub / "2026-01-09-daily" / "scores-influencer.json"
     influencer = json.loads(influencer_path.read_text())
     influencer["episodes"][0]["published"] = "2026-01-09T17:00:00+00:00"
+    influencer["episodes"].extend([
+        {"episode_id": "rss:inf4", "title": "Creator four", "source": "Show I", "published": "2026-01-09T18:00:00+00:00", "score": 4, "claims": []},
+        {"episode_id": "rss:inf3", "title": "Creator three", "source": "Show I", "published": "2026-01-09T19:00:00+00:00", "score": 3, "claims": []},
+    ])
     influencer_path.write_text(json.dumps(influencer))
+    weekly_path = pub / "2026-01-05-weekly" / "ranked.json"
+    weekly = json.loads(weekly_path.read_text())
+    weekly["episodes"].extend([
+        {"episode_id": "rss:pod4", "title": "Interview four", "source": "Show A", "published": "2026-01-09T18:30:00+00:00", "score": 4, "claims": []},
+        {"episode_id": "rss:pod3", "title": "Interview three", "source": "Show A", "published": "2026-01-09T19:30:00+00:00", "score": 3, "claims": []},
+    ])
+    weekly_path.write_text(json.dumps(weekly))
     episodes_path = pub / "2026-01-09-daily" / "episodes.json"
     episodes = json.loads(episodes_path.read_text())
     for episode in episodes:
@@ -292,8 +303,19 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     home = (out / "index.html").read_text()
     feed = home.split('<ol class="top" id="top">', 1)[1].split("</ol>", 1)[0]
     assert "Boss" in feed and "Chart week" in feed
+    assert "Interview four" in feed and "Creator four" in feed
+    assert "Interview three" not in feed and "Creator three" not in feed
     assert feed.index("Boss") < feed.index("Chart week")
     assert 'data-s="8"' in feed and 'data-s="10"' in feed
+    assert 'data-s="4"' in feed
+    assert "Rated 4 out of 10." in home and "worth an hour" not in home
+    creator = site.creators.Creator("show-i", "Ivy Creator", ["show-i"])
+    creator_videos, _ = site.creator_items(creator, {
+        "four": {"id": "four", "score": 4, "show": "Show I"},
+        "three": {"id": "three", "score": 3, "show": "Show I"},
+    }, {}, {"show i": "show-i"})
+    assert [e["id"] for e in creator_videos] == ["four"]
+    assert '<option value="4">Rated 4+</option>' in (out / "find/index.html").read_text()
     nav = home.split('<nav aria-label="Main">', 1)[1].split("</nav>", 1)[0]
     assert 'href="/"' in nav and 'href="/x/">X</a>' in nav
     social_redirect = (out / "social" / "index.html").read_text()
@@ -320,6 +342,8 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "Rated as social commentary" in episode and "Rated 10 out of 10 as social commentary." in episode
     assert "Unscored chart week" not in home
     assert "Social" in (out / "tickers/NVDA.md").read_text() and "Calls for a long above 180" in (out / "tickers/NVDA.md").read_text()
+    home_md = (out / "index.md").read_text()
+    assert "Creator four" in home_md and "Creator three" not in home_md
 
 
 def test_updated_line_is_pacific_time(monkeypatch):

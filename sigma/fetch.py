@@ -22,6 +22,8 @@ from .transcribe import MIN_TRANSCRIPT_CHARS, fmt_ts, get_transcript, is_fallbac
 from .triage import DEFAULT_TOP
 from .whisper import Budget
 
+DEFAULT_AUDIO_MINUTES = 3600
+
 
 def slug(text: str, n: int = 60) -> str:
     return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")[:n].rstrip("-")

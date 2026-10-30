@@ -2,7 +2,7 @@
 
     sigma signals-index D          published/signals/D.json and published/signals/index.json
 
-A signal is one stance label (stance.py) other than 0, from the day's podcast run (published/D/claims.jsonl, scored 5+) or
+A signal is one stance label (stance.py) other than 0, from the day's podcast run (published/D/claims.jsonl, scored 4+) or
 the day's X scan (published/x/stances/D.jsonl). The index copies no post text and no claim text: a row carries Sigma's own
 reason (under 15 words), the speaker, a link to the moment (a podcast timestamp, an X post) and the fields a grader needs.
 
@@ -26,13 +26,13 @@ from pathlib import Path
 
 from . import signals_sentiment, board, stance, tickers
 from .paths import data_root
+from .publication_policy import MIN_SCORE
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = data_root()
 PUBLISHED = DATA / "published"
 SCHEMA_VERSION = 1
 HORIZONS = (5, 21, 63)       # trading days: the ledger grades a call at each
-MIN_SCORE = 5                # an episode scored under the selection floor's lowest pick is not Signals
 HOSTS = {"host", "co-host", "cohost", "hosts", "anchor", "interviewer", "narrator"}
 # a role that is first-hand for the company it talks about
 OPERATOR = re.compile(r"\b(ceo|cfo|cto|coo|founder|co-?founder|president|chair(man|woman)?|chief|head of|vp|general partner|portfolio manager)\b", re.I)
