@@ -33,7 +33,7 @@ def is_influencer(row: dict) -> bool:
 
 def rubric_version(path: Path = RUBRIC) -> int:
     """The `Rubric version: N` line at the top of prompts/rank.md. Scores are reused only within a version, so bumping
-    it is how a rubric change re-scores the library (see .claude/skills/score-eval)."""
+    it is how a rubric change re-scores the library (see skills/score-eval)."""
     m = re.search(r"^Rubric version: (\d+)", path.read_text(), re.M) if path.exists() else None
     return int(m.group(1)) if m else 1
 

@@ -7,7 +7,7 @@ import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "data-commit.sh"
 CODE = Path(__file__).parent.parent
-pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")]
 
 
 def git(*args, cwd):

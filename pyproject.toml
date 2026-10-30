@@ -26,3 +26,4 @@ packages = ["sigma"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore::DeprecationWarning:feedparser"]
+markers = ["slow: the heaviest modules; `make test-fast` skips them"]

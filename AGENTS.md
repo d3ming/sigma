@@ -68,6 +68,11 @@ Everything else is yours to decide. Be bold with reversible work.
   and what it printed in the commit message. A passing test suite is not proof that a tool works.
 - Use at most one helper agent, unless the owner has asked you to coordinate others.
 
+## Commands
+
+- `make check`: the private-word guard, the agent-doc check and the full suite. The pre-push hook runs the same.
+- `make test`: the suite alone. `make test-fast`: the suite without the `slow` modules, stopping at the first failure.
+
 ## Tests
 
 - **No test-driven development.** Do not write a test before the code it tests, and do not write tests to steer a

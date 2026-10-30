@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "site-deploy.sh"
-pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="site-deploy.sh is a zsh script")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(shutil.which("zsh") is None, reason="site-deploy.sh is a zsh script")]
 FAKE = """#!/bin/sh
 case "$1" in
   build)

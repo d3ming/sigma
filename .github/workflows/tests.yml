@@ -20,6 +20,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
+      - run: python3 scripts/check_agent_docs.py
       - run: pytest -q --durations=10
 
   # Fails if a tracked file, a commit message in the PR, or the PR's title, body or branch names a private word.
@@ -48,6 +49,19 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BRANCH: ${{ github.head_ref }}
+
+  # Fails if a pull request changes prompts/rank*.md without a higher `Rubric version:` (or a Rubric-unchanged waiver).
+  rubric-bump:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 scripts/check_rubric_bump.py "$BASE_SHA" "$HEAD_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
   # Secret scan over the full history. Known fake fixtures are listed by fingerprint in .gitleaksignore.
   gitleaks:

@@ -1,3 +1,11 @@
+.PHONY: check test test-fast
+check:
+	@scripts/check.sh
+test:
+	@scripts/check.sh --tests
+test-fast:
+	@scripts/check.sh --fast
+
 .PHONY: preview preview-stop preview-logs
 # Local preview on http://localhost:8787, rebuilt on change. See scripts/preview.sh.
 preview:

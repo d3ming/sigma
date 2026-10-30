@@ -743,7 +743,7 @@ def _main(argv=None):
     tr = sub.add_parser("tickers-refresh", help="rebuild us-tickers.json (NYSE, Nasdaq, NYSE American, Cboe) from the SEC's list")
     tr.add_argument("--contact", help="contact address for the SEC's User-Agent (env SIGMA_SEC_CONTACT); never committed")
     tr.add_argument("--out", default=str(ROOT / "us-tickers.json"))
-    se = sub.add_parser("score-eval", help="grade the scoring rubric against the gold set (see .claude/skills/score-eval)")
+    se = sub.add_parser("score-eval", help="grade the scoring rubric against the gold set (see skills/score-eval)")
     ssub = se.add_subparsers(dest="eval_cmd", required=True)
     sflow = argparse.ArgumentParser(add_help=False)
     sflow.add_argument("--flow", default=str(DATA / "score-eval"), help="eval folder (gold.jsonl, pairs.jsonl, variants)")
