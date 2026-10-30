@@ -95,14 +95,14 @@ def no_web(monkeypatch, routes=None):
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
 
 
-def _load_guard():
-    spec = importlib.util.spec_from_file_location("private_words", Path(__file__).parent.parent / "scripts" / "private_words.py")
+def load_script(name):
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).parent.parent / "scripts" / f"{name}.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-private_words = _load_guard()  # scripts/private_words.py: the same salted-hash list the commit hooks and CI use
+private_words = load_script("private_words")  # scripts/private_words.py: the same salted-hash list the commit hooks and CI use
 
 
 def private_hits(*texts):

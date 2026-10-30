@@ -72,8 +72,8 @@ def problems(root: Path) -> list[str]:
     return found
 
 
-def main() -> int:
-    root = Path(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent)
+def main(argv: list[str]) -> int:
+    root = Path(argv[0] if argv else Path(__file__).resolve().parent.parent)
     found = problems(root)
     if found:
         print("\n".join(found), file=sys.stderr)
@@ -81,4 +81,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

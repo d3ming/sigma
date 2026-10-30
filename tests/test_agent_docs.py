@@ -1,10 +1,10 @@
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-CHECK = Path(__file__).resolve().parent.parent / "scripts" / "check_agent_docs.py"
+from tests.helpers import load_script
+
+check = load_script("check_agent_docs")
 SKILL = "---\nname: demo\ndescription: Does the demo thing.\n---\nBody.\n"
 
 
@@ -20,8 +20,9 @@ def build(root: Path) -> Path:
     return root
 
 
-def run(root: Path):
-    return subprocess.run([sys.executable, str(CHECK), str(root)], capture_output=True, text=True)
+def run(root: Path, capsys):
+    code = check.main([str(root)])
+    return code, capsys.readouterr().err
 
 
 def pad_agents(root: Path, size: int):
@@ -59,11 +60,11 @@ def claude_forks_agents(root: Path):
     (root / "CLAUDE.md").write_text("# Own rules\n")
 
 
-def test_a_healthy_tree_passes_and_agents_md_may_be_exactly_8000_chars(tmp_path):
+def test_a_healthy_tree_passes_and_agents_md_may_be_exactly_8000_chars(tmp_path, capsys):
     """Rule: AGENTS.md is at most 8k; the limit itself is allowed."""
     root = build(tmp_path)
     pad_agents(root, 8_000)
-    assert run(root).returncode == 0
+    assert run(root, capsys)[0] == 0
 
 
 @pytest.mark.parametrize(
@@ -81,11 +82,11 @@ def test_a_healthy_tree_passes_and_agents_md_may_be_exactly_8000_chars(tmp_path)
     ids=["agents-too-long", "dead-link", "name-not-folder", "no-description", "skill-too-long", "dangling-symlink",
          "second-copy", "claude-forks-agents"],
 )
-def test_each_rule_breaks_the_check_and_names_the_file_to_fix(tmp_path, break_it, names):
+def test_each_rule_breaks_the_check_and_names_the_file_to_fix(tmp_path, capsys, break_it, names):
     """Rules: AGENTS.md at most 8k, map links exist, skill name matches its folder and has a description, a skill
     is at most 12k, .claude/skills holds only symlinks that resolve, CLAUDE.md is only @AGENTS.md."""
     root = build(tmp_path)
     break_it(root)
-    result = run(root)
-    assert result.returncode == 1
-    assert names in result.stderr
+    code, err = run(root, capsys)
+    assert code == 1
+    assert names in err

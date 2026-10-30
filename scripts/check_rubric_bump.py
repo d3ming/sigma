@@ -45,12 +45,12 @@ def problems(base: str, head: str) -> list[str]:
     return found
 
 
-def main() -> int:
-    found = problems(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else "HEAD")
+def main(argv: list[str]) -> int:
+    found = problems(argv[0], argv[1] if len(argv) > 1 else "HEAD")
     if found:
         print("\n".join(found), file=sys.stderr)
     return 1 if found else 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
