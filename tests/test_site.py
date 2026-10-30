@@ -293,6 +293,21 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
         if episode.get("episode_id") == "rss:inf":
             episode["published"] = "2026-01-09T17:00:00+00:00"
     episodes_path.write_text(json.dumps(episodes))
+    earnings = pub / "2026-01-09-earnings"
+    earnings.mkdir()
+    (earnings / "scores.json").write_text(json.dumps({"week_of": "2026-01-09", "rubric": 2, "episodes": []}))
+    (earnings / "scores-influencer.json").write_text(json.dumps({"week_of": "2026-01-09", "rubric": 1, "episodes": [
+        {"episode_id": "yt:amazon", "title": "Amazon earnings", "source": "Show I", "published": "2026-01-09T21:00:00+00:00",
+         "url": "https://www.youtube.com/watch?v=amazon", "score": 8, "claims": []},
+        {"episode_id": "yt:google", "title": "Google earnings", "source": "Show I", "published": "2026-01-10T01:02:32+00:00",
+         "url": "https://www.youtube.com/watch?v=google", "score": 7, "claims": []}]}))
+    (earnings / "episodes.json").write_text(json.dumps([
+        {"episode_id": "yt:amazon", "title": "Amazon earnings", "source": "Show I", "style": "influencer", "published": "2026-01-09T21:00:00+00:00"},
+        {"episode_id": "yt:google", "title": "Google earnings", "source": "Show I", "style": "influencer", "published": "2026-01-10T01:02:32+00:00"}]))
+    (earnings / "claims.jsonl").write_text("".join(json.dumps({"episode_id": eid, "title": title, "show": "Show I", "published": published,
+        "run": earnings.name, "speaker": "host", "timestamp": 1, "text": title, "tickers": [], "link": ""}) + "\n"
+        for eid, title, published in (("yt:amazon", "Amazon earnings", "2026-01-09T21:00:00+00:00"),
+                                      ("yt:google", "Google earnings", "2026-01-10T01:02:32+00:00"))))
     editions = pub / "x" / "editions"
     editions.mkdir(parents=True)
     (editions / "2026-01-09.json").write_text(json.dumps({"date": "2026-01-09", "headline": "X edition", "signals": [], "posts": [
@@ -302,7 +317,9 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
 
     home = (out / "index.html").read_text()
     feed = home.split('<ol class="top" id="top">', 1)[1].split("</ol>", 1)[0]
-    assert "Boss" in feed and "Chart week" in feed
+    assert "Boss" in feed and "Chart week" in feed and "Amazon earnings" in feed and "Google earnings" in feed
+    google_row = next(row for row in feed.split("<li") if "Google earnings" in row)
+    assert 'data-d="2026-01-09"' in google_row
     assert "Interview four" in feed and "Creator four" in feed
     assert "Interview three" not in feed and "Creator three" not in feed
     assert feed.index("Boss") < feed.index("Chart week")

@@ -475,7 +475,7 @@ def load_run(d: Path) -> dict | None:
     imeta = {k: v for k, v in meta.items() if k in iids}
     meta = {k: v for k, v in meta.items() if k not in iids}
     claims = [c for c in read_jsonl(d / "claims.jsonl") if c.get("episode_id") not in iids]
-    if not (ranked or report or claims):
+    if not (ranked or report or claims or iep):
         return None
     title = (ranked or {}).get("title")  # a one-off issue: a chosen set of episodes, titled instead of dated
     kind = "special" if title else "weekly" if ranked else "daily"
@@ -888,6 +888,18 @@ def publication_sort_value(episode: dict) -> str:
         moment = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
         return moment.astimezone(timezone.utc).isoformat(timespec="microseconds")
     return ""
+
+
+def publication_date(value) -> str:
+    raw = str(value or "")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw[:10]
+    if len(raw) <= 10:
+        return moment.date().isoformat()
+    moment = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(board.pacific_tz()).date().isoformat()
 
 
 def feed_rows(reg: dict, ireg: dict | None = None) -> list[dict]:
@@ -1359,7 +1371,7 @@ def build_episodes(runs: list[dict]) -> dict:
     for e in reg.values():
         e["claims"] = sorted(claimdedupe.dedupe(uniq_claims(e["claims"]))[0], key=claim_ts)  # two runs can word one moment differently
         e["page"] = episode_path(e["id"]) if e["claims"] else ""
-        e["date"] = str(e["published"] or max([claim_date(c) for c in e["claims"]] or [""]))[:10]
+        e["date"] = publication_date(e["published"] or max([claim_date(c) for c in e["claims"]] or [""]))
     return reg
 
 
