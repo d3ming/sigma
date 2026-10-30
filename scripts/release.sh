@@ -260,7 +260,7 @@ def prepare():
     print(f"[publish] saved: {plan_path}")
     print(f"[publish] notes: {notes_path}")
     print(f"[publish] manifest: {manifest_path}")
-    print("[publish] no tag pushed and no deployment uploaded; review the plan and notes, then run make publish APPROVE=" + plan_id)
+    return plan_id
 
 
 def load_plan(plan_id):
@@ -338,18 +338,29 @@ def help_text():
     print("usage: make publish [APPROVE=<plan-id>]")
     print("Run from clean main matching origin/main; the version tag comes from pyproject.toml.")
     print("SIGMA_DATA_ROOT supplies private inputs; each published run needs its source under runs/<run>.")
-    print("make publish prepares a version tag, release notes, and frozen production build without pushing or uploading.")
-    print("After reviewing the saved plan and notes, make publish APPROVE=<full-plan-id> pushes the immutable tag and uploads that exact build.")
+    print("By default, make publish prepares, validates, tags, and deploys the exact frozen production build.")
+    print("Use make publish PREPARE_ONLY=1 to inspect a plan without pushing or uploading.")
+    print("Use make publish APPROVE=<full-plan-id> to apply a previously inspected plan and its exact frozen build.")
 
 
 if args in (["--help"], ["-h"]):
     help_text()
 elif not args:
     approval = os.environ.get("APPROVE", "")
+    prepare_only = os.environ.get("PREPARE_ONLY", "")
+    if prepare_only not in ("", "1"):
+        refuse("PREPARE_ONLY must be 1 when set")
+    if approval and prepare_only:
+        refuse("APPROVE and PREPARE_ONLY cannot be used together")
     if approval:
         apply(approval)
+    elif prepare_only:
+        plan_id = prepare()
+        print("[publish] no tag pushed and no deployment uploaded; inspect the saved plan, then apply with make publish APPROVE=" + plan_id)
     else:
-        prepare()
+        plan_id = prepare()
+        print("[publish] applying the prepared plan")
+        apply(plan_id)
 else:
     help_text()
     raise SystemExit(2)
