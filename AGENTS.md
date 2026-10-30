@@ -4,7 +4,8 @@ Sigma finds evidence-backed signals for the US stock market and publishes resear
 supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
 
 Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
-PR authorizes its publication with `make publish`; the command freezes and validates the build, saves private data
+PR authorizes publication, including new public pages, without another owner approval. Use `make publish`; it validates
+the frozen build, saves private data
 to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
 disabled. Private migration notes never enter this repository or its history.
 
@@ -28,8 +29,7 @@ This file holds only what a capable agent would get wrong here without being tol
 
 Bring a reviewed dry run, and wait for an explicit yes, for:
 
-- changing the repo's visibility, or publishing anything new to the public site for the first time (a new page type or
-  a first research post);
+- changing the repo's visibility;
 - deleting data that has no saved copy;
 - a force-push or history rewrite outside `develop`;
 - a credential, permission, domain or hosting-account change;
