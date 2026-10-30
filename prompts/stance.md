@@ -58,23 +58,29 @@ the same scale and the same reason rule:
 
 ## The scale
 
-The stance is the item's view of the stock as an investment: which way the item says its value goes. It is not the
-mood of the news and not your own view of the stock. Use only what the item says.
+The stance is the item's five-point investment view of the stock: strong bearish, bearish, neutral, bullish or strong
+bullish. It is separate from an episode's 1-10 evidence-quality score. Use only what the speaker or account says; it is
+not the mood of the news or your own view of the stock.
 
-| | |
+| Stance | Meaning |
 |---|---|
-| `-2` | Clearly bearish: calls for a short or a sale, says to avoid it, expects the stock or the business to fall or lose |
-| `-1` | Leaning bearish: a fact or opinion that is bad for this stock, the direction implied rather than stated |
-| `0` | Neutral or a mention: the stock is named, compared or used as an example, and the item takes no side |
-| `1` | Leaning bullish: a fact or opinion that is good for this stock, the direction implied rather than stated |
-| `2` | Clearly bullish: calls it a long or a buy, a top idea, expects it to rise or win |
+| `-2` | Strong bearish: explicitly says sell, short or avoid, or clearly expects a material fall |
+| `-1` | Bearish: the speaker's view leans negative, but is not an explicit sell/short call |
+| `0` | Neutral: a mention, report or hold with no directional view |
+| `1` | Bullish: the speaker's view leans positive, but is not an explicit buy/add call |
+| `2` | Strong bullish: explicitly says buy, add or go long, names a top idea, or clearly expects a material rise |
 
 - Label every ticker apart. One fact can help one company and hurt another (a shortage helps its seller and hurts its
   buyers); give each its own sign.
 - A speaker reporting someone else's view ("analysts see...") labels that view only if the speaker adopts it.
-- A level, target or setup with a direction (long above 180, short below support) is `±2`. Pure description of a
-  chart or a past move, with no call, is `0`.
-- A strong result or a big number with no stated read is `1` at most, `±2` is for a stated call.
+- An attributed public transaction or explicit current action is evidence of the speaker's view: a stated buy/add/long
+  is `2`, and a stated sell/trim/short/avoid is `-2`, unless the speaker says it is mechanical or gives another
+  non-directional reason. A stated hold with no other view is `0`. Never use the owner's private holdings, balances or
+  position weights.
+- A level, target or setup with a clear direction (long above 180, short below support) is `±2`. Pure description of a
+  chart or a past price move, with no call, is `0`. Do not infer a stance from the title or price movement alone.
+- A positive or negative source fact with no stated investment read is at most `1` or `-1`; it is not the speaker's
+  whole view by itself. `±2` requires a clear directional call or action.
 - When unsure between two values, choose the one nearer `0`.
 
 ## Origin, horizon and target (for every label with a stance other than 0)
@@ -98,6 +104,6 @@ The Signals index (`sigma signals-index`) hands these labels to people and agent
 
 ## The reason
 
-Under 15 words, in your own words, saying what the item says about the stock ("Expects margins to recover next year").
-Attribute it to the speaker or account when it is a call; write nothing that reads as our advice to buy or sell. Never
-copy 12 or more words in a row from the item.
+Under 15 words, in your own words, state ticker direction/action and the brief reason ("Says they added; expects memory
+chip demand to rise"). Attribute calls to the speaker or account. Do not explain the label or repeat the scale. Never
+write advice in Sigma's voice or copy 12 or more words in a row from the item.
