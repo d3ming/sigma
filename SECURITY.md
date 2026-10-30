@@ -11,6 +11,6 @@ way.
 ## What counts as private
 
 Private: the owner's holdings and position sizes, contact details (phone, email, address), credentials, and the data in
-the private repositories. Fine to show: the owner's name, and positions that posters share publicly about themselves.
+the private repositories. Positions that posters share publicly about themselves are attributed source evidence.
 The commit hooks and CI enforce this: a hashed private-word list, a check for any email address or phone number, and
 gitleaks. Report anything that slipped through the same way as a secret.

@@ -13,8 +13,8 @@ against accidents, not a secret.
   scripts/private_words.py --path DIR      every text file under DIR (built site output, a publication package)
   scripts/private_words.py --add           read words from stdin, one per line, and add their hashes to the list
 
-Beyond the list, every mode also flags any email address or phone number in the text, whoever it belongs to, so a
-personal contact detail cannot ship even before anyone has listed it. Allowed: addresses at reserved example domains
+Beyond the list, every mode flags email addresses, formatted phone numbers and compact phone numbers labeled as
+phone, tel, mobile or call. Unlabeled digit strings can also be financial figures; list known private numbers explicitly. Allowed: addresses at reserved example domains
 (example.com, .org, .net, .invalid, .test, .example, localhost), noreply@github.com, any @users.noreply.github.com
 address, git@github.com, and the fictional 555-01xx phone numbers. A hit prints file:line and the kind, never the value.
 
@@ -185,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--env", nargs="+", metavar="NAME")
     g.add_argument("--path", metavar="DIR")
     g.add_argument("--add", action="store_true")
-    ap.add_argument("--public-origin", metavar="URL")
+    ap.add_argument("--public-origin", metavar="URL", help="with --path, allow only this exact public origin; paths and queries remain checked")
     a = ap.parse_args(argv)
     if a.public_origin and not a.path:
         ap.error("--public-origin can only be used with --path")

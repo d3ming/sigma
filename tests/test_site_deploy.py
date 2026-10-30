@@ -22,7 +22,9 @@ case "$1" in
     for path in .env.local .private-words PLAN.md docs/migration/private.md data/site.json followlists.yaml; do
       [ ! -e "$path" ] || { echo "private source path reached Vercel build" >&2; exit 11; }
     done
-    mkdir -p .vercel/output/static
+    mkdir -p .vercel/output/static .vercel/output/diagnostics
+    printf '{"local":"build trace"}\n' > .vercel/output/builds.json
+    printf '{"local":"CLI trace"}\n' > .vercel/output/diagnostics/cli_traces.json
     printf '{}\n' > .vercel/output/config.json
     printf '%s\n' "${FAKE_CONTENT:-site}" > .vercel/output/static/index.html
     if [ "${FAKE_PRIVATE_OUTPUT:-0}" = "1" ]; then
@@ -146,4 +148,10 @@ def test_contact_details_in_the_built_site_are_refused_before_upload(tmp_path):
     assert "corp.org" not in refused.stderr and "5309" not in refused.stderr  # the kind is named, never the value
     assert not site.upload_log.exists()
     site.env["FAKE_CONTENT"] = f"write to someone{at}example.com or call 212-555-0142"
-    assert "contains a private path" not in site.run("--preflight").stderr
+    result = site.run("--preflight")
+    assert result.returncode == 0, result.stdout + result.stderr
+    outputs = list((site.clone / ".vercel/publication").glob("*/.vercel/output"))
+    assert len(outputs) == 1
+    assert not (outputs[0] / "builds.json").exists()
+    assert not (outputs[0] / "diagnostics/cli_traces.json").exists()
+    assert (outputs[0] / "static/index.html").read_text().strip() == site.env["FAKE_CONTENT"]

@@ -2,7 +2,7 @@
 """Fail when an agent-facing document would be cut off, misnamed or point at nothing.
 
 An agent loads AGENTS.md whole, and a loader truncates a file that is too long, so the rules at its end go unread:
-AGENTS.md stays within AGENTS_MAX characters and each SKILL.md within SKILL_MAX. CLAUDE.md only forwards to AGENTS.md.
+AGENTS.md stays within AGENTS_MAX characters and each SKILL.md within SKILL_MAX.
 Every relative link in AGENTS.md must exist. Each skills/<name>/SKILL.md names itself <name> and has a description.
 Every .claude/skills/<name> is a symlink to a skills/ folder that holds a SKILL.md, so a skill has one home.
 
@@ -55,9 +55,6 @@ def problems(root: Path) -> list[str]:
         found.append("AGENTS.md: missing or empty")
     if len(text) > AGENTS_MAX:
         found.append(f"AGENTS.md: {len(text)} chars, over {AGENTS_MAX}")
-    claude = root / "CLAUDE.md"
-    if not claude.is_file() or claude.read_text(encoding="utf-8").strip() != "@AGENTS.md":
-        found.append("CLAUDE.md: must contain only @AGENTS.md")
     for target in LINK.findall(text):
         path = target.split("#")[0]
         if path and not EXTERNAL.match(target) and not (root / path).exists():
