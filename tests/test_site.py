@@ -298,7 +298,8 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     (earnings / "scores.json").write_text(json.dumps({"week_of": "2026-01-09", "rubric": 2, "episodes": []}))
     (earnings / "scores-influencer.json").write_text(json.dumps({"week_of": "2026-01-09", "rubric": 1, "episodes": [
         {"episode_id": "yt:amazon", "title": "Amazon earnings", "source": "Show I", "published": "2026-01-09T21:00:00+00:00",
-         "url": "https://www.youtube.com/watch?v=amazon", "score": 8, "claims": []},
+         "url": "https://www.youtube.com/watch?v=amazon", "score": 8,
+         "claims": [{"ticker": ["AMZN"], "claim": "Retail demand remains strong.", "speaker": "host", "timestamp": 20}]},
         {"episode_id": "yt:google", "title": "Google earnings", "source": "Show I", "published": "2026-01-10T01:02:32+00:00",
          "url": "https://www.youtube.com/watch?v=google", "score": 7,
          "claims": [{"ticker": ["GOOG"], "claim": "Cloud demand remains strong.", "speaker": "host", "timestamp": 30}]}]}))
@@ -324,6 +325,9 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "Show I · Jan 9, 2026" in google_row
     google_page = (out / site.file_of(site.episode_path("yt:google"))).read_text()
     assert "Show I · Jan 9, 2026" in google_page
+    find_rows = {e["i"]: e for e in json.loads((out / "find-index.json").read_text())["eps"]}
+    assert site.episode_path("yt:amazon") in find_rows and site.episode_path("yt:google") in find_rows, sorted(find_rows)
+    assert site.episode_path(EP) in find_rows
     assert "Interview four" in feed and "Creator four" in feed
     assert "Interview three" not in feed and "Creator three" not in feed
     assert feed.index("Boss") < feed.index("Chart week")

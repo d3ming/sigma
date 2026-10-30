@@ -2591,7 +2591,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     write(out / file_of(md_of("/companies/")), companies_md(cos))
     sm.append((md_of("/companies/"), newest))
     emit(NOTICE_PATH, notice_page(), notice_md())
-    emit("/find/", find_page(ent, newest_of(*(e["date"] for e in reg.values()))), find_md(ent))
+    emit("/find/", find_page(ent, newest_of(*(e["date"] for e in allreg.values()))), find_md(ent))
     write(out / file_of(SOCIAL_PATH), redirect_page("/", FEED_NAME, md_of(SOCIAL_PATH)))
     write(out / file_of(md_of(SOCIAL_PATH)), doc([f"# {FEED_NAME}", "", "Moved to [the home page](/index.md)."]))
     for e in eds:
@@ -2614,7 +2614,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     for old in OLD_BOARD_PATHS:  # not in the sitemap: they only point on
         write(out / file_of(old), redirect_page(SENTIMENT_PATH, SENTIMENT_NAME, md_of(old)))
         write(out / file_of(md_of(old)), doc([f"# {SENTIMENT_NAME}", "", f"Moved to [{SENTIMENT_NAME}]({absu(md_of(SENTIMENT_PATH))})."]))
-    write(out / "find-index.json", json.dumps(find_index(reg, ent, cos), ensure_ascii=False, separators=(",", ":")) + "\n")
+    write(out / "find-index.json", json.dumps(find_index(allreg, ent, cos), ensure_ascii=False, separators=(",", ":")) + "\n")
     write(out / file_of(md_of("/people/")), people_md(people))
     sm.append((md_of("/people/"), newest))
     index = []
