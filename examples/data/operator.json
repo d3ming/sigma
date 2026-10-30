@@ -1,0 +1,24 @@
+{
+  "runtime": {
+    "checkout": null,
+    "python": null
+  },
+  "video": {
+    "backend": null
+  },
+  "daily_update": {
+    "scanner": {
+      "enabled": false,
+      "transport": "gmail",
+      "from": "sigma-operator@example.invalid",
+      "to": "grok-scanner@example.invalid",
+      "authorized_recipients": [],
+      "repository": "https://github.com/d3ming/sigma",
+      "ref": "develop",
+      "data_repository": "https://github.com/example/sigma-private-data.invalid",
+      "data_branch": "main",
+      "data_subdir": "x",
+      "report_page": null
+    }
+  }
+}
