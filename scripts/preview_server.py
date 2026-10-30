@@ -19,9 +19,13 @@ import urllib.parse
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+DATA_ROOT = Path(os.environ.get("SIGMA_DATA_ROOT") or ROOT / "data").expanduser()
+if not DATA_ROOT.is_absolute():
+    DATA_ROOT = ROOT / DATA_ROOT
 OUT = ROOT / ".preview"
 DIST = OUT / "dist"
-WATCH = ["sigma", "published", "site-assets", "web", "schema", "entities.json", "people.yaml", "creators.json", "show_links.yaml", "us-tickers.json", "x-accounts.json", "sources.yaml"]
+WATCH = [ROOT / w for w in ("sigma", "site-assets", "web", "schema")]
+WATCH += [DATA_ROOT / w for w in ("published", "research", "entities.json", "people.yaml", "creators.json", "show_links.yaml", "us-tickers.json", "x-accounts.json", "sources.yaml")]
 LOCK = threading.Lock()
 
 
@@ -32,7 +36,7 @@ def log(msg: str) -> None:
 def signature() -> tuple:
     n, newest = 0, 0.0
     for w in WATCH:
-        p = ROOT / w
+        p = w
         files = [p] if p.is_file() else (f for f in p.rglob("*") if f.is_file() and "__pycache__" not in f.parts and f.suffix != ".pyc") if p.exists() else []
         for f in files:
             try:
@@ -50,7 +54,7 @@ def build() -> bool:
     OUT.mkdir(exist_ok=True)
     py = ROOT / ".venv" / "bin" / "python"
     t = time.time()
-    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "sigma.site", "--out", str(new), "--published", "published"], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run([str(py if py.exists() else sys.executable), "-m", "sigma.site", "--out", str(new)], cwd=ROOT, capture_output=True, text=True)
     if r.returncode:
         log("BUILD FAILED, still serving the last good build:\n" + (r.stdout + r.stderr)[-1500:])
         return False
