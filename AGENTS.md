@@ -43,8 +43,11 @@ Everything else is yours to decide. Be bold with reversible work.
 - Commit subjects are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), 72 characters at most.
 - Err toward a body. The subject says what changed; the body says why, what you chose over what, and how you proved it.
 - Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the
-  maintainer". `.private-words` (git-ignored) lists the words the commit hooks refuse. Run
-  `git config core.hooksPath .githooks` once per clone.
+  maintainer". `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
+  `scripts/private_words.py --add` adds one from stdin, so a word never lands in a file. A missing list fails. An optional
+  git-ignored `.private-words` adds plain words on one machine. Run `git config core.hooksPath .githooks` once per clone.
+- Early history, before this guard, names the owner's domains and handle. The owner accepted it as it stands: no history
+  rewrite, no force-push. Keep current files clean; do not copy old strings forward from history.
 - Commits use the GitHub no-reply address, which is set in this repo's config. Check it with `git config user.email`
   before your first commit. Create commits locally when an API cannot set that identity explicitly.
 - Use `--force-with-lease` for rewrites on `develop`; preserve other contributors' work.

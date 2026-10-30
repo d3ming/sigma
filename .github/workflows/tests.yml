@@ -5,6 +5,9 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   pytest:
     runs-on: ubuntu-latest
@@ -18,3 +21,44 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -e '.[dev]'
       - run: pytest -q --durations=10
+
+  # Fails if a tracked file, a commit message in the PR, or the PR's title, body or branch names a private word.
+  # The list is .private-words.sha256 (salted hashes); a missing list fails the job.
+  private-words:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tracked files
+        run: python3 scripts/private_words.py
+      - name: Commit messages in the PR
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/private_words.py --log "$BASE_SHA..$HEAD_SHA"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      - name: PR title, body and branch
+        if: github.event_name == 'pull_request'
+        run: python3 scripts/private_words.py --env PR_TITLE PR_BODY PR_BRANCH
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_BRANCH: ${{ github.head_ref }}
+
+  # Secret scan over the full history. Known fake fixtures are listed by fingerprint in .gitleaksignore.
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install gitleaks 8.30.1 (checksum pinned)
+        run: |
+          curl -sSfL -o gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+      - run: ./gitleaks detect --source . --redact --no-banner --exit-code 1

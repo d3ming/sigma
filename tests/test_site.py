@@ -5,6 +5,7 @@ import re
 
 import pytest
 
+from tests.helpers import private_hits
 from sigma import research, site
 from sigma.cli import main
 
@@ -130,7 +131,7 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     assert "Friday, Jan 9, 2026" in dmd and "Capacity is tight" in dmd and "0:01:01" not in dmd and "1:01" in dmd
     home = (out / "index.html").read_text()
     assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home
-    assert "@dming" not in home and "Mingdom" not in home and '<a class="brand" href="/">Sigma</a>' in home
+    assert not private_hits(home) and '<a class="brand" href="/">Sigma</a>' in home
     banned = re.compile(r"\b(agents?|whisper|novelty|verifiable|tiers?|fetched|grounded|pipeline|transcripts?|2026-01-05-weekly|"
                         r"2026-01-09-daily|score|about)\b", re.I)
     for f in out.rglob("*.html"):
@@ -189,7 +190,7 @@ def test_site_people_shows_and_claim_ids(tmp_path):
     assert j["novelty"] == 3 and j["tier"] == 1  # the raw feed keeps the fields the pages hide
     assert next(r for r in rows if r["id"] == "2026-01-12-daily:rss:eee:2")["person"] is None  # "host" is a role, not a person
     assert not any(k.startswith("_") for r in rows for k in r)
-    assert "dming" not in (out / "llms.txt").read_text() and "dming" not in (out / "sitemap.xml").read_text()
+    assert not private_hits((out / "llms.txt").read_text(), (out / "sitemap.xml").read_text())
     again = build(tmp_path / "again", "--base-url", "https://example.test/")
     assert ids == [json.loads(line)["id"] for line in (again / "claims.jsonl").read_text().splitlines()]
     ppl = json.loads((out / "people.json").read_text())["people"]
