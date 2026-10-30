@@ -20,6 +20,7 @@ This file holds only what a capable agent would get wrong here without being tol
 - [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
 - [deploy/mac/README.md](deploy/mac/README.md): the macOS setup, scheduled jobs and the release and publish flow.
 - [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
+- [skills/test-audit](skills/test-audit/SKILL.md): how to decide whether a test earns its place; apply it to every added or changed test.
 - [prompts/](prompts/): the prompts the scheduled agents follow word for word.
 - [schema/](schema/): the JSON schemas that validate the agent's output files.
 

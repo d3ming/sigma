@@ -11,6 +11,7 @@ Check the boundaries that can harm a reader:
 - Ownership: code resources and operator data have one owner each; no old-name aliases or private-repository fallbacks.
 - Publication: the whole allowed package is checked before it can replace output or upload. A refused research post publishes nothing.
 - Correctness: selection floors, once-only labels, Pacific dates, locked manifest writes and deleted-post pruning retain their behavior.
+- Tests: apply [skills/test-audit](skills/test-audit/SKILL.md) to every added or changed test. Block a test that is useless (it would still pass if the code it covers were wrong), tautological (its expected value is copied from the code), tests the implementation instead of behavior (mock call counts, log or help text, private names), or is flaky or slow (fixed sleeps, clock or order dependence, network, over about a second).
 - Verification: exercise the actual command and inspect its output. Offline tests use throwaway roots, never operator data. A deploy claim needs deployment evidence.
 
 A missing value is not a bug when it is shown as missing. Public facts about a company are not private positions. Source grounding checks what someone said; it does not establish that their statement is true.
