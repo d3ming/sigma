@@ -1,5 +1,5 @@
 #!/bin/bash
-# Sunday 14:30 Mac run: fetch the last 7 days and whisper every episode (MLX). The 15:30 agent task ranks,
+# Weekly Mac run (time set by the launchd plist): fetch the last 7 days and whisper every episode (MLX). The agent task that ranks,
 # writes themes and publishes. --refetch because the weekday runs already marked most episodes as seen;
 # transcribe reuses their transcripts, so only the rest is whispered.
 # Usage: run-weekly.sh [run-name]   (default: this week's Monday + -weekly). Safe to rerun; transcribe is resumable.

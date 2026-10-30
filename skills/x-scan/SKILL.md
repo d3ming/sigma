@@ -1,6 +1,6 @@
 ---
 name: x-scan
-description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner agent, which reads X through the official API. Run before each X run (weekdays, so the scan lands before 07:15 and again before 15:30), and again whenever asked for an on-demand scan. Read-only on X.
+description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner agent, which reads X through the official API. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
 contract_version: 2
 ---
 
