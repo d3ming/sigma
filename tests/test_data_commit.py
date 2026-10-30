@@ -89,13 +89,6 @@ def test_branch_delta_lands_on_private_main_without_touching_checkout_or_sibling
     assert working_files(source) == files_before
     assert git("branch", "--list", "sigma-data-*", cwd=source) == ""
 
-    refused = invoke(source, data, code, "--expect-tree", "0" * 40, "land the current edition")
-    assert refused.returncode == 1
-    assert "does not match the approved tree" in refused.stderr
-    assert git("rev-parse", "refs/heads/main", cwd=origin) == remote_main_before
-    assert git("status", "--porcelain", cwd=source) == status_before
-    assert working_files(source) == files_before
-
     result = invoke(source, data, code, "--expect-tree", planned_tree, "land the current edition")
 
     assert result.returncode == 0, result.stderr
@@ -149,7 +142,7 @@ def test_conflict_with_new_private_main_stops_without_changing_source(tmp_path):
     assert git("branch", "--list", "sigma-data-*", cwd=source) == ""
 
 
-def test_data_commit_refuses_preexisting_staged_files_without_touching_them(tmp_path):
+def test_private_data_refusals_leave_staged_files_and_remote_unchanged(tmp_path):
     _, source, data, code = private_source(tmp_path)
     staged = source / "research" / "staged.json"
     staged.parent.mkdir()
@@ -168,6 +161,19 @@ def test_data_commit_refuses_preexisting_staged_files_without_touching_them(tmp_
     assert "delete private data without a saved copy" in deleted.stderr
     assert git("rev-parse", "HEAD", cwd=source) == git("rev-parse", "refs/remotes/origin/main", cwd=source)
     assert git("show", "refs/remotes/origin/main:sigma/site.json", cwd=source) == '{"version":1}'
+    (data / "site.json").write_text('{"version":1}\n')
+    (data / "published").mkdir()
+    (data / "published" / "signals.json").write_text('{"signals":1}\n')
+    remote_main_before = git("rev-parse", "refs/remotes/origin/main", cwd=source)
+    status_before = git("status", "--porcelain", cwd=source)
+    files_before = working_files(source)
+    refused = invoke(source, data, code, "--expect-tree", "0" * 40, "land the current edition")
+    assert refused.returncode == 1
+    assert "does not match the approved tree" in refused.stderr
+    assert git("rev-parse", "refs/remotes/origin/main", cwd=source) == remote_main_before
+    assert git("status", "--porcelain", cwd=source) == status_before
+    assert working_files(source) == files_before
+    assert git("branch", "--list", "sigma-data-*", cwd=source) == ""
 
 
 def test_data_commit_refuses_data_inside_the_public_sigma_checkout(tmp_path):
