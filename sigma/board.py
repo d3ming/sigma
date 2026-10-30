@@ -173,6 +173,18 @@ def pacific_tz():
         return timezone(timedelta(hours=-8))
 
 
+def publication_day(value) -> str:
+    raw = str(value or "")
+    try:
+        moment = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw[:10]
+    if len(raw) <= 10:
+        return moment.date().isoformat()
+    moment = moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(pacific_tz()).date().isoformat()
+
+
 def pacific_today() -> date:
     return datetime.now(pacific_tz()).date()
 

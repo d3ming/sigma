@@ -72,11 +72,19 @@ def lib(tmp_path, capsys):
 
 def test_ingest_is_idempotent_replaces_changed_claims_and_leaves_the_run_alone(tmp_path, lib, capsys):
     run = make_run(tmp_path / "runs")
+    manifest = json.loads((run / "manifest.json").read_text())
+    manifest["episodes"][0]["published"] = "2026-10-30T01:02:32+00:00"
+    (run / "manifest.json").write_text(json.dumps(manifest))
+    ranked = json.loads((run / "ranked.json").read_text())
+    ranked["episodes"][0]["published"] = "2026-10-30T01:02:32+00:00"
+    (run / "ranked.json").write_text(json.dumps(ranked))
     before_files = {p.name: p.stat().st_mtime_ns for p in run.iterdir()}
     main(["library", "ingest", str(run), "--no-transcripts", "--db", lib.db])
     assert "2 episodes, 4 claims" in capsys.readouterr().out
     first = lib("stats")
     assert first["episodes"] == 2 and first["claims"] == 4
+    boundary_claim = lib("query", "--text", "sold out")[0]
+    assert (boundary_claim["published"], boundary_claim["date"]) == ("2026-10-29", "2026-10-29")
     main(["library", "ingest", str(run), "--no-transcripts", "--db", lib.db])
     assert lib("stats") == first  # the same run twice changes nothing
     ranked = json.loads((run / "ranked.json").read_text())

@@ -470,6 +470,11 @@ def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tm
     (day / "claims.jsonl").write_text(json.dumps({
         "episode_id": "rss:ggg", "title": "Same day", "show": "Show G", "published": "2026-01-14", "run": day.name,
         "speaker": "Kim", "timestamp": 5, "text": "Orders doubled", "tickers": [], "url": "https://example.com/g"}) + "\n")
+    creator = pub / "2026-01-14-extra"
+    creator.mkdir()
+    (creator / "ranked.json").write_text(json.dumps({"week_of": "2026-01-12", "episodes": []}))
+    (creator / "scores-influencer.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "yt:creator", "title": "Creator picks", "source": "Creator", "published": "2026-01-14", "score": 7}]}))
     out = build(tmp_path)
 
     def get(url):
@@ -479,6 +484,8 @@ def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tm
     monkeypatch.setattr(verify, "get", get)
     runs = [r["run"] for r in json.loads((out / "runs.json").read_text())["runs"]]
     assert {"2026-01-05-weekly", "2026-01-07-latent-space", "2026-01-14", "2026-01-09-daily", "2026-01-12-daily"} <= set(runs)
+    creator_run = next(r for r in json.loads((out / "runs.json").read_text())["runs"] if r["run"] == creator.name)
+    assert (creator_run["kind"], creator_run["date"]) == ("daily", "2026-01-14")
     for run in runs:
         main(["verify", "https://w.test/", "--run", run])  # exits on any problem
     assert 'url=/#d-2026-01-14"' in (out / "runs/2026-01-14/index.html").read_text()

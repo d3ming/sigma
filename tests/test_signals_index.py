@@ -32,30 +32,65 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     claim = {"episode_id": "rss:four", "timestamp": 60, "text": "Expects NVDA demand to rise", "score": 4,
              "source": "ranked", "date": day, "speaker": "Jane Doe", "title": "Jane Doe on NVDA", "show": "Market Hour",
              "link": "https://example.com/episode?t=60"}
+    reused_claim = {**claim, "episode_id": "rss:reused", "text": "A reused interview claim", "score": 8}
     creator_claim = {**claim, "episode_id": "yt:creator9", "text": "Amazon creator expects demand to rise", "score": None,
                      "date": "2026-10-30", "published": "2026-10-30T01:02:32+00:00", "speaker": "Creator",
                      "title": "Creator on Amazon", "link": "https://youtube.com/watch?v=creator9&t=60"}
     low_creator_claim = {**creator_claim, "episode_id": "yt:creator3", "text": "Below the creator rating floor"}
+    earnings_claim = {**creator_claim, "episode_id": "yt:earnings7", "text": "Earnings creator expects growth", "published": "2026-10-29T19:00:00-07:00"}
+    weekly_claim = {**claim, "episode_id": "rss:weekly", "text": "A copied weekly claim", "source": "report",
+                    "date": "2026-10-23", "published": "2026-10-23"}
+    custom_claim = {**claim, "episode_id": "rss:custom", "text": "An unrelated custom claim", "source": "report",
+                    "date": "2026-10-24", "published": "2026-10-24"}
     score_four_pub = tmp_path / "score-four-published"
     run = score_four_pub / day
     run.mkdir(parents=True)
     low_claim = {**claim, "episode_id": "rss:three", "score": 3, "text": "Below the feed rating floor"}
-    (run / "claims.jsonl").write_text("".join(json.dumps(c) + "\n" for c in (claim, low_claim)))
+    (run / "claims.jsonl").write_text("".join(json.dumps(c) + "\n" for c in (claim, low_claim, reused_claim)))
+    (run / "scores.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "rss:reused", "score": 8, "scored_in": "2026-10-25"}
+    ]}))
     from sigma import stance
     labels = [{"key": stance.claim_key(c["episode_id"], c["timestamp"], c["text"]), "labels": [
         {"ticker": "NVDA", "stance": 1, "reason": "Expects stronger demand"}
-    ]} for c in (claim, low_claim)]
+    ]} for c in (claim, low_claim, reused_claim)]
     (run / "stances.jsonl").write_text("".join(json.dumps(row) + "\n" for row in labels))
-    video_run = score_four_pub / f"{day}-videos"
+    video_run = score_four_pub / f"{day}-extra"
     video_run.mkdir()
     (video_run / "claims.jsonl").write_text("".join(json.dumps(c) + "\n" for c in (creator_claim, low_creator_claim)))
+    (video_run / "ranked.json").write_text(json.dumps({"episodes": []}))
     (video_run / "scores-influencer.json").write_text(json.dumps({"episodes": [
-        {"episode_id": "yt:creator9", "score": 9}, {"episode_id": "yt:creator3", "score": 3}
+        {"episode_id": "yt:creator9", "score": 9, "scored_in": f"{day}-extra"},
+        {"episode_id": "yt:creator3", "score": 3, "scored_in": f"{day}-extra"}
+    ]}))
+    weekly_run = score_four_pub / f"{day}-weekly"
+    weekly_run.mkdir()
+    (weekly_run / "claims.jsonl").write_text(json.dumps(weekly_claim) + "\n")
+    (weekly_run / "ranked.json").write_text(json.dumps({"episodes": [{"episode_id": "rss:weekly"}]}))
+    custom_run = score_four_pub / f"{day}-custom"
+    custom_run.mkdir()
+    (custom_run / "claims.jsonl").write_text(json.dumps(custom_claim) + "\n")
+    earnings_run = score_four_pub / f"{day}-earnings"
+    earnings_run.mkdir()
+    (earnings_run / "claims.jsonl").write_text(json.dumps(earnings_claim) + "\n")
+    (earnings_run / "scores.json").write_text(json.dumps({"episodes": []}))
+    (earnings_run / "scores-influencer.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "yt:earnings7", "score": 7, "scored_in": f"{day}-earnings"}
     ]}))
     creator_labels = [{"key": stance.claim_key(c["episode_id"], c["timestamp"], c["text"]), "labels": [
         {"ticker": "AMZN", "stance": 1, "reason": "Demand rising"}
     ]} for c in (creator_claim, low_creator_claim)]
+    weekly_key = stance.claim_key(weekly_claim["episode_id"], weekly_claim["timestamp"], weekly_claim["text"])
+    custom_key = stance.claim_key(custom_claim["episode_id"], custom_claim["timestamp"], custom_claim["text"])
+    for run_path, key in ((weekly_run, weekly_key), (custom_run, custom_key)):
+        (run_path / "stances.jsonl").write_text(json.dumps({"key": key, "labels": [
+            {"ticker": "NVDA", "stance": 1, "reason": "Demand rising"}
+        ]}) + "\n")
     (video_run / "stances.jsonl").write_text("".join(json.dumps(row) + "\n" for row in creator_labels))
+    (earnings_run / "stances.jsonl").write_text(json.dumps({
+        "key": stance.claim_key(earnings_claim["episode_id"], earnings_claim["timestamp"], earnings_claim["text"]),
+        "labels": [{"ticker": "AMZN", "stance": 1, "reason": "Demand rising"}]
+    }) + "\n")
     labels = pub / "x" / "stances" / f"{day}.jsonl"
     labels.parent.mkdir(parents=True)
     row = {"key": f"p-{post_id}", "id": post_id, "handle": "reader", "date": day,
@@ -88,10 +123,13 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     signals = doc["signals"]
     assert any(s["source_kind"] == "podcast" and s["source_id"] == "rss:four" for s in signals)
     assert not any(s["source_id"] == "rss:three" for s in signals)
+    assert not any(s["source_id"] == "rss:reused" for s in signals)
     assert any(s["source_kind"] == "youtube" and s["source_id"] == "yt:creator9" for s in signals)
     creator_signal = next(s for s in signals if s["source_id"] == "yt:creator9")
     assert creator_signal["date"] == "2026-10-29" and creator_signal["ticker"] == "AMZN"
     assert not any(s["source_id"] == "yt:creator3" for s in signals)
+    assert any(s["source_kind"] == "youtube" and s["source_id"] == "yt:earnings7" for s in signals)
+    assert not any(s["source_id"] in {"rss:weekly", "rss:custom"} for s in signals)
     day_file = pub / "signals" / f"{day}.json"
     day_file.parent.mkdir()
     day_file.write_text(json.dumps(signals_index.build(day, pub, now=now)))

@@ -90,8 +90,12 @@ def _read(path: Path):
 
 
 def _day(value) -> str | None:
-    m = re.match(r"\d{4}-\d{2}-\d{2}", value or "")
-    return m.group(0) if m else None
+    raw = str(value or "")
+    if not re.match(r"\d{4}-\d{2}-\d{2}", raw):
+        return None
+    from . import board
+
+    return board.publication_day(raw)
 
 
 def _ticker(t: str) -> str:
