@@ -8,13 +8,18 @@ from pathlib import Path
 import jsonschema
 
 SCHEMA_PATH = Path(__file__).resolve().parent.parent / "schema" / "ranked.schema.json"
+# Field names of a holdings ledger. Only keys are checked: a poster's own public weights or positions are reportable prose.
 FORBIDDEN = ("holding", "weight", "market_pct", "folio")
-# Prose that only private material carries: our positions or allocation, money we moved, a local home path. Checked on
-# every file that is published, not only on JSON keys (a holdings note pasted into a digest has no "holding" key).
+# Prose that only the owner's private material carries: the publisher's own ("our", "the owner's", "the maintainer's")
+# portfolio, positions, sizes, allocation or cost basis, money we moved, a local home path. A position or weight a poster
+# states publicly about themselves ("my portfolio is ...", "a 10% position") is a claim to attribute, not a leak, so
+# first-person singular and generic words such as "portfolio weights" are not blocked. Checked on every file that is
+# published, not only on JSON keys (a holdings note pasted into a digest has no "holding" key).
 PRIVATE = re.compile(
-    r"\b(?:our|my|the owner'?s)\s+(?:portfolio|holdings?|positions?|allocations?|weights?|book)\b"
-    r"|\bportfolio\s+(?:weights?|allocations?)\b|\bposition\s+sizes?\b|%\s+of\s+(?:our|my)\s+portfolio\b"
-    r"|\bwe\s+(?:own|hold|bought|sold|trimmed|added\s+to)\s+(?:shares|\$?[A-Z]{1,5}\b)|\bcost\s+basis\b|\bunrealized\b"
+    r"\b(?:our|the\s+owner'?s|the\s+maintainer'?s)\s+(?:portfolio|holdings?|positions?|allocations?|weights?|book"
+    r"|position\s+sizes?|cost\s+basis|unrealized)\b"
+    r"|%\s+of\s+(?:our|the\s+owner'?s|the\s+maintainer'?s)\s+portfolio\b"
+    r"|\bwe\s+(?:own|hold|bought|sold|trimmed|added\s+to)\s+(?:shares|\$?[A-Z]{1,5}\b)"
     r"|/Users/[A-Za-z0-9._-]+/|/home/[A-Za-z0-9._-]+/", re.I)
 
 PEM_PRIVATE_KEY = re.compile(r"-----BEGIN (?:(?:ENCRYPTED|RSA|EC|OPENSSH|DSA) )?PRIVATE KEY-----", re.I)
@@ -23,6 +28,20 @@ SECRET_VALUE = re.compile(r"\bvercel_blob_rw_[a-z0-9_-]{8,}\b|"
                           r"\bsk-(?:proj|live|ant)-[a-z0-9_-]{8,}\b|"
                           r"\bgh[pousr]_[a-z0-9]{20,}\b|\bgithub_pat_[a-z0-9_]{20,}\b|\bAKIA[0-9A-Z]{16}\b|"
                           r"['\"]?\b[a-z0-9_]*(?:API_KEY|ACCESS_TOKEN|SECRET|PASSWORD|CREDENTIAL|BLOB_RW_TOKEN)[a-z0-9_]*['\"]?\s*[:=]\s*['\"]?[a-z0-9_./+=-]{8,}", re.I)
+
+
+def forbidden_key(value) -> str | None:
+    """The first holdings-like field name in a nested value, or None. Values are never checked, only keys."""
+    if isinstance(value, dict):
+        for key, child in value.items():
+            low = str(key).lower()
+            if (word := next((w for w in FORBIDDEN if low.startswith(w)), None)) or (word := forbidden_key(child)):
+                return word
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            if word := forbidden_key(child):
+                return word
+    return None
 
 
 def private_hits(value) -> list[str]:
@@ -115,10 +134,8 @@ def validate(data: dict, ranking: bool = True) -> list[str]:
             raise RankedError(f"tier 3 has {len(t3)} episodes; the cap is 2")
         if any(e["tier"] == 3 and e["rank"] <= 3 for e in eps):
             raise RankedError("tier 3 can never be a top pick (ranks 1-3)")
-    blob = json.dumps(data).lower()
-    for word in FORBIDDEN:
-        if f'"{word}' in blob:
-            raise RankedError(f"output must not contain holdings data ({word!r})")
+    if word := forbidden_key(data):
+        raise RankedError(f"output must not contain holdings data ({word!r})")
     if hits := private_hits(data):
         raise RankedError(f"output must not contain private text: {hits}")
     warnings = []

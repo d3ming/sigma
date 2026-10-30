@@ -33,4 +33,4 @@ The floor counts podcast interviews only (`scores.json`). Episodes from influenc
    description, not a transcript: if you still pick it, set `fallback_text: true` and say "fallback" in `why`.
 7. `guests`: names and roles as the episode states them. `why`: one sentence naming the new fact and who it affects.
    For a `lower_confidence` pick, say what holds it back.
-8. Never include holdings, position sizes or weights.
+8. Never include the owner's holdings, position sizes or weights. A guest's public statement about their own portfolio is theirs to share.

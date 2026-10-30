@@ -19,7 +19,7 @@ This file holds only what a capable agent would get wrong here without being tol
 - **One owner per fact and per decision.** Change the owner and update its callers; never add a second path, alias or
   fallback beside it. Redirects exist only where outsiders hold old links.
 - **Nothing private in the repo, ever.** Follow lists, published output, post drafts, scores, notes and the call ledger
-  live in a separate private data repo and reach the code through `data/` or a setting. Holdings never enter any repo.
+  live in a separate private data repo and reach the code through `data/` or a setting. The owner's holdings and sizes never enter any repo; what a poster publicly shares about their own portfolio is ordinary attributed evidence.
   Anything committed may be read by anyone.
 - **Sigma knows nothing of the fund.** Research posts are about method and tooling, never about investments, fair
   values or calls.

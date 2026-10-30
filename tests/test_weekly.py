@@ -269,9 +269,9 @@ def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch)
         with pytest.raises(ranked_mod.RankedError):
             ranked_mod.validate(data)
     private = json.loads(ranked)
-    ep_row(private, "a").update(reason="holding 5% of NVDA")
+    ep_row(private, "a").update(reason="our holding is 5% of NVDA")
     (run / "ranked.json").write_text(json.dumps(private))
-    with pytest.raises(SystemExit, match="holdings data"):
+    with pytest.raises(SystemExit, match="private text"):
         main(["publish", str(run / "ranked.json"), "--top", "5"])
     assert not list(run.glob("digest-*.md")) and not (root / "data" / "published").exists()
     bad_claims = json.loads(ranked)

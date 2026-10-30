@@ -28,7 +28,8 @@ research and wants the event, the evidence and what posters said it means.
   without writing a number from it. The check rejects unsupported numbers.
 - Paraphrase. Never copy 12 or more words in a row from a post; the check rejects it.
 - Attribute claims: “posters argued” or “@handle says,” not as fact. Do not add buy or sell calls, unsupported price
-  targets, or claims about anyone's holdings.
+  targets, or the owner's holdings. A poster's public statement about their own portfolio, weights or positions is a
+  claim to attribute to that poster with its post link; never present it as the owner's or as Sigma's view.
 - Skip promotions, giveaways, memes and posts that only restate a headline without adding anything.
 - If the window was quiet, write fewer sentences. Never pad.
 

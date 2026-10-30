@@ -36,7 +36,7 @@ In this order, about two screens, plain and specific (numbers over adjectives, n
 
 - Label every claim **(reported)** (a post says it) or **(inference)** (your read). Nothing is "confirmed": the scan has
   no prices or filings.
-- A poster's trade or call is theirs. No buy or sell advice of the digest's own, and nothing about the owner's holdings.
+- A poster's trade, call, weights or positions are theirs when the poster shared them publicly: attribute and link. No buy or sell advice of the digest's own, and nothing about the owner's holdings.
 - Link posts as `https://x.com/i/status/<id>`, only ids in the scan, and quote a post only in its own words.
 - Re-read before saving: every link is in the scan, every quote matches its post, every claim is labelled.
 - Commit only the digest file to the data repo and push; end with your clone clean.

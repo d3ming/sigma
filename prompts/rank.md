@@ -91,4 +91,4 @@ Keep score-band comparisons internal. The viewer-facing summary describes the in
   Keep each ticker's stance separate, attribute the view, and preserve different time horizons. The evidence-quality
   score is separate from bullishness; never fill the summary with a rating justification.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
-- Never include holdings, weights or portfolio data in `ranked.json`.
+- Never include the owner's holdings, weights or portfolio data in `ranked.json`, and never add a holdings-style field (`holdings`, `weight`, `market_pct`). A guest's public statement about their own portfolio is a claim to attribute in prose.

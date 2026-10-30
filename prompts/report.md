@@ -28,7 +28,7 @@ Rules:
   `timestamp` in seconds from the nearest `[h:mm:ss]` line. Use `null` only when the episode has no transcript.
 - Paraphrase. Quote at most a short phrase. No claims that are not in the transcript.
 - Put conflicts of interest the speaker mentions (investments, board seats) in `interests`.
-- No holdings, weights or position data. No investment advice.
+- No owner holdings, weights or position data. A speaker's public statement about their own positions may be reported as theirs. No investment advice.
 
 Links (YouTube preferred): after `selected.json` is written, web-search each pick for its YouTube video
 (e.g. "<show> <guest> youtube"). Set `youtube_url` (a youtube.com/watch URL) and `youtube_published` (upload date)
