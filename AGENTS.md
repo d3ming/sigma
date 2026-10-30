@@ -32,7 +32,7 @@ Bring a reviewed dry run, and wait for an explicit yes, for:
 - changing the repo's visibility, or publishing anything new to the public site for the first time (a new page type or
   a first research post);
 - deleting data that has no saved copy;
-- a force-push or history rewrite;
+- a force-push or history rewrite outside `develop`;
 - a credential, permission, domain or hosting-account change;
 - anything sent or posted as the owner.
 
@@ -47,7 +47,8 @@ Everything else is yours to decide. Be bold with reversible work.
   maintainer". `.private-words` (git-ignored) lists the words the commit hooks refuse. Run
   `git config core.hooksPath .githooks` once per clone.
 - Commits use the GitHub no-reply address, which is set in this repo's config. Check it with `git config user.email`
-  before your first commit.
+  before your first commit. Create commits locally when an API cannot set that identity explicitly.
+- Use `--force-with-lease` for rewrites on `develop`; preserve other contributors' work.
 - **Prove a change by using it.** Run the command a person or a routine would run, on real inputs, and put the command
   and what it printed in the commit message. A passing test suite is not proof that a tool works.
 - Use at most one helper agent, unless the owner has asked you to coordinate others.
