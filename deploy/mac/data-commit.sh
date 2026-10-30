@@ -2,7 +2,27 @@
 set -euo pipefail
 SIGMA="${0:A:h:h:h}"
 DATA="${SIGMA_DATA_ROOT:-$SIGMA/data}"
-MSG="${1:-sigma: $(date +%Y-%m-%d) data}"
+MSG="sigma: $(date +%Y-%m-%d) data"
+PLAN_ONLY=0
+EXPECT_TREE=""
+while (($#)); do
+  case "$1" in
+    --plan) PLAN_ONLY=1; shift;;
+    --expect-tree)
+      [[ $# -ge 2 ]] || { echo "[data] --expect-tree needs a tree hash" >&2; exit 2; }
+      EXPECT_TREE=$2; shift 2;;
+    --*) echo "[data] unknown option: $1" >&2; exit 2;;
+    *) MSG=$1; shift;;
+  esac
+done
+if [[ -n "$EXPECT_TREE" && $PLAN_ONLY == 1 ]]; then
+  echo "[data] --expect-tree cannot be used with --plan" >&2
+  exit 2
+fi
+if [[ -n "$EXPECT_TREE" && ! "$EXPECT_TREE" =~ '^[0-9a-f]{40}([0-9a-f]{24})?$' ]]; then
+  echo "[data] --expect-tree must be a Git tree hash" >&2
+  exit 2
+fi
 
 [[ -d "$DATA" ]] || { echo "[data] no directory at $DATA; set SIGMA_DATA_ROOT" >&2; exit 1; }
 DATA=$(cd "$DATA" && pwd -P)
@@ -62,7 +82,11 @@ DELETED=$(git diff --name-only --diff-filter=D "$BASE" "$SNAPSHOT" -- "$REL")
 git -c core.quotepath=false diff --binary --full-index "$BASE" "$SNAPSHOT" -- "$REL" > "$PATCH"
 
 if [[ ! -s "$PATCH" ]]; then
-  echo "[data] private main already has the current owned data"
+  if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$(git rev-parse "$MAIN:$REL")" ]]; then
+    echo "[data] candidate data tree does not match the approved tree" >&2
+    exit 1
+  fi
+  [[ $PLAN_ONLY == 1 ]] || echo "[data] private main already has the current owned data"
   echo "[data] main: $MAIN"
   echo "[data] owned tree: $(git rev-parse "$MAIN:$REL")"
   exit 0
@@ -74,6 +98,17 @@ git worktree add -q -b "$BRANCH" "$WORK" "$MAIN"
 if ! git -C "$WORK" apply --3way --index "$PATCH"; then
   echo "[data] owned data conflicts with private main; source checkout was left unchanged" >&2
   exit 1
+fi
+CANDIDATE_TREE=$(git -C "$WORK" write-tree)
+OWNED_TREE=$(git -C "$WORK" rev-parse "$CANDIDATE_TREE:$REL")
+if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$OWNED_TREE" ]]; then
+  echo "[data] candidate data tree does not match the approved tree" >&2
+  exit 1
+fi
+if [[ $PLAN_ONLY == 1 ]]; then
+  echo "[data] main: $MAIN"
+  echo "[data] owned tree: $OWNED_TREE"
+  exit 0
 fi
 while IFS= read -r -d '' owned_path; do
   case "$REL" in
@@ -91,4 +126,4 @@ git -C "$WORK" commit -q -m "$MSG"
 git -C "$WORK" push -q origin HEAD:refs/heads/main || { echo "[data] private main advanced; no data was force-pushed" >&2; exit 1; }
 MAIN=$(git -C "$WORK" rev-parse HEAD)
 echo "[data] main: $MAIN"
-echo "[data] owned tree: $(git -C "$WORK" rev-parse "HEAD:$REL")"
+echo "[data] owned tree: $OWNED_TREE"

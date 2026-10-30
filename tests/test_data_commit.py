@@ -67,7 +67,7 @@ def invoke(source, data, code, *args):
 
 
 def test_branch_delta_lands_on_private_main_without_touching_checkout_or_siblings(tmp_path):
-    _, source, data, code = private_source(tmp_path)
+    origin, source, data, code = private_source(tmp_path)
     (data / "site.json").write_text('{"version":2}\n')
     git("add", "sigma/site.json", cwd=source)
     (data / "runs" / "baseline-transcript.md").write_text("changed transcript stays local\n")
@@ -87,11 +87,30 @@ def test_branch_delta_lands_on_private_main_without_touching_checkout_or_sibling
     status_before = git("status", "--porcelain", cwd=source)
     files_before = working_files(source)
 
-    result = invoke(source, data, code, "land the current edition")
+    remote_main_before = git("rev-parse", "refs/heads/main", cwd=origin)
+    plan = invoke(source, data, code, "--plan")
+    assert plan.returncode == 0, plan.stderr
+    planned_main = next(line.split(": ", 1)[1] for line in plan.stdout.splitlines() if line.startswith("[data] main: "))
+    planned_tree = next(line.split(": ", 1)[1] for line in plan.stdout.splitlines() if line.startswith("[data] owned tree: "))
+    assert planned_main == remote_main_before
+    assert git("rev-parse", "refs/heads/main", cwd=origin) == remote_main_before
+    assert git("status", "--porcelain", cwd=source) == status_before
+    assert working_files(source) == files_before
+    assert git("branch", "--list", "sigma-data-*", cwd=source) == ""
+
+    refused = invoke(source, data, code, "--expect-tree", "0" * 40, "land the current edition")
+    assert refused.returncode == 1
+    assert "does not match the approved tree" in refused.stderr
+    assert git("rev-parse", "refs/heads/main", cwd=origin) == remote_main_before
+    assert git("status", "--porcelain", cwd=source) == status_before
+    assert working_files(source) == files_before
+
+    result = invoke(source, data, code, "--expect-tree", planned_tree, "land the current edition")
 
     assert result.returncode == 0, result.stderr
     main = git("rev-parse", "refs/remotes/origin/main", cwd=source)
     assert f"[data] main: {main}" in result.stdout
+    assert f"[data] owned tree: {planned_tree}" in result.stdout
     assert f"[data] owned tree: {git('rev-parse', f'{main}:sigma', cwd=source)}" in result.stdout
     assert git("show", f"{main}:sigma/site.json", cwd=source) == '{"version":2}'
     assert git("show", f"{main}:sigma/published/signals.json", cwd=source) == '{"signals":1}'
