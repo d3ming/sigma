@@ -121,6 +121,8 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     assert not (out / "tickers" / "Acme.html").exists() and not (out / "about.html").exists()  # private:Acme gets no page
     run = (out / "runs/2026-01-05-weekly/index.html").read_text()
     assert "<script>alert" not in run and "&lt;script&gt;alert(1)&lt;/script&gt;" in run
+    find = (out / "find" / "index.html").read_text()
+    assert "fetch('/api/search?q='" in find and "__SEARCH_API__" not in find
     assert "<b>sold</b>" not in run and "1:02:05" in run and "Week of Jan 5, 2026" in run and "Transcript" not in run
     assert "javascript:" not in (out / "tickers/AMD.html").read_text()  # a link the agent wrote with that scheme is dropped
     assert "Chips" in (out / "tickers/NVDA.html").read_text() and "No tickers" not in (out / "tickers/NVDA.html").read_text()

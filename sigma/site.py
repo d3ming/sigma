@@ -1779,7 +1779,8 @@ def find_page(ent: ents.Entities, updated: str = "") -> str:
     said = ('<h2>What was said</h2><form class="said" id="s-form" role="search" hidden><input id="s-q" type="search" maxlength="100" '
             'placeholder="A word, a name or a company" aria-label="Search what was said" autocomplete="off">'
             '<button type="submit" class="more-btn">Search</button></form>'
-            '<p class="meta" id="s-count" aria-live="polite"></p><ol class="top" id="s-out" style="margin-top:.6em"></ol>' + SAID_JS)
+            '<p class="meta" id="s-count" aria-live="polite"></p><ol class="top" id="s-out" style="margin-top:.6em"></ol>'
+            + SAID_JS.replace("__SEARCH_API__", esc(SEARCH_API_URL)))
     body = ('<h1>Find</h1>' + said + '<h2>Episodes</h2><div class="facets"><input id="f-q" type="search" placeholder="Search titles, guests and claims" '
             'aria-label="Search titles, guests and claims" autocomplete="off"></div>' + lens_bar(ent) +
             '<div class="facets">' + sel("f-topic", "Topic", "Any topic") + sel("f-company", "Company", "Any company")
@@ -1791,7 +1792,7 @@ def find_page(ent: ents.Entities, updated: str = "") -> str:
             '<p class="meta" id="f-count" aria-live="polite"></p><ol class="top" id="f-out" style="margin-top:.6em"></ol>'
             '<button type="button" class="more-btn" id="f-more" hidden>Show more</button>'
             '<noscript><p>Search needs JavaScript. Browse <a href="/shows/">shows</a>, <a href="/tags/#companies">companies</a> or '
-            '<a href="/tags/#people">people</a> instead.</p></noscript>' + FIND_JS.replace("__SEARCH_API__", esc(SEARCH_API_URL)))
+            '<a href="/tags/#people">people</a> instead.</p></noscript>' + FIND_JS)
     return page(f"Find · {SITE}", body, "find", "Search every episode by topic, company, person, show and lens.", md="/find.md", updated=updated)
 
 
