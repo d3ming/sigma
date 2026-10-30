@@ -50,7 +50,11 @@ def normalize(phrase: str) -> str:
 
 
 def digest(salt: str, phrase: str) -> str:
-    return hashlib.sha256(f"{salt}:{normalize(phrase)}".encode()).hexdigest()
+    return digest_normalized(salt, normalize(phrase))
+
+
+def digest_normalized(salt: str, phrase: str) -> str:
+    return hashlib.sha256(f"{salt}:{phrase}".encode()).hexdigest()
 
 
 def load(path: Path = LIST, local: Path | None = LOCAL) -> tuple[str, set[str]]:
@@ -80,10 +84,15 @@ def hits_in_line(line: str, salt: str, hashes: set[str]) -> bool:
 def hit_lines(text: str, salt: str, hashes: set[str]) -> set[int]:
     tokens = [(token, no) for no, line in enumerate(text.splitlines(), 1) for token in TOKEN.findall(line.lower())]
     found = set()
+    decisions = {}
     for i in range(len(tokens)):
         for n in range(1, MAX_WORDS + 1):
-            if i + n <= len(tokens) and digest(salt, " ".join(token for token, _ in tokens[i:i + n])) in hashes:
-                found.add(tokens[i][1])
+            if i + n <= len(tokens):
+                phrase = " ".join(token for token, _ in tokens[i:i + n])
+                if phrase not in decisions:
+                    decisions[phrase] = digest_normalized(salt, phrase) in hashes
+                if decisions[phrase]:
+                    found.add(tokens[i][1])
     return found
 
 

@@ -1,7 +1,11 @@
 """The private-word guard (scripts/private_words.py). Expected values are the rules in AGENTS.md: the list is committed as
 salted hashes, matches are whole words, a hit never prints the word, and a missing list fails instead of passing."""
+import contextlib
+import importlib.util
+import io
 import subprocess
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 from tests.helpers import private_words as pw
@@ -24,6 +28,23 @@ def repo(tmp_path, words=(WORD,), list_name=".private-words.sha256"):
 
 
 def run(root, *args):
+    script = root / "scripts" / "private_words.py"
+    spec = importlib.util.spec_from_file_location("private_words_fixture", script)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    stdout, stderr = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        try:
+            code = module.main(list(args))
+        except SystemExit as exc:
+            code = exc.code if isinstance(exc.code, int) else 1
+            if isinstance(exc.code, str):
+                print(exc.code, file=stderr)
+    return SimpleNamespace(returncode=code, stdout=stdout.getvalue(), stderr=stderr.getvalue())
+
+
+def run_cli(root, *args):
     return subprocess.run([sys.executable, "scripts/private_words.py", *args], cwd=root, capture_output=True, text=True)
 
 
@@ -129,12 +150,12 @@ def test_a_directory_of_built_output_is_checked(tmp_path):
     (out / "static").mkdir(parents=True)
     (out / "static" / "index.html").write_text(f"<p>{WORD}</p>\n<a href='mailto:me{AT}corp.org'>mail</a>\n")
     (out / "static" / "logo.bin").write_bytes(b"\0\1" + f"x{AT}corp.org".encode())  # binary files are skipped
-    r = run(root, "--path", str(out))
+    r = run_cli(root, "--path", str(out))
     assert r.returncode == 1 and "static/index.html:1" in r.stderr and "static/index.html:2 (email address)" in r.stderr
     assert "logo.bin" not in r.stderr and WORD not in r.stderr
     page = out / "static" / "index.html"
     page.write_text("<a href='https://sigma.example/research'>Sigma</a>\n")
-    assert run(root, "--path", str(out), "--public-origin", "https://sigma.example/").returncode == 0
+    assert run_cli(root, "--path", str(out), "--public-origin", "https://sigma.example/").returncode == 0
     for value in ("sigma.example", "https://sigma.example/research/forbidden-marker",
                   "https://sigma.example/?q=forbidden-marker", "https://sigma.example.evil/research"):
         page.write_text(value + "\n")
