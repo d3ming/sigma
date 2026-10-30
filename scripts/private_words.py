@@ -30,6 +30,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 LIST = ROOT / ".private-words.sha256"
@@ -38,6 +39,7 @@ MAX_WORDS = 4  # the longest phrase the list can hold
 TOKEN = re.compile(r"[a-z0-9_]+")
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
 PHONE = re.compile(r"(?<![\w.:/-])(?:\+\d{1,3}[ .-]?)?(?:\(\d{3}\)\s?|\d{3}[ .-])\d{3}[ .-]\d{4}(?![\w-])|(?<![\w.])\+\d{10,14}(?!\d)")
+COMPACT_PHONE = re.compile(r"(?i)(?<!\w)(?:(?:phone|mobile|telephone|tel)(?:[_ -]?number)?|call(?:\s+me)?(?:\s+at)?)\s*[\"']?\s*[:=]?\s*[\"']?(?:1)?[2-9]\d{9}(?!\d)")
 FICTIONAL_PHONE = re.compile(r"555[ .-]?01\d\d")
 SAFE_DOMAIN = re.compile(r"(?:(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:invalid|test|example|localhost)|users\.noreply\.github\.com)$", re.I)
 SAFE_ADDRESS = {"noreply@github.com", "git@github.com"}
@@ -72,12 +74,17 @@ def load(path: Path = LIST, local: Path | None = LOCAL) -> tuple[str, set[str]]:
 
 
 def hits_in_line(line: str, salt: str, hashes: set[str]) -> bool:
-    tokens = TOKEN.findall(line.lower())
+    return bool(hit_lines(line, salt, hashes))
+
+
+def hit_lines(text: str, salt: str, hashes: set[str]) -> set[int]:
+    tokens = [(token, no) for no, line in enumerate(text.splitlines(), 1) for token in TOKEN.findall(line.lower())]
+    found = set()
     for i in range(len(tokens)):
         for n in range(1, MAX_WORDS + 1):
-            if i + n <= len(tokens) and digest(salt, " ".join(tokens[i:i + n])) in hashes:
-                return True
-    return False
+            if i + n <= len(tokens) and digest(salt, " ".join(token for token, _ in tokens[i:i + n])) in hashes:
+                found.add(tokens[i][1])
+    return found
 
 
 def contact_kinds(line: str) -> list[str]:
@@ -91,13 +98,36 @@ def contact_kinds(line: str) -> list[str]:
         if not FICTIONAL_PHONE.search(m.group(0)):
             kinds.append("phone number")
             break
+    if "phone number" not in kinds:
+        for m in COMPACT_PHONE.finditer(line):
+            if not FICTIONAL_PHONE.search(m.group(0)):
+                kinds.append("phone number")
+                break
     return kinds
 
 
-def scan_text(text: str, name: str, salt: str, hashes: set[str]) -> list[str]:
+def public_origin_pattern(value: str) -> re.Pattern[str]:
+    if value != value.strip() or any(ord(char) < 33 or char.isspace() for char in value):
+        raise ValueError("public origin contains whitespace or control characters")
+    parsed = urlsplit(value)
+    try:
+        valid_port = parsed.port is None or 1 <= parsed.port <= 65535
+    except ValueError:
+        valid_port = False
+    if (parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc or not parsed.hostname or
+            parsed.username is not None or parsed.password is not None or not valid_port or parsed.netloc.endswith(":") or
+            parsed.path not in {"", "/"} or parsed.query or parsed.fragment):
+        raise ValueError("public origin must be an HTTP(S) origin without credentials, path, query, or fragment")
+    prefix = f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
+    boundary = r"(?=[/?#\s\"'<>),;\]]|[.!?](?:\s|$)|$)"
+    return re.compile(re.escape(prefix) + boundary, re.IGNORECASE)
+
+
+def scan_text(text: str, name: str, salt: str, hashes: set[str], origin: re.Pattern[str] | None = None) -> list[str]:
     found = []
+    private_lines = hit_lines(origin.sub("", text) if origin else text, salt, hashes)
     for no, line in enumerate(text.splitlines(), 1):
-        if hits_in_line(line, salt, hashes):
+        if no in private_lines:
             found.append(f"{name}:{no}")
         found += [f"{name}:{no} ({kind})" for kind in contact_kinds(line)]
     return found
@@ -155,7 +185,14 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--env", nargs="+", metavar="NAME")
     g.add_argument("--path", metavar="DIR")
     g.add_argument("--add", action="store_true")
+    ap.add_argument("--public-origin", metavar="URL")
     a = ap.parse_args(argv)
+    if a.public_origin and not a.path:
+        ap.error("--public-origin can only be used with --path")
+    try:
+        origin = public_origin_pattern(a.public_origin) if a.public_origin else None
+    except ValueError as exc:
+        ap.error(str(exc))
     if a.add:
         salt = ""
         old = LIST.read_text().splitlines() if LIST.is_file() else []
@@ -190,7 +227,7 @@ def main(argv: list[str] | None = None) -> int:
         for path, text in tree_files(Path(a.path)):
             if hits_in_line(path, salt, hashes):
                 found.append(f"{path} (the file name)")
-            found += scan_text(text, path, salt, hashes)
+            found += scan_text(text, path, salt, hashes, origin)
     else:
         for path, text in staged_files():
             if hits_in_line(path, salt, hashes):

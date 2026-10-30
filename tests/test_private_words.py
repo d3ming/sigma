@@ -57,6 +57,9 @@ def test_matches_whole_words_and_phrases_only(tmp_path):
     for text in ("@zed on a profile", "https://zed.example/page", "Ada  Lovelace wrote it", "ZED_"):
         stage(root, "a.txt", text + "\n")
         assert (run(root).returncode == 1) == (text != "ZED_"), text  # an underscore joins words: ZED_ is one token
+    stage(root, "a.txt", "Ada\nLovelace wrote it\n")
+    r = run(root)
+    assert r.returncode == 1 and "a.txt:1" in r.stderr and "Ada" not in r.stderr
 
 
 def test_a_file_name_is_checked_too(tmp_path):
@@ -106,11 +109,12 @@ TAIL = "53" + "09"
 def test_any_personal_email_or_phone_is_flagged_without_a_list_entry(tmp_path):
     """The owner's rule: a personal email or phone never ships, listed or not. The hit names the kind, never the value."""
     root = repo(tmp_path)
-    stage(root, "page.md", f"mail anyone{AT}corp.org\ncall (212) 867-{TAIL} or +1212867{TAIL}\nfine\n")
+    stage(root, "page.md", f"mail anyone{AT}corp.org\ncall (212) 867-{TAIL} or +1212867{TAIL}\ncall me at 2128675309\nphone: 2128675309\n{{\"phone\":\"4158675309\"}}\nrevenue 4155551212\nID 9876543210\nfine\n")
     r = run(root)
     assert r.returncode == 1
-    assert "page.md:1 (email address)" in r.stderr and "page.md:2 (phone number)" in r.stderr and "page.md:3" not in r.stderr
-    assert "corp.org" not in r.stderr and "867" not in r.stderr
+    assert all(f"page.md:{line} (" in r.stderr for line in (1, 2, 3, 4, 5))
+    assert all(f"page.md:{line}" not in r.stderr for line in (6, 7, 8))
+    assert "corp.org" not in r.stderr and "867" not in r.stderr and "2128675309" not in r.stderr
 
 
 def test_reserved_example_addresses_and_fictional_numbers_are_allowed(tmp_path):
@@ -124,7 +128,7 @@ def test_reserved_example_addresses_and_fictional_numbers_are_allowed(tmp_path):
 
 
 def test_a_directory_of_built_output_is_checked(tmp_path):
-    root = repo(tmp_path)
+    root = repo(tmp_path, words=(WORD, "sigma.example"))
     out = tmp_path / "site"
     (out / "static").mkdir(parents=True)
     (out / "static" / "index.html").write_text(f"<p>{WORD}</p>\n<a href='mailto:me{AT}corp.org'>mail</a>\n")
@@ -132,7 +136,19 @@ def test_a_directory_of_built_output_is_checked(tmp_path):
     r = run(root, "--path", str(out))
     assert r.returncode == 1 and "static/index.html:1" in r.stderr and "static/index.html:2 (email address)" in r.stderr
     assert "logo.bin" not in r.stderr and WORD not in r.stderr
-    (out / "static" / "index.html").write_text("<p>clean</p>\n")
+    page = out / "static" / "index.html"
+    page.write_text("<a href='https://sigma.example/research'>Sigma</a>\n")
+    assert run(root, "--path", str(out), "--public-origin", "https://sigma.example/").returncode == 0
+    for value in ("sigma.example", "https://sigma.example/research/forbidden-marker",
+                  "https://sigma.example/?q=forbidden-marker", "https://sigma.example.evil/research"):
+        page.write_text(value + "\n")
+        assert run(root, "--path", str(out), "--public-origin", "https://sigma.example").returncode == 1, value
+    page.write_text("https://sigma.example/research\n")
+    for origin in ("https://sigma.example/research", "https://user@sigma.example", "https://sigma.example/?q=1",
+                   "https://sigma.example bad"):
+        assert run(root, "--path", str(out), "--public-origin", origin).returncode != 0, origin
+    assert run(root, "--public-origin", "https://sigma.example").returncode != 0
+    page.write_text("<p>clean</p>\n")
     assert run(root, "--path", str(out)).returncode == 0
 
 
