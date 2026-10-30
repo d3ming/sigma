@@ -1,0 +1,180 @@
+/* Sigma visual base: colors (light and dark), fonts, type scale, spacing, radii, line weights.
+   Sigma owns this file. Other sites copy it byte for byte and never edit it; a copy that differs is drift.
+   Usage guide: web/WEB_DESIGN.md. Custom properties only: no selectors beyond :root and the theme switch.
+   Dark values come from light-dark(); the three-way switch sets data-theme on <html> (none = follow the system). */
+
+:root { color-scheme: light dark; }
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+:root {
+  /* Surfaces: page, then three steps up. surface-2 is the chip and control fill. */
+  --base: light-dark(#f3f5fa, #080a11);
+  --surface-1: light-dark(#eef1f8, #0d1220);
+  --surface-2: light-dark(#e8ecf6, #141c2e);
+  --surface-3: light-dark(#dde3f1, #1b2540);
+
+  /* Lines: hairline dividers and control borders. */
+  --border: light-dark(#d8deea, #263045);
+  --border-strong: light-dark(#b9c2d6, #3a4660);
+
+  /* Text. */
+  --text: light-dark(#0c1222, #e7ebf5);
+  --text-secondary: light-dark(#3c465c, #b3bccf);
+  --text-muted: light-dark(#586279, #8e98ad);
+  --text-on-accent: light-dark(#ffffff, #080a11);
+
+  /* Accent: the one electric color. Links on hover, active states, focus, marks. */
+  --accent: light-dark(#2a45f0, #7f9bff);
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
+
+  /* Gradient and glow behind the top of a page: a dot grid and a soft light. */
+  --grid: light-dark(rgba(42, 69, 240, .22), rgba(140, 166, 255, .42));
+  --glow: light-dark(rgba(42, 69, 240, .13), rgba(127, 155, 255, .26));
+
+  /* Meaning only, always paired with a label or an icon. */
+  --positive: light-dark(#0f7535, #3ddc84);
+  --positive-muted: light-dark(#bfe3cc, #1c5a3a);
+  --negative: light-dark(#c4122b, #ff6b7d);
+  --negative-muted: light-dark(#f0c4cb, #6b2a33);
+  --warning: light-dark(#a34a08, #e5a14b);
+  --warning-muted: light-dark(#ecd2b3, #5c4219);
+
+  /* Five category hues for charts and grouped data; each hue means one category and nothing else. */
+  --bucket-quality: light-dark(#1f6fc4, #6cb4f5);
+  --bucket-momentum: light-dark(#aa5618, #f0a36c);
+  --bucket-growth: light-dark(#087d72, #5fd0c5);
+  --bucket-valuation: light-dark(#b83d8a, #e58fc4);
+  --bucket-expectations: light-dark(#6d7300, #c9cf6e);
+
+  /* Elevation: flat by default; a lifted layer (menu, dialog) uses 2 or 3. */
+  --shadow-1: none;
+  --shadow-2: 0 8px 24px light-dark(rgb(12 18 34 / 14%), rgb(0 0 0 / 40%));
+  --shadow-3: 0 24px 56px light-dark(rgb(12 18 34 / 22%), rgb(0 0 0 / 55%));
+
+  /* Fonts. A site that loads the faces through its own font loader sets --font-geist-sans, --font-geist-mono
+     and --font-unbounded to the loaded family names; otherwise the plain names are used. */
+  --font-sans: var(--font-geist-sans, "Geist"), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono, "Geist Mono"), ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  --font-display: var(--font-unbounded, "Unbounded"), var(--font-sans);
+
+  /* Type scale. Body is 1rem. */
+  --text-title: 1.9rem;       /* page title of a reading page */
+  --text-page: 1.5rem;        /* page title of a dense app page */
+  --text-heading: 1.32rem;    /* item and theme headings */
+  --text-lede: 1.2rem;        /* the paragraph under a title */
+  --text-section: 1.0625rem;  /* 17px section title */
+  --text-body: 1rem;
+  --text-row: 0.9375rem;      /* 15px row primary */
+  --text-detail: 0.8125rem;   /* 13px row secondary, mono readings */
+  --text-caption: 0.75rem;    /* 12px caption, nav, column heads */
+  --text-micro: 0.6875rem;    /* 11px micro labels; nothing is smaller */
+
+  /* Spacing: 4px scale. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Radii. */
+  --radius-xs: 3px;   /* chips, tags, focus rings */
+  --radius-sm: 4px;   /* small badges and marks */
+  --radius-md: 6px;   /* buttons, inputs, grouped controls */
+  --radius-lg: 8px;   /* panels */
+  --radius-full: 999px;
+
+  /* Line weights. */
+  --line-1: 1px;      /* hairline: dividers, borders */
+  --line-2: 2px;      /* emphasis: active tab, quote rule, focus ring, header rule */
+
+  --motion: 140ms ease;
+}
+
+
+/* Fallback for browsers without light-dark() (before Chrome 123, Safari 17.5, Firefox 120): the same pairs, spelled out.
+   Keep in step with the light-dark() values above. */
+@supports not (color: light-dark(#000, #fff)) {
+  :root {
+    --base: #f3f5fa;
+    --surface-1: #eef1f8;
+    --surface-2: #e8ecf6;
+    --surface-3: #dde3f1;
+    --border: #d8deea;
+    --border-strong: #b9c2d6;
+    --text: #0c1222;
+    --text-secondary: #3c465c;
+    --text-muted: #586279;
+    --text-on-accent: #ffffff;
+    --accent: #2a45f0;
+    --grid: rgba(42, 69, 240, .22);
+    --glow: rgba(42, 69, 240, .13);
+    --positive: #0f7535;
+    --positive-muted: #bfe3cc;
+    --negative: #c4122b;
+    --negative-muted: #f0c4cb;
+    --warning: #a34a08;
+    --warning-muted: #ecd2b3;
+    --bucket-quality: #1f6fc4;
+    --bucket-momentum: #aa5618;
+    --bucket-growth: #087d72;
+    --bucket-valuation: #b83d8a;
+    --bucket-expectations: #6d7300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --base: #080a11;
+      --surface-1: #0d1220;
+      --surface-2: #141c2e;
+      --surface-3: #1b2540;
+      --border: #263045;
+      --border-strong: #3a4660;
+      --text: #e7ebf5;
+      --text-secondary: #b3bccf;
+      --text-muted: #8e98ad;
+      --text-on-accent: #080a11;
+      --accent: #7f9bff;
+      --grid: rgba(140, 166, 255, .42);
+      --glow: rgba(127, 155, 255, .26);
+      --positive: #3ddc84;
+      --positive-muted: #1c5a3a;
+      --negative: #ff6b7d;
+      --negative-muted: #6b2a33;
+      --warning: #e5a14b;
+      --warning-muted: #5c4219;
+      --bucket-quality: #6cb4f5;
+      --bucket-momentum: #f0a36c;
+      --bucket-growth: #5fd0c5;
+      --bucket-valuation: #e58fc4;
+      --bucket-expectations: #c9cf6e;
+    }
+  }
+  :root[data-theme="dark"] {
+    --base: #080a11;
+    --surface-1: #0d1220;
+    --surface-2: #141c2e;
+    --surface-3: #1b2540;
+    --border: #263045;
+    --border-strong: #3a4660;
+    --text: #e7ebf5;
+    --text-secondary: #b3bccf;
+    --text-muted: #8e98ad;
+    --text-on-accent: #080a11;
+    --accent: #7f9bff;
+    --grid: rgba(140, 166, 255, .42);
+    --glow: rgba(127, 155, 255, .26);
+    --positive: #3ddc84;
+    --positive-muted: #1c5a3a;
+    --negative: #ff6b7d;
+    --negative-muted: #6b2a33;
+    --warning: #e5a14b;
+    --warning-muted: #5c4219;
+    --bucket-quality: #6cb4f5;
+    --bucket-momentum: #f0a36c;
+    --bucket-growth: #5fd0c5;
+    --bucket-valuation: #e58fc4;
+    --bucket-expectations: #c9cf6e;
+  }
+}
