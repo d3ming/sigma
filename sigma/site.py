@@ -598,7 +598,7 @@ def show_name(e: dict) -> str:
 
 def episode_entry(e: dict, i: int, n_claims: int | None = None) -> str:
     claims = e["claims"] if n_claims is None else e["claims"][:n_claims]
-    meta = " · ".join(x for x in [show_name(e), esc(human_date(e["published"])) if e.get("published") else ""] if x) + listen_icons(e)
+    meta = " · ".join(x for x in [show_name(e), esc(human_date(publication_date(e["published"]))) if e.get("published") else ""] if x) + listen_icons(e)
     title = e.get("title") or e.get("id") or ""
     t = ext_link(e.get("url"), title) or esc(title)
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") and e["reason"] != title else ""
@@ -839,7 +839,7 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     title = e.get("title") or e["id"]
     t = f'<a href="{esc(e["page"])}">{esc(title)}</a>' if e.get("page") else (ext_link(e.get("url"), title) or esc(title))
     fold = bool(expand and e.get("page") and e.get("claims") and not e.get("influencer"))
-    meta = " · ".join(x for x in [show_name(e), esc(human_date(e["published"])) if e.get("published") else "", esc(why)] if x) + listen_icons(e)
+    meta = " · ".join(x for x in [show_name(e), esc(human_date(publication_date(e["published"]))) if e.get("published") else "", esc(why)] if x) + listen_icons(e)
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") else ""
     rated = rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") and isinstance(e.get("score"), int) else "")
     picks = f'<ul class="claims influencer">{"".join(claim_li(c) for c in e["claims"][:5])}</ul>' if e.get("influencer") and e["claims"] else ""
@@ -1813,7 +1813,7 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     title = e.get("title") or e["id"]
     t = ext_link(e.get("url"), title) or esc(title)
     meta = (rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") else "") + e.get("_marks", "") + " · ".join(
-        x for x in [show_name(e), esc(human_date(e["published"])) if e.get("published") else ""] if x) + listen_icons(e))
+        x for x in [show_name(e), esc(human_date(publication_date(e["published"]))) if e.get("published") else ""] if x) + listen_icons(e))
     kind = '<p class="meta">Rated as social commentary</p>' if e.get("influencer") else ""
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") and e["reason"] != title else ""
     chips = [f'<a class="chip" href="{esc(company_path(cid))}">{esc(cos[cid]["name"])}</a>' for cid in e.get("edges", {}) if cos and cid in cos]
@@ -1869,7 +1869,7 @@ def episode_head_md(e: dict, level: int, self_page: bool = False) -> list[str]:
         heading = "#" * level + " " + mlink(title, absu(md_of(e["page"])))
     else:
         heading = "#" * level + " " + title
-    meta = " · ".join(x for x in [mt(e.get("show")), human_date(e["published"]) if e.get("published") else ""] if x)
+    meta = " · ".join(x for x in [mt(e.get("show")), human_date(publication_date(e["published"])) if e.get("published") else ""] if x)
     spotify = "Spotify (show)" if e.get("spotify_kind") == "show" else "Spotify"
     platforms = [(n, safe_url(u)) for n, u in [("YouTube", e.get("youtube_url")), ("Apple Podcasts", e.get("apple_url")), (spotify, e.get("spotify_url"))]]
     taken = {u for _, u in platforms if u}  # the episode and transcript links are dropped when they repeat one of these

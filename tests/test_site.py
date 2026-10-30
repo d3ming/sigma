@@ -300,7 +300,8 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
         {"episode_id": "yt:amazon", "title": "Amazon earnings", "source": "Show I", "published": "2026-01-09T21:00:00+00:00",
          "url": "https://www.youtube.com/watch?v=amazon", "score": 8, "claims": []},
         {"episode_id": "yt:google", "title": "Google earnings", "source": "Show I", "published": "2026-01-10T01:02:32+00:00",
-         "url": "https://www.youtube.com/watch?v=google", "score": 7, "claims": []}]}))
+         "url": "https://www.youtube.com/watch?v=google", "score": 7,
+         "claims": [{"ticker": ["GOOG"], "claim": "Cloud demand remains strong.", "speaker": "host", "timestamp": 30}]}]}))
     (earnings / "episodes.json").write_text(json.dumps([
         {"episode_id": "yt:amazon", "title": "Amazon earnings", "source": "Show I", "style": "influencer", "published": "2026-01-09T21:00:00+00:00"},
         {"episode_id": "yt:google", "title": "Google earnings", "source": "Show I", "style": "influencer", "published": "2026-01-10T01:02:32+00:00"}]))
@@ -320,6 +321,9 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "Boss" in feed and "Chart week" in feed and "Amazon earnings" in feed and "Google earnings" in feed
     google_row = next(row for row in feed.split("<li") if "Google earnings" in row)
     assert 'data-d="2026-01-09"' in google_row
+    assert "Show I · Jan 9, 2026" in google_row
+    google_page = (out / site.file_of(site.episode_path("yt:google"))).read_text()
+    assert "Show I · Jan 9, 2026" in google_page
     assert "Interview four" in feed and "Creator four" in feed
     assert "Interview three" not in feed and "Creator three" not in feed
     assert feed.index("Boss") < feed.index("Chart week")
