@@ -31,7 +31,6 @@ X_LOGO = ('<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path f
 MAKER = ""
 BASE_URL = "https://example.invalid"
 SITE = "Sigma"
-SEARCH_API_URL = "/api/search"
 TOKENS = ROOT / "web" / "tokens.css"  # the shared visual base (see web/WEB_DESIGN.md); the build puts it in front of CSS in style.css
 ASSETS = ROOT / "site-assets"  # favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png: copied to the site root
 ICONS = ('<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48">'
@@ -244,11 +243,6 @@ background:none;border:var(--line-1) solid var(--border);border-radius:var(--rad
 .facets select,.facets input{font:400 var(--text-detail) var(--font-mono);color:var(--text);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);padding:6px 9px;max-width:100%}
 .facets input{flex:1 1 100%;font-size:15px;padding:10px 12px}
 .facets select{flex:1 1 150px;min-width:0}
-.said{display:flex;gap:var(--space-2);margin:14px 0 0}
-.said input{flex:1 1 auto;min-width:0;font:400 15px var(--font-mono);color:var(--text);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);padding:10px 12px}
-.said button{margin:0}
-.hit{margin:.7em 0 0;max-width:62ch}
-.hit mark{background:var(--accent-soft);color:inherit;border-radius:var(--radius-xs);padding:0 2px}
 .topics{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 0;padding:0;list-style:none}
 .topics button{font:500 var(--text-caption) var(--font-mono);letter-spacing:.04em;color:var(--text-muted);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-xs);padding:2px 9px;cursor:pointer}
 .topics button:hover{color:var(--accent);border-color:var(--accent)}
@@ -1739,22 +1733,6 @@ n=0;$('f-out').textContent='';more();$('f-count').textContent=hits.length+(hits.
 const u=new URL(location);u.search='';for(const k of Object.keys(F)){const x=v(k);if(x&&x!=='0')u.searchParams.set(k,x)}if(l)u.searchParams.set('lens',l);history.replaceState(null,'',u)}
 Object.values(F).forEach(id=>$(id).addEventListener('input',run));$('f-more').addEventListener('click',more);document.addEventListener('sigma-lens',run);run()})()</script>"""
 
-SAID_JS = r"""<script>(()=>{const f=document.getElementById('s-form');if(!f)return;f.hidden=false;
-const $=id=>document.getElementById(id),MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];let seq=0;
-const clock=s=>{const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0')};
-function snip(t){const p=document.createElement('p');p.className='hit';t.split(/(\[\[.*?\]\])/).forEach(s=>{if(s.startsWith('[[')&&s.endsWith(']]')){const m=document.createElement('mark');m.textContent=s.slice(2,-2);p.append(m)}else p.append(s)});return p}
-function safeLink(v){if(typeof v!=='string'||!v||v.startsWith('//')||v.includes('\\')||/[\u0000-\u0020]/.test(v))return null;
-try{const u=new URL(v,location.origin);if(v.startsWith('/'))return u.origin===location.origin?u.href:null;return u.protocol==='https:'&&!u.username&&!u.password?u.href:null}catch(e){return null}}
-function row(r){const li=document.createElement('li'),d=document.createElement('div'),h=document.createElement('h3'),m=document.createElement('div');li.className='entry';
-const href=safeLink(r.link);if(href){const a=document.createElement('a');a.href=href;a.rel='noopener noreferrer';a.textContent=r.title;h.append(a)}else h.textContent=r.title;
-m.className='meta';m.textContent=[r.show,r.date&&(MO[+r.date.slice(5,7)-1]+' '+(+r.date.slice(8))+', '+r.date.slice(0,4)),'at '+clock(r.timestamp)].filter(Boolean).join(' · ');
-d.append(h,m,snip(r.snippet));li.append(d);return li}
-f.addEventListener('submit',async e=>{e.preventDefault();const q=$('s-q').value.trim(),out=$('s-out'),n=$('s-count');if(!q)return;const me=++seq;n.textContent='Searching…';
-try{const r=await fetch('__SEARCH_API__?q='+encodeURIComponent(q));if(!r.ok)throw 0;const d=await r.json();if(me!==seq)return;out.textContent='';d.results.forEach(x=>out.append(row(x)));
-n.textContent=d.results.length?(d.results.length>=20?'The best 20 matches':d.results.length+(d.results.length===1?' match':' matches')):'No episode says that.';}
-catch(x){if(me===seq){out.textContent='';n.textContent='Search is unavailable. Try again later.'}}})})()</script>"""
-
-
 NOTICE_PATH = "/notice/"
 NOTICE = [  # the site's legal notice, one paragraph each; linked from every footer
     "Sigma summarizes public material and publishes research on methods and tools. It does not provide personalized advice.",
@@ -1776,12 +1754,7 @@ def notice_md() -> str:
 
 def find_page(ent: ents.Entities, updated: str = "") -> str:
     sel = lambda id, label, opts="": f'<select id="{id}" aria-label="{label}"><option value="">{opts or label}</option></select>'
-    said = ('<h2>What was said</h2><form class="said" id="s-form" role="search" hidden><input id="s-q" type="search" maxlength="100" '
-            'placeholder="A word, a name or a company" aria-label="Search what was said" autocomplete="off">'
-            '<button type="submit" class="more-btn">Search</button></form>'
-            '<p class="meta" id="s-count" aria-live="polite"></p><ol class="top" id="s-out" style="margin-top:.6em"></ol>'
-            + SAID_JS.replace("__SEARCH_API__", esc(SEARCH_API_URL)))
-    body = ('<h1>Find</h1>' + said + '<h2>Episodes</h2><div class="facets"><input id="f-q" type="search" placeholder="Search titles, guests and claims" '
+    body = ('<h1>Find</h1><h2>Episodes</h2><div class="facets"><input id="f-q" type="search" placeholder="Search titles, guests and claims" '
             'aria-label="Search titles, guests and claims" autocomplete="off"></div>' + lens_bar(ent) +
             '<div class="facets">' + sel("f-topic", "Topic", "Any topic") + sel("f-company", "Company", "Any company")
             + sel("f-person", "Person", "Any person") + sel("f-show", "Show", "Any show")
@@ -1804,9 +1777,6 @@ def find_md(ent: ents.Entities) -> str:
                 "`s` show, `d` date, `r` rating out of 10 (or null), `c` company ids, `p` person slugs, `o` topic ids, `l` lens ids, `x` the claim text "
                 "(first 800 characters). The tables `topics`, `lenses`, `companies` and `people` map ids to names.",
                 f"- [companies.json]({absu('/companies.json')}), [people.json]({absu('/people.json')}), [shows.json]({absu('/shows.json')}): the same ids with page links.",
-                f"- Search what was said: GET {absu(SEARCH_API_URL)}?q=words returns JSON, at most 20 results and 2 per episode, each with `show`, `title`, `date`, "
-                "`timestamp` (seconds), `time` (the same as text), `snippet` (at most 40 words, matches in [[double brackets]]) and `link` (YouTube at the moment, "
-                "else a site-relative Sigma episode path, else the publisher's). Resolve a root-relative path against the API origin. A word typed as a ticker in capitals also matches the company's names.",
                 f"- Lenses: {lenses or 'none'}."])
 
 
@@ -2494,15 +2464,15 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU)
     identity = load_site_identity()
-    BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile, identity.search_api_url
+    BASE_URL, SITE, MAKER, X_PROFILE = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SEARCH_API_URL, SITE_YEAR, DAILY_RUNS, NAV_MENU = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, NAV_MENU = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:

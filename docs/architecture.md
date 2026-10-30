@@ -6,7 +6,7 @@ The data root is the only owner of deployment-specific inputs and output. Code r
 
 Published claims remain tied to their source and timestamp. A schema failure, copied passage or ungrounded number stops the publication step. Scores and stance labels are retained so yesterday's editorial judgment does not shift when a prompt changes. Manifest writes are locked because transcription and editorial work may overlap.
 
-The static site reads checked publication records. Research posts pass a separate opt-in check before any build output is replaced. Search serves bounded snippets from a private index, not full transcripts.
+The static site reads checked publication records. Research posts pass a separate opt-in check before any build output is replaced. The private library retains transcript text for local research; transcripts are not published.
 
 Deployment builds on the operator's machine, then uploads the prebuilt output. Content determines whether a deployment is needed; a Git commit is insufficient because the private data root can change independently. The same frozen content must pass checks and reach the upload.
 
