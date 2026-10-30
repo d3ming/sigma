@@ -3,8 +3,7 @@
 Sigma finds evidence-backed signals for the US stock market and publishes research on methods and tooling. A stranger can clone it,
 supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
 
-The initial import is reviewed from `seed` into `develop`. Keep the whole proposal in that PR; the owner reviews it
-before it lands. Private migration notes never enter the public repository or its history.
+Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR; merging does not publish. Private migration notes never enter the public repository or its history.
 
 Source reaches `main` through a reviewed PR; merging does not publish. Production publication uses `make publish` and
 the owner's approval of its exact version tag and frozen artifact plan. Never enable automatic Git deployments or
