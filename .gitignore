@@ -15,6 +15,7 @@ dist/
 .claude/worktrees/
 .private-words
 .preview/
+/.local/
 
 # Sigma: the owner's private inputs and output never enter this repo; they live in the private data repo behind data/.
 /published/

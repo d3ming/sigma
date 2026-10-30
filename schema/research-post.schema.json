@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Public methods and tooling research post",
+  "type": "object",
+  "required": ["title", "date", "summary", "body"],
+  "additionalProperties": false,
+  "properties": {
+    "title": {"type": "string", "minLength": 1, "maxLength": 140},
+    "date": {"type": "string", "format": "date"},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 300},
+    "body": {"type": "string", "minLength": 1, "maxLength": 20000}
+  }
+}

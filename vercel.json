@@ -1,0 +1,16 @@
+{
+  "buildCommand": "python3 -m sigma.site --out dist",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "git": {
+    "deploymentEnabled": false
+  },
+  "redirects": [
+    {
+      "source": "/alpha/:path*",
+      "destination": "/signals/:path*",
+      "permanent": true
+    }
+  ]
+}

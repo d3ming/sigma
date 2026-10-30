@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/d3ming/sigma/schema/themes.schema.json",
+  "title": "Sigma weekly themes",
+  "description": "Output the operator agent writes after rank-merge, following prompts/themes.md: the week's 3-5 cross-episode themes, each grounded in claims from ranked.json. `sigma themes-check` and `publish` hold it to more than this schema (ids exist, evidence inside the published top N, two shows per theme, claims pass the publish checks). Private reasoning never goes in this file.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["week_of", "run", "headline", "themes"],
+  "properties": {
+    "week_of": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$", "description": "Same week_of as ranked.json, YYYY-MM-DD."},
+    "run": {"type": "string", "minLength": 1, "description": "Name of the run folder (and published/ folder) the themes belong to."},
+    "headline": {"type": "string", "minLength": 1, "maxLength": 160, "description": "One sentence on the week."},
+    "themes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "summary", "stance", "tickers", "episode_ids", "evidence"],
+        "properties": {
+          "title": {"type": "string", "minLength": 1, "maxLength": 80},
+          "summary": {"type": "string", "minLength": 1, "maxLength": 420, "description": "2-3 sentences: what people said and whether they agreed."},
+          "stance": {"type": "string", "enum": ["consensus", "split", "emerging"]},
+          "tickers": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true, "description": "Only tickers that appear on the cited claims. May be empty."},
+          "episode_ids": {
+            "type": "array",
+            "minItems": 2,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1},
+            "description": "Episodes in ranked.json where the theme came up. Any ranked episode, not only the published top N."
+          },
+          "evidence": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "uniqueItems": true,
+            "description": "The claims that show the theme. Each must sit in an episode inside the published top N.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["episode_id", "claim_index"],
+              "properties": {
+                "episode_id": {"type": "string", "minLength": 1},
+                "claim_index": {"type": "integer", "minimum": 0, "description": "0-based index into that episode's claims in ranked.json."}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
