@@ -45,12 +45,13 @@ transcribe reuses those runs' transcripts, so it only whispers what the weekday 
 
 Set `SIGMA_DATA_ROOT` to a private data directory before running the jobs. The example data in `examples/data` can be
 copied into a new local `data/` directory by `scripts/setup.sh`. The agent tasks save private changes with
-`deploy/mac/data-commit.sh`; that command stages only the configured data directory inside its Git repository.
+`deploy/mac/data-commit.sh`; that command lands only the configured data directory on private `main`.
 
-Promote source to `main` through a reviewed PR. Publication is a separate decision because its private data can
-change without a source commit. `make publish` prepares a version-tagged, frozen publication on `main`; the owner
-approves that exact plan before upload. The command details belong to `scripts/release.sh --help`. Keep automatic
-Git deployments disabled: a cloud build cannot read the private data root.
+Promote source to `main` through a reviewed release PR. A passing release PR authorizes `make publish`; its frozen
+build and private-data checks must pass before tagging or upload. Private data lands on its own repository's `main`
+without changing the ingest checkout or unrelated dirty folders. A conflict stops publication. The command details
+belong to `scripts/release.sh --help`. Keep automatic Git deployments disabled: a cloud build cannot read the private
+data root.
 
 A data-only publication can reuse the version tag while `main` is unchanged. A new source version needs a reviewed
 version bump. For a local site build without a Vercel account, use `deploy/mac/site-deploy.sh --site-only`.

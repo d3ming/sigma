@@ -73,8 +73,7 @@ others' data at comparable materiality, never level with them.
 
 Scores are absolute: never spread or squeeze them to fit a batch. A batch of strong interviews can be all 7 and up.
 
-For every score of 8 or more, the reason must say why it is not one band higher. A 9 that cannot say what a 10 would
-have needed is an 8; a 10 is rare and needs the rarity of the speaker and the materiality of the numbers together.
+Keep score-band comparisons internal. The viewer-facing summary describes the investment content.
 
 ## 3. Tier rules
 
@@ -85,6 +84,11 @@ have needed is an 8; a 10 is rare and needs the rarity of the speaker and the ma
 
 ## 4. Write it up
 
-- `reason`: one line (under 240 characters) on why it earned the score.
+- `reason`: one viewer-facing line under 240 characters: lead with the primary ticker and the speaker's five-point
+  investment stance from `prompts/stance.md`, then their stated action, thesis or condition. Read the whole transcript
+  before choosing facts; public buy/add/sell/short/hold statements take priority over background numbers. If no
+  investment view is stated, say so and name the material disclosure; never turn good business news into a buy call.
+  Keep each ticker's stance separate, attribute the view, and preserve different time horizons. The evidence-quality
+  score is separate from bullishness; never fill the summary with a rating justification.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
 - Never include holdings, weights or portfolio data in `ranked.json`.

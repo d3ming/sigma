@@ -30,11 +30,14 @@ Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily
 
 Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
 
-The site is built locally from private data and uploaded prebuilt. Source changes reach `main` through a reviewed PR; merging does not deploy. Run `make publish` on `main` to prepare a version-tagged publication for approval. `scripts/release.sh --help` owns the prepare and publish commands. The static preview does not run the search API; hosted search needs its configured index and a linked preflight check.
+The site is built locally from private data and uploaded prebuilt. Push source changes to `develop`, then review a
+release PR into `main`. A passing release PR authorizes `make publish`: it checks the frozen build, saves private data
+to its repository's `main`, tags the version and uploads. Merging does not deploy. `scripts/release.sh --help` owns the
+commands, including a plan-only dry run.
 
 ## Contribute
 
-The initial proposal stays on `seed` for the owner's review into `develop`. Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [REVIEW.md](REVIEW.md). [Architecture](docs/architecture.md) explains the ownership boundaries; [the agent guide](docs/agent-guide.md) explains how to use the evidence.
+Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md) and [REVIEW.md](REVIEW.md). [Architecture](docs/architecture.md) explains the ownership boundaries; [the agent guide](docs/agent-guide.md) explains how to use the evidence.
 
 ## License
 

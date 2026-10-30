@@ -58,17 +58,17 @@ the same scale and the same reason rule:
 
 ## The scale
 
-The stance is the item's five-point investment view of the stock: strong bearish, bearish, neutral, bullish or strong
+The stance is the item's five-point investment view of the stock: strongly bearish, bearish, neutral, bullish or strongly
 bullish. It is separate from an episode's 1-10 evidence-quality score. Use only what the speaker or account says; it is
 not the mood of the news or your own view of the stock.
 
 | Stance | Meaning |
 |---|---|
-| `-2` | Strong bearish: explicitly says sell, short or avoid, or clearly expects a material fall |
+| `-2` | Strongly bearish: explicitly says sell, short or avoid, or clearly expects a material fall |
 | `-1` | Bearish: the speaker's view leans negative, but is not an explicit sell/short call |
 | `0` | Neutral: a mention, report or hold with no directional view |
 | `1` | Bullish: the speaker's view leans positive, but is not an explicit buy/add call |
-| `2` | Strong bullish: explicitly says buy, add or go long, names a top idea, or clearly expects a material rise |
+| `2` | Strongly bullish: explicitly says buy, add or go long, names a top idea, or clearly expects a material rise |
 
 - Label every ticker apart. One fact can help one company and hurt another (a shortage helps its seller and hurts its
   buyers); give each its own sign.
