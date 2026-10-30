@@ -130,7 +130,7 @@ def test_a_failing_transcript_lookup_keeps_the_episode_and_is_retried_next_time(
 
 
 def test_youtube_mirror_rules(monkeypatch):
-    t = "Why the AI Trade Cracked and What Anthropic Filed"
+    t = "Why the AI Trade Cracked and What Northwind Filed"
     run = lambda *lines: monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: SimpleNamespace(stdout="\n".join(lines)))
     run(f"clip1111111\t{t}\tAll-In Clips", f"show1111111\t{t}\tAll-In Podcast")
     assert transcribe.find_youtube_mirror("All-In Podcast", t) == "show1111111"  # the show's channel, not the clips one listed first
@@ -138,7 +138,7 @@ def test_youtube_mirror_rules(monkeypatch):
     assert transcribe.find_youtube_mirror("All-In Podcast", t) is None
     run(f"short111111\t{t} #shorts\tAll-In Podcast")
     assert transcribe.find_youtube_mirror("All-In Podcast", t) is None
-    run("loose111111\tAI trade cracked while Anthropic filed an S-1 and more\tSome Label")
+    run("loose111111\tAI trade cracked while Northwind filed an S-1 and more\tSome Label")
     assert transcribe.find_youtube_mirror("All-In Podcast", t) is None  # a loose title on an unrelated channel
     run(f"real1111111\t{t}\tBloomberg Podcasts")
     assert transcribe.find_youtube_mirror("Odd Lots", t) == "real1111111"  # a network channel with the exact title

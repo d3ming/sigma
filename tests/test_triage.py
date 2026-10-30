@@ -34,7 +34,7 @@ def test_the_top_n_plus_core_people_and_never_news_clips_or_off_topic_namesakes(
         row("exec", "Democratizing Security with Cloudflare CTO Dane Knecht", tier=1),
         row("inv", "Stan Druckenmiller: Macro, QE, Inflation"),
         row("psy", "She Psychically Read Sam Altman", tag="person:Sam Altman", desc="a mystic reads souls"),
-        row("full", "Chamath: AGI Is Here, Anthropic's Giveaway", tag="person:Chamath Palihapitiya", dur=7300),
+        row("full", "Chamath: AGI Is Here, Northwind's Giveaway", tag="person:Chamath Palihapitiya", dur=7300),
         row("clip", "AGI Is Already Here | Chamath Palihapitiya", tag="person:Chamath Palihapitiya", dur=3100),
         row("meh", "Random chat", tier=3)]}
     ids = triage(m, PEOPLE, top=3, now=NOW)

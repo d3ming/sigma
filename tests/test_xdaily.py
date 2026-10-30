@@ -15,7 +15,7 @@ def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_p
     monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
     sd = tmp_path / "scan" / "2026-10-26"
     sd.mkdir(parents=True)
-    text = "Anthropic S-1: H1 revenue $16.3B, compute commitments of $265.6B with Google, Amazon and Microsoft, plus a $50m deal and 5%."
+    text = "Northwind S-1: H1 revenue $2.4B, compute commitments of $31.5B with three cloud providers, plus a $50m deal and 5%."
     post = {"id": "2114705686513033360", "handle": "someanalyst", "created_at": "2026-10-26T13:08:00Z", "text": text,
             "metrics": {"like": 10, "repost": 1}, "media": [{"type": "photo"}]}
     nulls = {**post, "id": "2114705686513033361", "lang": None, "conversation_id": None}  # X sometimes returns neither: both are optional
@@ -40,17 +40,17 @@ def test_an_edition_publishes_only_numbers_its_cited_posts_state_and_never_the_p
         (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "tier": "core", **bad}]}))
         assert any("@someanalyst" in p for p in xdaily.scan_problems("2026-10-26")), bad
     (tmp_path / "accounts.json").write_text(json.dumps({"accounts": [{"handle": "someanalyst", "tier": "core", "type": "news"}]}))
-    ed = {"date": "2026-10-26", "signals": [{"text": "Posters fixed on $300B of compute commitments in the S-1.", "cites": [post["id"]]}],
+    ed = {"date": "2026-10-26", "signals": [{"text": "Posters fixed on $90B of compute commitments in the S-1.", "cites": [post["id"]]}],
           "posts": [{"id": post["id"]}]}
     errs, _ = xdaily.edition_problems("2026-10-26", ed)
-    assert len(errs) == 1 and "$300B" in errs[0]  # the chart-free text says 265.6B, so 300B has no source
+    assert len(errs) == 1 and "$90B" in errs[0]  # the chart-free text says 31.5B, so 90B has no source
     ed["signals"][0]["text"] = "The cited post reports a $50m deal and 5%."
     assert xdaily.edition_problems("2026-10-26", ed) == ([], [])
     ed["signals"][0]["text"] = "The cited post reports a $50b deal."
     assert any("$50b" in error for error in xdaily.edition_problems("2026-10-26", ed)[0])
     ed["signals"][0]["text"] = "The cited post reports a 5x deal."
     assert any("5x" in error for error in xdaily.edition_problems("2026-10-26", ed)[0])
-    ed["signals"][0]["text"] = "Posters fixed on $265.6B of compute commitments and $16.3B of first-half revenue."
+    ed["signals"][0]["text"] = "Posters fixed on $31.5B of compute commitments and $2.4B of first-half revenue."
     assert xdaily.edition_problems("2026-10-26", ed) == ([], [])
     out = json.dumps(xdaily.public_edition("2026-10-26", ed))
     assert "Microsoft" not in out and post["id"] in out

@@ -1,5 +1,5 @@
 """Restated claims: one point, said by two passes (the ranking reader, the report's bullets and section claims) in their own
-words, shows once. Rules come from the owner's bug report (2026-10-28: one episode listed the same $800-900 billion point three
+words, shows once. Rules come from the owner's bug report (2026-10-28: one episode listed the same $40-45 billion point three
 times at 3:05), not from claimdedupe.py. The fixture is that episode's wording with a placeholder speaker."""
 import json
 from pathlib import Path
@@ -10,9 +10,9 @@ from sigma import claimdedupe, library, published, site
 
 EP = "rss:example-guest"
 G = "Guest Placeholder"
-RANKED = "Anthropic's S-1 lists future compute and capital commitments of roughly $800 to $900 billion that are not yet in the income statement."
-REPORT = "The S-1 lists future capital and compute commitments of roughly $800 to $900 billion, shown as a footnote and not yet in the income statement."
-SHORT = "Future commitments total roughly $800 to $900 billion."
+RANKED = "Northwind's S-1 lists future compute and capital commitments of roughly $40 to $45 billion that are not yet in the income statement."
+REPORT = "The S-1 lists future capital and compute commitments of roughly $40 to $45 billion, shown as a footnote and not yet in the income statement."
+SHORT = "Future commitments total roughly $40 to $45 billion."
 
 
 def publishable_run(root):
@@ -40,14 +40,14 @@ def claim(text, ts, speaker=G, tickers=(), ep=EP, **kw):
 
 
 def three():
-    return [claim(RANKED, 185, tickers=["private:Anthropic"], source="ranked", novelty=1, verifiable=3, score=6),
+    return [claim(RANKED, 185, tickers=["private:Northwind"], source="ranked", novelty=1, verifiable=3, score=6),
             claim(REPORT, 185, source="report"), claim(SHORT, 185, source="report")]
 
 
 def test_three_wordings_of_one_point_at_one_moment_become_the_most_complete_one_with_the_tags():
     kept, merged = claimdedupe.dedupe(three())
     assert [c["text"] for c in kept] == [REPORT]  # the most complete wording
-    assert kept[0]["tickers"] == ["private:Anthropic"]  # the tag only the ranking reader gave
+    assert kept[0]["tickers"] == ["private:Northwind"]  # the tag only the ranking reader gave
     assert (kept[0]["novelty"], kept[0]["verifiable"], kept[0]["score"]) == (1, 3, 6)  # a rating the keeper lacks comes from the group
     assert [len(d) for _, d in merged] == [2]
 
@@ -64,7 +64,7 @@ def test_distinct_claims_are_never_merged():
     growth = "Q3 sequential revenue growth fell from 147% to 45%, and revenue divided by compute expense fell from 2.08 to 1.7."
     rows = [claim(REPORT, 185),
             claim(growth, 190),  # a different fact 5 s later
-            claim("Anthropic is said to have cut prices by about 50% in October.", 215),
+            claim("Northwind is said to have cut prices by about 50% in October.", 215),
             claim("Revenue growth was 45% last quarter.", 230),  # a different, shorter fact that happens to share a figure
             claim("Revenue growth was 147% the quarter before.", 240),  # conflicting figures
             claim(REPORT, 185, speaker="Other Person"),  # another speaker
@@ -83,9 +83,9 @@ def test_a_role_or_unknown_speaker_matches_a_named_one_and_the_name_wins():
 
 
 def test_numbers_and_entities_are_read_the_way_a_person_would():
-    assert claimdedupe.numbers(RANKED) == {"800", "900"}  # not the 1 of "S-1"
+    assert claimdedupe.numbers(RANKED) == {"40", "45"}  # not the 1 of "S-1"
     assert claimdedupe.numbers("grew 1,200.0 or 2.08 in Q3") == {"1200", "2.08"}  # not the 3 of "Q3"
-    assert {"commitment", "800"} <= claimdedupe.words(SHORT)
+    assert {"commitment", "40"} <= claimdedupe.words(SHORT)
 
 
 def test_ingest_lists_a_restated_point_once_with_the_ranking_readers_tag(tmp_path):
@@ -114,7 +114,7 @@ def test_published_claims_are_collapsed_in_place_and_only_that_file_changes(tmp_
     assert res["2026-10-28"]["before"] == 4 and res["2026-10-28"]["after"] == 2
     assert res["2026-10-28"]["episodes"][EP]["removed"] == 2
     left = [json.loads(line) for line in (d / "claims.jsonl").read_text().splitlines()]
-    assert [c["text"] for c in left] == [REPORT, "An unrelated point about hiring."] and left[0]["tickers"] == ["private:Anthropic"]
+    assert [c["text"] for c in left] == [REPORT, "An unrelated point about hiring."] and left[0]["tickers"] == ["private:Northwind"]
     assert (d / "episodes.json").read_text() == "[]"
     assert published.dedupe_claims(tmp_path)["2026-10-28"]["after"] == 2  # re-running changes nothing
 
@@ -259,8 +259,8 @@ def test_claims_that_differ_in_polarity_scale_unit_or_subject_are_not_merged(a, 
 
 
 def test_a_shorter_claim_that_leaves_out_a_clause_is_still_the_same_point():
-    long = "Acme lists commitments of $800 to $900 billion, shown as a footnote and not yet in the income statement."
-    assert claimdedupe.same_point(claim(long, 100), claim("Commitments total roughly $800 to $900 billion at Acme.", 100))
+    long = "Acme lists commitments of $40 to $45 billion, shown as a footnote and not yet in the income statement."
+    assert claimdedupe.same_point(claim(long, 100), claim("Commitments total roughly $40 to $45 billion at Acme.", 100))
 
 
 def test_a_role_does_not_bridge_two_named_speakers():
@@ -306,7 +306,7 @@ def test_the_verdict_does_not_depend_on_the_hash_seed():
 def test_dedupe_is_idempotent_when_tag_sets_overlap():
     """Three restatements tagged [A], [A, B], [B]: the first has no tag in common with the third, so a single pass can leave two;
     dedupe must reach a fixed point so the export gate never rejects its own output."""
-    text = "Acme has $800 billion of commitments that are not in the income statement"
+    text = "Acme has $40 billion of commitments that are not in the income statement"
     claims = [claim(text, 100, tickers=["AAA"]), claim(text, 100, tickers=["AAA", "BBB"]), claim(text, 100, tickers=["BBB"])]
     once, _ = claimdedupe.dedupe(claims)
     twice, _ = claimdedupe.dedupe(once)
