@@ -32,6 +32,10 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     claim = {"episode_id": "rss:four", "timestamp": 60, "text": "Expects NVDA demand to rise", "score": 4,
              "source": "ranked", "date": day, "speaker": "Jane Doe", "title": "Jane Doe on NVDA", "show": "Market Hour",
              "link": "https://example.com/episode?t=60"}
+    creator_claim = {**claim, "episode_id": "yt:creator9", "text": "Amazon creator expects demand to rise", "score": None,
+                     "date": "2026-10-30", "published": "2026-10-30T01:02:32+00:00", "speaker": "Creator",
+                     "title": "Creator on Amazon", "link": "https://youtube.com/watch?v=creator9&t=60"}
+    low_creator_claim = {**creator_claim, "episode_id": "yt:creator3", "text": "Below the creator rating floor"}
     score_four_pub = tmp_path / "score-four-published"
     run = score_four_pub / day
     run.mkdir(parents=True)
@@ -42,6 +46,16 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
         {"ticker": "NVDA", "stance": 1, "reason": "Expects stronger demand"}
     ]} for c in (claim, low_claim)]
     (run / "stances.jsonl").write_text("".join(json.dumps(row) + "\n" for row in labels))
+    video_run = score_four_pub / f"{day}-videos"
+    video_run.mkdir()
+    (video_run / "claims.jsonl").write_text("".join(json.dumps(c) + "\n" for c in (creator_claim, low_creator_claim)))
+    (video_run / "scores-influencer.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "yt:creator9", "score": 9}, {"episode_id": "yt:creator3", "score": 3}
+    ]}))
+    creator_labels = [{"key": stance.claim_key(c["episode_id"], c["timestamp"], c["text"]), "labels": [
+        {"ticker": "AMZN", "stance": 1, "reason": "Demand rising"}
+    ]} for c in (creator_claim, low_creator_claim)]
+    (video_run / "stances.jsonl").write_text("".join(json.dumps(row) + "\n" for row in creator_labels))
     labels = pub / "x" / "stances" / f"{day}.jsonl"
     labels.parent.mkdir(parents=True)
     row = {"key": f"p-{post_id}", "id": post_id, "handle": "reader", "date": day,
@@ -70,9 +84,14 @@ def test_the_index_never_waits_names_what_is_missing_and_every_published_file_is
     monkeypatch.setenv("SIGMA_X_DIR", str(data / "x"))
     monkeypatch.setattr(signals_index, "DATA", data)
     now = datetime.fromisoformat("2026-10-27T06:00:00+00:00")
-    signals, _ = signals_index.podcast_rows(score_four_pub, day, stance.labelled(score_four_pub), {"NVDA": "NVIDIA"}, {"NVDA": "NVIDIA"})
+    doc = signals_index.build(day, score_four_pub, {"NVDA": "NVIDIA", "AMZN": "Amazon"}, now=now)
+    signals = doc["signals"]
     assert any(s["source_kind"] == "podcast" and s["source_id"] == "rss:four" for s in signals)
     assert not any(s["source_id"] == "rss:three" for s in signals)
+    assert any(s["source_kind"] == "youtube" and s["source_id"] == "yt:creator9" for s in signals)
+    creator_signal = next(s for s in signals if s["source_id"] == "yt:creator9")
+    assert creator_signal["date"] == "2026-10-29" and creator_signal["ticker"] == "AMZN"
+    assert not any(s["source_id"] == "yt:creator3" for s in signals)
     day_file = pub / "signals" / f"{day}.json"
     day_file.parent.mkdir()
     day_file.write_text(json.dumps(signals_index.build(day, pub, now=now)))

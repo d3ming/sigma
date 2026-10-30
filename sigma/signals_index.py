@@ -120,21 +120,53 @@ def _row(*, key, date_, lab, names, speaker, role, link, source_kind, source_id,
             **extra, **({"inferred": [f for f, i in (("origin", o_inf), ("horizon_days", h_inf)) if i]} if o_inf or h_inf else {})}
 
 
-def podcast_rows(published: Path, day: str, labels: dict, names: dict, us: dict) -> tuple[list[dict], int]:
+def _podcast_runs(published: Path, day: str) -> list[Path]:
+    root = Path(published)
+    if not root.is_dir():
+        return []
+    return sorted(p for p in root.iterdir() if p.is_dir() and
+                  (p.name == day or p.name.startswith(day + "-")) and (p / "claims.jsonl").is_file())
+
+
+def _influencer_scores(runs: list[Path]) -> dict[str, tuple[str, object]]:
+    out = {}
+    for run in runs:
+        try:
+            rows = json.loads((run / "scores-influencer.json").read_text(encoding="utf-8")).get("episodes") or []
+        except (OSError, ValueError):
+            continue
+        for row in rows:
+            episode_id = row.get("episode_id")
+            if not episode_id:
+                continue
+            owner_score = (row.get("scored_in") or run.name, row.get("score"))
+            if episode_id in out and out[episode_id] != owner_score:
+                raise SignalsError("a creator episode has conflicting scores in this publication date")
+            out[episode_id] = owner_score
+    return out
+
+
+def podcast_rows(published: Path, day: str, labels: dict, names: dict, us: dict,
+                 influencer_scores: dict[str, tuple[str, object]] | None = None) -> tuple[list[dict], int]:
     """(rows, stance items without a label) for run `day`. A stance item is a claim that names a US ticker or reads like a
     market view (stance.claim_items); the rest of the claims are never labelled."""
     rows_in = stance.read_jsonl(Path(published) / day / "claims.jsonl")
     if not rows_in:
         return [], 0
-    influencers = set()
-    try:
-        influencers = {e.get("episode_id") for e in json.loads((Path(published) / day / "scores-influencer.json").read_text(encoding="utf-8")).get("episodes") or []}
-    except (OSError, ValueError):
-        pass
+    influencer_scores = influencer_scores if influencer_scores is not None else _influencer_scores([Path(published) / day])
+    from .site import publication_date
+
     roles, out, seen, unlabelled = _roles(published, day), [], set(), 0
     for c in rows_in:
-        score = c.get("score")
-        if not (c.get("source") == "report" or (isinstance(score, (int, float)) and score >= MIN_SCORE)):
+        episode_id = c.get("episode_id")
+        score_owner = influencer_scores.get(episode_id)
+        influencer = score_owner is not None
+        if influencer and score_owner[0] != day:
+            continue
+        score = score_owner[1] if influencer else c.get("score")
+        if (influencer and not (isinstance(score, (int, float)) and score >= MIN_SCORE)) or (
+                not influencer and c.get("source") != "report" and
+                not (isinstance(score, (int, float)) and score >= MIN_SCORE)):
             continue
         key = stance.claim_key(c.get("episode_id"), c.get("timestamp"), c.get("text"))
         if key in seen:
@@ -144,7 +176,7 @@ def podcast_rows(published: Path, day: str, labels: dict, names: dict, us: dict)
             unlabelled += bool(stance.claim_items([c], us))
             continue
         speaker = str(c.get("speaker") or "").strip()
-        kind = "youtube" if c.get("episode_id") in influencers else "podcast"
+        kind = "youtube" if influencer else "podcast"
         role = roles.get(speaker.lower())
         if not role:  # no stated role: a creator on their own channel, a guest named in the title, a host, or unknown
             role = ("creator" if kind == "youtube" and speaker else "guest" if speaker and speaker.lower() in str(c.get("title") or "").lower()
@@ -155,7 +187,7 @@ def podcast_rows(published: Path, day: str, labels: dict, names: dict, us: dict)
         for lab in labels[key]:
             if not lab.get("stance"):
                 continue
-            out.append(_row(key=key, date_=str(c.get("date") or c.get("published") or day)[:10], lab=lab, names=names,
+            out.append(_row(key=key, date_=publication_date(c.get("published") or c.get("date") or day), lab=lab, names=names,
                             speaker=speaker or "unknown", role=role, link=link,
                             source_kind=kind,
                             source_id=c.get("episode_id"), source_name=c.get("show") or "", origin_d=origin,
@@ -232,12 +264,23 @@ def build(day: str, published: Path = PUBLISHED, us: dict | None = None, now: da
     names, labels = _names(us), stance.labelled(published)
     missing = []
     run_dir = published / day
-    if not (run_dir / "claims.jsonl").exists():
+    runs = _podcast_runs(published, day)
+    if not runs:
         if d.weekday() < 5:  # the daily issue is a weekday run; a weekend has no podcast source to wait for
             missing.append({"source": "podcast", "reason": f"no run published for {day}"})
         pod, unl = [], 0
     else:
-        pod, unl = podcast_rows(published, day, labels, names, us)
+        creator_scores = _influencer_scores(runs)
+        podcast_by_id = {}
+        unl = 0
+        for run in runs:
+            rows, count = podcast_rows(published, run.name, labels, names, us, creator_scores)
+            unl += count
+            for row in rows:
+                old = podcast_by_id.get(row["id"])
+                if old is None or (row["source_kind"] == "youtube" and old["source_kind"] != "youtube"):
+                    podcast_by_id[row["id"]] = row
+        pod = list(podcast_by_id.values())
         if unl:
             missing.append({"source": "podcast", "reason": f"{unl} claims of run {day} have no stance label yet"})
     if not (published / "x" / "stances" / f"{day}.jsonl").exists():
