@@ -327,7 +327,7 @@ def test_failed_public_export_stops_before_persistent_library_ingest(tmp_path, m
     assert ingested == []
 
 
-def test_publish_refuses_invalid_themes_and_writes_nothing(ranked_week, monkeypatch):
+def test_failure_seen_published_themes_are_grounded_in_source(ranked_week, monkeypatch):
     run, root = ranked_week, ranked_week.parent.parent
     monkeypatch.setattr(published, "ROOT", root / "data" / "published")
     monkeypatch.delenv("SIGMA_NO_PUBLISHED")
@@ -341,7 +341,21 @@ def test_publish_refuses_invalid_themes_and_writes_nothing(ranked_week, monkeypa
     # export-published: a good file exports; a later refusal leaves the earlier export alone
     (run / "themes.json").write_text(json.dumps(themes_json()))
     main(["export-published", str(run), "--top", "5"])
-    assert (root / "data" / "published" / RUN / "themes.json").exists()
+    published_themes = root / "data" / "published" / RUN / "themes.json"
+    assert published_themes.exists()
+    published.validate_publication_inputs(root / "data" / "published", root / "runs")
+    valid_themes = published_themes.read_bytes()
+    freeze_data, frozen = root.parent / "freeze-data", root.parent / "frozen-site-inputs"
+    shutil.copytree(root / "runs", freeze_data / "runs")
+    shutil.copytree(root / "data" / "published", freeze_data / "published")
+    published.freeze_publication_inputs(freeze_data, frozen)
+    assert (frozen / "runs" / RUN / "themes.json").read_bytes() == (run / "themes.json").read_bytes()
+    resolved = json.loads(published_themes.read_text())
+    resolved["headline"] = "Stale output that no source supports."
+    published_themes.write_text(json.dumps(resolved))
+    with pytest.raises(ValueError, match="themes.json differs from source run"):
+        published.validate_publication_inputs(root / "data" / "published", root / "runs")
+    published_themes.write_bytes(valid_themes)
     with pytest.raises(SystemExit, match=r"\[published\] invalid: themes: themes\[2\]"):
         main(["export-published", str(run), "--top", "4"])
     assert (root / "data" / "published" / RUN / "themes.json").exists()

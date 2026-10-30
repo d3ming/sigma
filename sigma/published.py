@@ -219,9 +219,10 @@ def validate_publication_inputs(published_root: str | Path, runs_root: str | Pat
     claim_files = ("ranked.json", "scores.json", "scores-influencer.json", "report.json")
     public_fields = set(EPISODE_KEYS) | set(LINK_KEYS)
     for public_run in sorted(p for p in published_root.iterdir() if p.is_dir()):
-        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files):
-            continue
         source_run = runs_root / public_run.name
+        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files) and \
+                not (public_run / "themes.json").is_file() and not (source_run / "themes.json").is_file():
+            continue
         if source_run.is_symlink() or not source_run.is_dir() or source_run.resolve().parent != runs_root:
             raise ValueError(f"[published] source run missing for {public_run.name}")
         manifest_path = source_run / "manifest.json"
@@ -266,6 +267,23 @@ def validate_publication_inputs(published_root: str | Path, runs_root: str | Pat
             found[episode_id] = cached
         if actual_episodes != episodes(manifest, found):
             raise ValueError(f"[published] episodes.json differs from source run {public_run.name}")
+        public_themes, source_themes = public_run / "themes.json", source_run / "themes.json"
+        if public_themes.is_file() != source_themes.is_file():
+            raise ValueError(f"[published] themes.json differs from source run {public_run.name}")
+        if public_themes.is_file():
+            if public_themes.is_symlink() or source_themes.is_symlink():
+                raise ValueError(f"[published] themes.json differs from source run {public_run.name}")
+            from . import themes
+
+            try:
+                expected_themes = themes.export(source_run, youtube_urls={
+                    row["episode_id"]: row["youtube_url"] for row in actual_episodes if row.get("youtube_url")
+                })
+                actual_themes = json.loads(public_themes.read_text(encoding="utf-8"))
+            except (OSError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError(f"[published] themes.json source check failed for {public_run.name}") from exc
+            if actual_themes != expected_themes:
+                raise ValueError(f"[published] themes.json differs from source run {public_run.name}")
         claims_file = public_run / "claims.jsonl"
         if not claims_file.is_file():
             raise ValueError(f"[published] claims.jsonl missing for {public_run.name}")
@@ -370,7 +388,8 @@ def validate_publication_outputs(published_root: str | Path, x_root: str | Path)
                 source = json.loads((x_root / "days" / day / "edition.json").read_text(encoding="utf-8"))
             except (OSError, ValueError) as exc:
                 raise ValueError(f"[published] X edition source check failed for {day}") from exc
-            errors, _ = xdaily.edition_problems(day, source)
+            allow_empty_signals = not actual.get("signals") and bool(actual.get("posts") or actual.get("more"))
+            errors, _ = xdaily.edition_problems(day, source, allow_empty_signals=allow_empty_signals)
             if errors:
                 raise ValueError(f"[published] X edition failed source grounding for {day}: {errors[0]}")
             expected = xdaily.public_edition(day, source)
@@ -448,9 +467,10 @@ def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) 
     runs = data_root / "runs"
     for public_run in sorted(p for p in (snapshot_root / "published").iterdir() if p.is_dir()):
         claim_files = ("ranked.json", "scores.json", "scores-influencer.json", "report.json")
-        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files):
-            continue
         source_run = runs / public_run.name
+        if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files) and \
+                not (public_run / "themes.json").is_file() and not (source_run / "themes.json").is_file():
+            continue
         if source_run.is_symlink() or not source_run.is_dir() or source_run.resolve().parent != runs.resolve():
             raise ValueError(f"[published] source run missing for {public_run.name}")
         dest_run = snapshot_root / "runs" / public_run.name
@@ -465,6 +485,11 @@ def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) 
                 if source.is_symlink() or not source.is_file():
                     raise ValueError(f"[published] {filename} missing from source run {public_run.name}")
                 shutil.copy2(source, dest_run / filename)
+        theme_source = source_run / "themes.json"
+        if theme_source.is_file():
+            if theme_source.is_symlink():
+                raise ValueError(f"[published] themes.json missing from source run {public_run.name}")
+            shutil.copy2(theme_source, dest_run / theme_source.name)
         data = json.loads(manifest.read_text())
         cited_episodes = set()
         for filename in claim_files:
