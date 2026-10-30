@@ -3,7 +3,7 @@ set -eu
 SIGMA=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$SIGMA"
 git rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git clone" >&2; exit 1; }
-chmod +x .githooks/* scripts/check.sh scripts/private-words.sh
+chmod +x .githooks/* scripts/check.sh scripts/private-words.sh scripts/private_words.py
 git config --local core.hooksPath .githooks
 echo "hooks installed: git push runs scripts/check.sh; commits run the private-word check"
 [ -x .venv/bin/python ] || echo "note: create .venv and install the dev extra before running scripts/check.sh" >&2

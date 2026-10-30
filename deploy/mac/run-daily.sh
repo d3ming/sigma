@@ -1,6 +1,6 @@
 #!/bin/bash
-# Weekday 14:30 Mac run: pull code, fetch + whisper (MLX), so it is done before the 15:30 agent routine selects, reports and publishes
-# the podcast issue with the X edition, live by 17:00. The window is 72 h (96 h on Monday, so the weekend is covered); seen episodes are skipped, so the overlap costs nothing and a weekly show that posted 2 days ago is not missed.
+# Weekday Mac run (time set by the launchd plist): pull code, fetch + whisper (MLX), so it is done before the agent routine that
+# selects, reports and publishes the podcast issue with the X edition. The window is 72 h (96 h on Monday, so the weekend is covered); seen episodes are skipped, so the overlap costs nothing and a weekly show that posted 2 days ago is not missed.
 # Usage: run-daily.sh [run-name]   (default: today's local date). Safe to rerun; daily/transcribe are resumable.
 set -uo pipefail
 # The whole script is one function: bash reads a script as it runs, so the `git pull` below would otherwise rewrite this file

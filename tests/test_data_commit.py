@@ -7,7 +7,7 @@ import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "data-commit.sh"
 CODE = Path(__file__).parent.parent
-pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")]
 
 
 def git(*args, cwd):
@@ -25,7 +25,7 @@ def working_files(root):
 
 
 def private_source(tmp_path):
-    origin, source = tmp_path / "theta.git", tmp_path / "darkroom"
+    origin, source = tmp_path / "private.git", tmp_path / "operator"
     subprocess.run(["git", "init", "--bare", "-q", "--initial-branch=main", str(origin)], check=True)
     subprocess.run(["git", "clone", "-q", str(origin), str(source)], check=True, capture_output=True)
     git("config", "user.name", "Fixture", cwd=source)

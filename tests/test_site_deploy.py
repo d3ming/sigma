@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "site-deploy.sh"
-pytestmark = pytest.mark.skipif(shutil.which("zsh") is None, reason="site-deploy.sh is a zsh script")
+pytestmark = [pytest.mark.slow, pytest.mark.skipif(shutil.which("zsh") is None, reason="site-deploy.sh is a zsh script")]
 FAKE = """#!/bin/sh
 case "$1" in
   build)
@@ -22,7 +22,9 @@ case "$1" in
     for path in .env.local .private-words PLAN.md docs/migration/private.md data/site.json followlists.yaml; do
       [ ! -e "$path" ] || { echo "private source path reached Vercel build" >&2; exit 11; }
     done
-    mkdir -p .vercel/output/static
+    mkdir -p .vercel/output/static .vercel/output/diagnostics
+    printf '{"local":"build trace"}\n' > .vercel/output/builds.json
+    printf '{"local":"CLI trace"}\n' > .vercel/output/diagnostics/cli_traces.json
     printf '{}\n' > .vercel/output/config.json
     printf '%s\n' "${FAKE_CONTENT:-site}" > .vercel/output/static/index.html
     if [ "${FAKE_PRIVATE_OUTPUT:-0}" = "1" ]; then
@@ -51,6 +53,9 @@ class Site:
         self.git("config", "user.name", "t")
         (self.clone / "deploy/mac").mkdir(parents=True)
         shutil.copy(SCRIPT, self.clone / "deploy/mac/site-deploy.sh")
+        (self.clone / "scripts").mkdir()
+        for name in ("scripts/private_words.py", ".private-words.sha256"):
+            shutil.copy(Path(__file__).parent.parent / name, self.clone / name)
         shutil.copytree(Path(__file__).parent.parent / "sigma", self.clone / "sigma",
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         shutil.copytree(Path(__file__).parent.parent / "schema", self.clone / "schema",
@@ -131,3 +136,22 @@ def test_private_source_and_generated_paths_are_refused_before_upload(tmp_path):
     assert tampered.returncode != 0 and "claims.jsonl differs from validated source" in tampered.stderr
     assert site.build_log.read_text() == before
     assert not site.upload_log.exists()
+
+
+def test_contact_details_in_the_built_site_are_refused_before_upload(tmp_path):
+    site = Site(tmp_path)
+    at = "@"  # built at run time so this file holds no address
+    site.env["FAKE_CONTENT"] = f"write to someone{at}corp.org or call (212) 867-" + "5309"
+    refused = site.run("--preflight")
+    assert refused.returncode == 1 and "contains a private path" in refused.stderr
+    assert "(email address)" in refused.stderr and "(phone number)" in refused.stderr
+    assert "corp.org" not in refused.stderr and "5309" not in refused.stderr  # the kind is named, never the value
+    assert not site.upload_log.exists()
+    site.env["FAKE_CONTENT"] = f"write to someone{at}example.com or call 212-555-0142"
+    result = site.run("--preflight")
+    assert result.returncode == 0, result.stdout + result.stderr
+    outputs = list((site.clone / ".vercel/publication").glob("*/.vercel/output"))
+    assert len(outputs) == 1
+    assert not (outputs[0] / "builds.json").exists()
+    assert not (outputs[0] / "diagnostics/cli_traces.json").exists()
+    assert (outputs[0] / "static/index.html").read_text().strip() == site.env["FAKE_CONTENT"]

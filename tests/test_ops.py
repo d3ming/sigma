@@ -53,21 +53,3 @@ def test_event_log_leaves_a_failing_command_unchanged_and_two_writers_never_inte
     (two,) = (tmp_path / "two").glob("*.jsonl")
     rows = [json.loads(x) for x in two.read_text().splitlines()]  # a torn line would not parse
     assert sorted((r["n"]["w"], r["n"]["i"]) for r in rows) == sorted((w, i) for w in "ab" for i in range(200))
-
-
-def test_commit_privacy_checks_the_index_instead_of_the_working_copy(tmp_path):
-    """Failure seen in PR review: a clean working copy hid forbidden text already staged for commit."""
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    (scripts / "private-words.sh").write_bytes((Path(__file__).parent.parent / "scripts/private-words.sh").read_bytes())
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / ".private-words").write_text("forbidden-marker\n")
-    sample = tmp_path / "sample.txt"
-    sample.write_text("forbidden-marker\n")
-    subprocess.run(["git", "add", "sample.txt"], cwd=tmp_path, check=True)
-    sample.write_text("clean\n")
-    check = lambda: subprocess.run(["sh", "scripts/private-words.sh"], cwd=tmp_path, capture_output=True)
-    assert check().returncode == 1
-    subprocess.run(["git", "add", "sample.txt"], cwd=tmp_path, check=True)
-    sample.write_text("forbidden-marker\n")
-    assert check().returncode == 0

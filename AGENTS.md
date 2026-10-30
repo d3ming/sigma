@@ -4,12 +4,25 @@ Sigma finds evidence-backed signals for the US stock market and publishes resear
 supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
 
 Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
-PR authorizes its publication with `make publish`; the command freezes and validates the build, saves private data
+PR authorizes publication, including new public pages, without another owner approval. Use `make publish`; it validates
+the frozen build, saves private data
 to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
 disabled. Private migration notes never enter this repository or its history.
 
 This file holds only what a capable agent would get wrong here without being told. The code and each command's
 `--help` own the rest.
+
+## Where things are
+
+- [SECURITY.md](SECURITY.md): what counts as private, and how to report a problem.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to propose a change and what stays out of the repo.
+- [REVIEW.md](REVIEW.md): how to review a change and the `develop`→`main` release PR.
+- [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
+- [deploy/mac/README.md](deploy/mac/README.md): the macOS setup, scheduled jobs and the release and publish flow.
+- [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
+- [skills/test-audit](skills/test-audit/SKILL.md): how to decide whether a test earns its place; apply it to every added or changed test.
+- [prompts/](prompts/): the prompts the scheduled agents follow word for word.
+- [schema/](schema/): the JSON schemas that validate the agent's output files.
 
 ## Tenets
 
@@ -18,7 +31,7 @@ This file holds only what a capable agent would get wrong here without being tol
 - **One owner per fact and per decision.** Change the owner and update its callers; never add a second path, alias or
   fallback beside it. Redirects exist only where outsiders hold old links.
 - **Nothing private in the repo, ever.** Follow lists, published output, post drafts, scores, notes and the call ledger
-  live in a separate private data repo and reach the code through `data/` or a setting. Holdings never enter any repo.
+  live in a separate private data repo and reach the code through `data/` or a setting. The owner's holdings and sizes never enter any repo; what a poster publicly shares about their own portfolio is ordinary attributed evidence.
   Anything committed may be read by anyone.
 - **Sigma knows nothing of the fund.** Research posts are about method and tooling, never about investments, fair
   values or calls.
@@ -28,8 +41,7 @@ This file holds only what a capable agent would get wrong here without being tol
 
 Bring a reviewed dry run, and wait for an explicit yes, for:
 
-- changing the repo's visibility, or publishing anything new to the public site for the first time (a new page type or
-  a first research post);
+- changing the repo's visibility;
 - deleting data that has no saved copy;
 - a force-push or history rewrite outside `develop`;
 - a credential, permission, domain or hosting-account change;
@@ -42,15 +54,23 @@ Everything else is yours to decide. Be bold with reversible work.
 - Work in a worktree, never in the primary checkout.
 - Commit subjects are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), 72 characters at most.
 - Err toward a body. The subject says what changed; the body says why, what you chose over what, and how you proved it.
-- Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the
-  maintainer". `.private-words` (git-ignored) lists the words the commit hooks refuse. Run
-  `git config core.hooksPath .githooks` once per clone.
+- Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the maintainer".
+  Private holdings, contact details and identity stay out. `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
+  `scripts/private_words.py --add` adds one from stdin, so a word never lands in a file. A missing list fails. An optional
+  git-ignored `.private-words` adds plain words on one machine. Run `git config core.hooksPath .githooks` once per clone.
+- Early history, before this guard, names the owner's domains and handle. The owner accepted it as it stands: no history
+  rewrite, no force-push. Keep current files clean; do not copy old strings forward from history.
 - Commits use the GitHub no-reply address, which is set in this repo's config. Check it with `git config user.email`
   before your first commit. Create commits locally when an API cannot set that identity explicitly.
 - Use `--force-with-lease` for rewrites on `develop`; preserve other contributors' work.
 - **Prove a change by using it.** Run the command a person or a routine would run, on real inputs, and put the command
   and what it printed in the commit message. A passing test suite is not proof that a tool works.
 - Use at most one helper agent, unless the owner has asked you to coordinate others.
+
+## Commands
+
+- `make check`: the private-word guard, the agent-doc check and the full suite. The pre-push hook runs the same.
+- `make test`: the suite alone. `make test-fast`: the suite without the `slow` modules, stopping at the first failure.
 
 ## Tests
 

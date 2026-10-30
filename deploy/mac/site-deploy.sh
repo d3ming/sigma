@@ -39,6 +39,10 @@ for path in root.rglob("*"):
     if any(parts[index:index + 2] == ("docs", "migration") for index in range(len(parts) - 1)):
         sys.exit(1)
 PY
+  # Any personal email address or phone number, or a word on the hashed private list, in the output. Fails closed when
+  # the checker or its list is missing. Hits print file:line and the kind, never the value.
+  [[ -f "$SIGMA/scripts/private_words.py" ]] || { echo "[site] private-word checker is missing" >&2; return 1; }
+  "$PYTHON" "$SIGMA/scripts/private_words.py" --path "$1" --public-origin "$BASE_URL" >&2
 }
 
 TODAY=$(TZ=America/Los_Angeles date +%F)
@@ -89,7 +93,7 @@ fi
 BUILD_OUT="$SIGMA/.vercel/build.out"
 BUILD_ERR="$SIGMA/.vercel/build.err"
 BASE_URL=${SIGMA_BASE_URL:-}
-if [[ $MODE == --site-only && -z $BASE_URL ]]; then
+if [[ ( $MODE == --site-only || $MODE == --deploy-staged ) && -z $BASE_URL ]]; then
   BASE_URL=$(SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH="$SIGMA" "$PYTHON" -m sigma.site_config) || { echo "[site] could not resolve the configured base URL" >&2; exit 1; }
 fi
 if [[ $MODE == --site-only ]]; then
@@ -212,6 +216,14 @@ PY
     exit "$rc"
   fi
   [[ -d $OUTPUT && -f $OUTPUT/config.json ]] || { echo "[site] refused: vercel build produced no complete .vercel/output" >&2; exit 1; }
+  "$PYTHON" - "$OUTPUT" <<'PYMETA'
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+for name in ("builds.json", "diagnostics/cli_traces.json"):
+    (root / name).unlink(missing_ok=True)
+PYMETA
   audit_publication "$OUTPUT" || { echo "[site] refused: generated publication contains a private path" >&2; exit 1; }
   HASH=$("$PYTHON" - "$OUTPUT" <<'PY'
 import hashlib

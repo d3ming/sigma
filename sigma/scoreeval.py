@@ -4,7 +4,7 @@ The gold set is the owner's judgment written down: a score per episode, a strict
 "A beats B" pairs. It lives in data/score-eval/ (git-ignored) with every round's inputs, reader outputs and grades.
 Readers never see gold: `prep` writes blind batches like rank-prep's, the operator runs one reader agent per batch,
 and `grade` compares. The top of the ranking is what readers see first, so the headline metric is ordering accuracy
-among the gold top 15; overall error is a guardrail. See .claude/skills/score-eval/SKILL.md for the loop.
+among the gold top 15; overall error is a guardrail. See skills/score-eval/SKILL.md for the loop.
 """
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def load(flow: Path) -> tuple[list[dict], list[dict]]:
     order (1..TOP for the top region, else absent), why, by, split (train or test)."""
     gold = _jsonl(flow / "gold.jsonl")
     if not gold:
-        raise SystemExit(f"[score-eval] no gold set at {flow / 'gold.jsonl'}; see .claude/skills/score-eval/SKILL.md")
+        raise SystemExit(f"[score-eval] no gold set at {flow / 'gold.jsonl'}; see skills/score-eval/SKILL.md")
     orders = sorted(g["order"] for g in gold if g.get("order"))
     if orders != list(range(1, len(orders) + 1)):
         raise SystemExit(f"[score-eval] gold `order` must run 1..N without gaps; found {orders}")

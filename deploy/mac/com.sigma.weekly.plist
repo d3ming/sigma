@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Template: install.sh replaces __SIGMA_REPO__ and writes ~/Library/LaunchAgents/com.sigma.weekly.plist.
-     Sundays 14:30 local (fetch and transcribe for the weekly digest). A run missed while asleep fires once on the next wake (launchd catch-up). -->
+     Sundays at the time in StartCalendarInterval below, local (fetch and transcribe for the weekly digest). Edit the time to suit. A run missed while asleep fires once on the next wake (launchd catch-up). -->
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.sigma.weekly</string>

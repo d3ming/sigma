@@ -1,5 +1,5 @@
 #!/bin/bash
-# One-time: install the launchd agents for the weekday and Sunday 14:30 runs. Does not use sudo.
+# One-time: install the launchd agents for the weekday and Sunday runs (times: StartCalendarInterval in each plist). Does not use sudo.
 set -euo pipefail
 REPO="${SIGMA_REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
 DATA_ROOT="${SIGMA_DATA_ROOT:-$REPO/data}"
@@ -18,7 +18,7 @@ for LABEL in com.sigma.daily com.sigma.weekly; do
 done
 cat <<MSG
 
-Installed com.sigma.daily (weekdays 14:30) and com.sigma.weekly (Sundays 14:30).
+Installed com.sigma.daily (weekdays) and com.sigma.weekly (Sundays) at the times in each plist's StartCalendarInterval.
 A run missed while the Mac sleeps fires on the next wake. No scheduled wake is needed for afternoon jobs.
 
 Test now:  launchctl kickstart -k gui/$(id -u)/com.sigma.daily ; tail -f $REPO/logs/run-\$(date +%F).log

@@ -86,7 +86,7 @@ def test_itunes_query_needs_every_word_a_long_episode_and_the_window():
                 "trackTimeMillis": ms, "episodeGuid": title, "episodeUrl": f"https://cdn/{title}.mp3", "primaryGenreName": genre}
 
     rows = [row("OpenAI CFO talks compute", 3), row("OpenAI short", 3, ms=60_000), row("OpenAI old news", 90),
-            row("Anthropic only", 3), row("OpenAI football special", 3, genre="Sports"), row("The CFO of OpenAI", 4)]
+            row("Northwind only", 3), row("OpenAI football special", 3, genre="Sports"), row("The CFO of OpenAI", 4)]
     resp = SimpleNamespace(status_code=200, headers={}, raise_for_status=lambda: None, json=lambda: {"results": rows})
     got = people.from_itunes_query("OpenAI CFO", NOW, 30, get=lambda *a, **k: resp)
     assert sorted(e.title for e in got) == ["OpenAI CFO talks compute", "The CFO of OpenAI"]

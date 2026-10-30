@@ -1,0 +1,10 @@
+# Fake fixtures flagged by gitleaks (fingerprint = commit:file:rule:line). None is a real secret: each is a placeholder in a
+# test or prompt example. History is immutable here, so the commit ids stay valid.
+ed6058c7bcdba675732a964af98c35530d82e12d:tests/test_site_deploy.py:stripe-access-token:112
+f271c911ddae04ae4c1b0c5dfd08b563ca4ad35d:tests/test_links.py:stripe-access-token:355
+0a0240a8188f499e380e2b2769de13481eb39150:tests/test_links.py:stripe-access-token:354
+0a0240a8188f499e380e2b2769de13481eb39150:tests/test_site.py:stripe-access-token:575
+db2b9a32e8176753861241431efbd13dfcce380b:tests/test_site.py:stripe-access-token:567
+6f699ffb11486671f2a9614aa2974581373265c5:prompts/stance.md:generic-api-key:11
+6f699ffb11486671f2a9614aa2974581373265c5:tests/test_links.py:generic-api-key:369
+6f699ffb11486671f2a9614aa2974581373265c5:tests/test_links.py:generic-api-key:371

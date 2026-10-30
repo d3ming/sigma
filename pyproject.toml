@@ -1,6 +1,6 @@
 [project]
 name = "sigma-signals"
-version = "0.2.1"
+version = "0.2.2"
 description = "Cited podcast and X signals checked against their sources"
 readme = "README.md"
 license = "MIT"
@@ -26,3 +26,4 @@ packages = ["sigma"]
 
 [tool.pytest.ini_options]
 filterwarnings = ["ignore::DeprecationWarning:feedparser"]
+markers = ["slow: the heaviest modules; `make test-fast` skips them"]

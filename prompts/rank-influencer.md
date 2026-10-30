@@ -86,5 +86,5 @@ and give no claims.
   explain a score band, or repeat the rubric. A strong score does not mean bullish; a useful bearish call can score
   highly.
 - Never write advice in Sigma's voice. Attribute the view to the creator in `reason` and `claim`.
-- Public statements about a speaker's own trades may be included with attribution. Never include the owner's private
-  holdings, account balances or position weights.
+- Public statements a speaker makes about their own trades, portfolio weights or positions may be included with
+  attribution to that speaker. Never include the owner's private holdings, account balances or position sizes.

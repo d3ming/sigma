@@ -53,6 +53,6 @@ def pytest_sessionfinish(session, exitstatus):
     took = time.perf_counter() - session.sigma_start
     full_run = session.config.args in ([], [str(session.config.rootpath)], ["tests"])
     if full_run and took > SUITE_TARGET_SECONDS and exitstatus == 0:
-        print(f"\n[tests] suite took {took:.1f}s; target {SUITE_TARGET_SECONDS}s, failure above {SUITE_FAILURE_SECONDS}s. Delete or speed up tests (see test-audit).")
+        print(f"\n[tests] suite took {took:.1f}s; target {SUITE_TARGET_SECONDS}s, failure above {SUITE_FAILURE_SECONDS}s. Delete or speed up tests (see skills/test-audit).")
         if took > SUITE_FAILURE_SECONDS:
             session.exitstatus = 1

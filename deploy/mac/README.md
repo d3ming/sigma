@@ -3,13 +3,15 @@
 On macOS, launchd can fetch and transcribe source material before a scheduled agent prepares the daily and weekly
 editions. The site is built separately from the configured private data root.
 
-| When | launchd job | Scheduled agent |
+| Cadence | launchd job | Scheduled agent |
 |---|---|---|
-| Weekdays 07:15 | (none) | `skills/x-daily`: prepare the X edition and save private data |
-| Weekdays 14:30 | `run-daily.sh`: fetch 72 h (Monday 96 h), transcribe (MLX) | 15:30: `prompts/daily.md` and `skills/x-daily` |
-| Sundays 14:30 | `run-weekly.sh`: fetch 7 days (`--refetch`), transcribe | 15:30: `prompts/weekly.md` |
+| X edition, on weekdays | (none) | `skills/x-daily`: prepare the X edition and save private data |
+| Daily issue, on weekdays | `run-daily.sh`: fetch 72 h (Monday 96 h), transcribe (MLX) | after the job finishes: `prompts/daily.md` and `skills/x-daily` |
+| Weekly digest, once a week | `run-weekly.sh`: fetch 7 days (`--refetch`), transcribe | after the job finishes: `prompts/weekly.md` |
 
-Times are Pacific. An edition's date is the Pacific day it covers. The scanner delivers the X scan before each X run.
+The operator sets every time: the launchd jobs in `StartCalendarInterval` (the shipped plists use 14:30 as an example) and
+each agent routine in the scheduler that runs it. Nothing in the code assumes a clock time, except that an edition's
+date is the Pacific day it covers. The scanner delivers the X scan before each X run starts, and a run that finds no usable scan stops.
 
 ## One-time steps
 
@@ -37,7 +39,7 @@ launchctl kickstart -k gui/$(id -u)/com.sigma.daily
 tail -f logs/run-$(date +%F).log            # ends with "done"
 ```
 
-If the Mac sleeps through 14:30, launchd runs the missed job once on wake. `caffeinate` keeps it awake until
+If the Mac sleeps through the scheduled time, launchd runs the missed job once on wake. `caffeinate` keeps it awake until
 transcribe ends. Both scripts are safe to rerun: fetch is skipped when the run exists and transcribe resumes.
 
 `run-weekly.sh` passes `--refetch` because the weekday runs already marked most of the week's episodes as seen.

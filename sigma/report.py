@@ -10,7 +10,7 @@ import jsonschema
 
 from . import links as _links
 from .digest import ts_link
-from .ranked import FORBIDDEN, RankedError, private_hits
+from .ranked import RankedError, forbidden_key, private_hits
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema"
 
@@ -31,8 +31,7 @@ def validate(data: dict, kind: str) -> dict:
             raise err
     except jsonschema.ValidationError as exc:
         raise RankedError(f"{kind}: {'/'.join(map(str, exc.absolute_path)) or 'root'}: {exc.message}") from None
-    text = json.dumps(data).lower()
-    if any(f'"{w}' in text for w in FORBIDDEN):
+    if forbidden_key(data):
         raise RankedError(f"{kind}: holdings-like fields are not allowed")
     if hits := private_hits(data):
         raise RankedError(f"{kind}: private text is not allowed: {hits}")

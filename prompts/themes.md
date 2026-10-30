@@ -36,7 +36,7 @@ who agreed, and where to look. You read `ranked.json`: every episode's `reason` 
   claims that show the theme, from at least 2 different shows. Each evidence episode must also be in `episode_ids`, and
   each claim must pass the claim checks `publish` runs (a claim that fails there invalidates the theme).
 
-Never put holdings, weights or portfolio data in it. Never put your reasoning in it.
+Never put the owner's holdings, weights or portfolio data in it. Never put your reasoning in it.
 
 ## 3. Check, then write the rationale
 

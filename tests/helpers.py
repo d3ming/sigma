@@ -1,4 +1,5 @@
 """Fixtures shared across test files. Import from here, never from another test file."""
+import importlib.util
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -92,3 +93,19 @@ def no_web(monkeypatch, routes=None):
         raise urllib.error.URLError(f"no network in tests: {url}")
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+
+
+def load_script(name):
+    spec = importlib.util.spec_from_file_location(name, Path(__file__).parent.parent / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+private_words = load_script("private_words")  # scripts/private_words.py: the same salted-hash list the commit hooks and CI use
+
+
+def private_hits(*texts):
+    """File:line style hits for any private word in the given texts, from the committed hash list; [] means clean."""
+    salt, hashes = private_words.load()
+    return [h for i, t in enumerate(texts) for h in private_words.scan_text(t, f"text-{i}", salt, hashes)]
