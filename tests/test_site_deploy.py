@@ -51,6 +51,9 @@ class Site:
         self.git("config", "user.name", "t")
         (self.clone / "deploy/mac").mkdir(parents=True)
         shutil.copy(SCRIPT, self.clone / "deploy/mac/site-deploy.sh")
+        (self.clone / "scripts").mkdir()
+        for name in ("scripts/private_words.py", ".private-words.sha256"):
+            shutil.copy(Path(__file__).parent.parent / name, self.clone / name)
         shutil.copytree(Path(__file__).parent.parent / "sigma", self.clone / "sigma",
                         ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         shutil.copytree(Path(__file__).parent.parent / "schema", self.clone / "schema",
@@ -131,3 +134,16 @@ def test_private_source_and_generated_paths_are_refused_before_upload(tmp_path):
     assert tampered.returncode != 0 and "claims.jsonl differs from validated source" in tampered.stderr
     assert site.build_log.read_text() == before
     assert not site.upload_log.exists()
+
+
+def test_contact_details_in_the_built_site_are_refused_before_upload(tmp_path):
+    site = Site(tmp_path)
+    at = "@"  # built at run time so this file holds no address
+    site.env["FAKE_CONTENT"] = f"write to someone{at}corp.org or call (212) 867-" + "5309"
+    refused = site.run("--preflight")
+    assert refused.returncode == 1 and "contains a private path" in refused.stderr
+    assert "(email address)" in refused.stderr and "(phone number)" in refused.stderr
+    assert "corp.org" not in refused.stderr and "5309" not in refused.stderr  # the kind is named, never the value
+    assert not site.upload_log.exists()
+    site.env["FAKE_CONTENT"] = f"write to someone{at}example.com or call 212-555-0142"
+    assert "contains a private path" not in site.run("--preflight").stderr

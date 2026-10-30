@@ -39,6 +39,10 @@ for path in root.rglob("*"):
     if any(parts[index:index + 2] == ("docs", "migration") for index in range(len(parts) - 1)):
         sys.exit(1)
 PY
+  # Any personal email address or phone number, or a word on the hashed private list, in the output. Fails closed when
+  # the checker or its list is missing. Hits print file:line and the kind, never the value.
+  [[ -f "$SIGMA/scripts/private_words.py" ]] || { echo "[site] private-word checker is missing" >&2; return 1; }
+  "$PYTHON" "$SIGMA/scripts/private_words.py" --path "$1" >&2
 }
 
 TODAY=$(TZ=America/Los_Angeles date +%F)

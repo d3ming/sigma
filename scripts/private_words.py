@@ -10,7 +10,13 @@ against accidents, not a secret.
   scripts/private_words.py --msg FILE      one commit message (the commit-msg hook)
   scripts/private_words.py --log RANGE     every commit message in a git range (CI)
   scripts/private_words.py --env NAME ...  the text in environment variables, e.g. a PR title (CI)
+  scripts/private_words.py --path DIR      every text file under DIR (built site output, a publication package)
   scripts/private_words.py --add           read words from stdin, one per line, and add their hashes to the list
+
+Beyond the list, every mode also flags any email address or phone number in the text, whoever it belongs to, so a
+personal contact detail cannot ship even before anyone has listed it. Allowed: addresses at reserved example domains
+(example.com, .org, .net, .invalid, .test, .example, localhost), noreply@github.com, any @users.noreply.github.com
+address, git@github.com, and the fictional 555-01xx phone numbers. A hit prints file:line and the kind, never the value.
 
 A missing or empty list fails, never passes. An optional git-ignored `.private-words` (one plain word per line) adds to
 the committed list on one machine. A hit prints file:line and never the word.
@@ -30,6 +36,11 @@ LIST = ROOT / ".private-words.sha256"
 LOCAL = ROOT / ".private-words"
 MAX_WORDS = 4  # the longest phrase the list can hold
 TOKEN = re.compile(r"[a-z0-9_]+")
+EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+)")
+PHONE = re.compile(r"(?<![\w.:/-])(?:\+\d{1,3}[ .-]?)?(?:\(\d{3}\)\s?|\d{3}[ .-])\d{3}[ .-]\d{4}(?![\w-])|(?<![\w.])\+\d{10,14}(?!\d)")
+FICTIONAL_PHONE = re.compile(r"555[ .-]?01\d\d")
+SAFE_DOMAIN = re.compile(r"(?:(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:invalid|test|example|localhost)|users\.noreply\.github\.com)$", re.I)
+SAFE_ADDRESS = {"noreply@github.com", "git@github.com"}
 
 
 def normalize(phrase: str) -> str:
@@ -69,8 +80,50 @@ def hits_in_line(line: str, salt: str, hashes: set[str]) -> bool:
     return False
 
 
+def contact_kinds(line: str) -> list[str]:
+    """What kind of personal contact detail a line holds (never the value): "email address", "phone number"."""
+    kinds = []
+    for m in EMAIL.finditer(line):
+        if m.group(0).lower() not in SAFE_ADDRESS and not SAFE_DOMAIN.match(m.group(1)):
+            kinds.append("email address")
+            break
+    for m in PHONE.finditer(line):
+        if not FICTIONAL_PHONE.search(m.group(0)):
+            kinds.append("phone number")
+            break
+    return kinds
+
+
 def scan_text(text: str, name: str, salt: str, hashes: set[str]) -> list[str]:
-    return [f"{name}:{no}" for no, line in enumerate(text.splitlines(), 1) if hits_in_line(line, salt, hashes)]
+    found = []
+    for no, line in enumerate(text.splitlines(), 1):
+        if hits_in_line(line, salt, hashes):
+            found.append(f"{name}:{no}")
+        found += [f"{name}:{no} ({kind})" for kind in contact_kinds(line)]
+    return found
+
+
+def tree_files(root: Path) -> list[tuple[str, str]]:
+    """(relative path, text) for every non-binary file under root, skipping .git."""
+    files = []
+    for path in sorted(root.rglob("*")):
+        rel = path.relative_to(root)
+        if ".git" in rel.parts or not path.is_file():
+            continue
+        body = path.read_bytes()
+        if b"\0" not in body[:8000]:
+            files.append((str(rel), body.decode("utf-8", "replace")))
+    return files
+
+
+def phone_variants(word: str) -> list[str]:
+    """A phone number as the forms a page might print it; other words as given."""
+    digits = re.sub(r"\D", "", word)
+    if len(word) - len(digits) <= 6 and len(digits) in (10, 11) and len(digits) >= len(word.strip("+ ()-.")) - 6:
+        core = digits[-10:]
+        groups = f"{core[:3]} {core[3:6]} {core[6:]}"
+        return [groups, f"1 {groups}", core, f"1{core}"]
+    return [word]
 
 
 def staged_files() -> list[tuple[str, str]]:
@@ -100,6 +153,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument("--msg", metavar="FILE")
     g.add_argument("--log", metavar="RANGE")
     g.add_argument("--env", nargs="+", metavar="NAME")
+    g.add_argument("--path", metavar="DIR")
     g.add_argument("--add", action="store_true")
     a = ap.parse_args(argv)
     if a.add:
@@ -110,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
                 salt = line.split(None, 1)[1]
         salt = salt or os.urandom(16).hex()
         hashes = {line.strip() for line in old if re.fullmatch(r"[0-9a-f]{64}", line.strip())}
-        hashes |= {digest(salt, w) for w in sys.stdin.read().splitlines() if normalize(w)}
+        hashes |= {digest(salt, v) for w in sys.stdin.read().splitlines() if normalize(w) for v in phone_variants(w.strip())}
         header = [ln for ln in old if ln.startswith("#")] or ["# Salted SHA-256 of private words; see scripts/private_words.py."]
         LIST.write_text("\n".join(header + [f"salt {salt}"] + sorted(hashes)) + "\n")
         print(f"{LIST.name}: {len(hashes)} hashes")
@@ -131,6 +185,12 @@ def main(argv: list[str] | None = None) -> int:
         what = "the text in " + ", ".join(a.env)
         for name in a.env:
             found += scan_text(os.environ.get(name, ""), name, salt, hashes)
+    elif a.path:
+        what = f"files under {a.path}"
+        for path, text in tree_files(Path(a.path)):
+            if hits_in_line(path, salt, hashes):
+                found.append(f"{path} (the file name)")
+            found += scan_text(text, path, salt, hashes)
     else:
         for path, text in staged_files():
             if hits_in_line(path, salt, hashes):
@@ -138,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             found += scan_text(text, path, salt, hashes)
     if found:
         print("\n".join(found[:50]), file=sys.stderr)
-        print(f"{what} name a private word from {LIST.name}; reword (see AGENTS.md). File:line shown, never the word.",
+        print(f"{what} name a private word from {LIST.name} or hold a personal email address or phone number; reword (see AGENTS.md). File:line shown, never the value.",
               file=sys.stderr)
         return 1
     return 0

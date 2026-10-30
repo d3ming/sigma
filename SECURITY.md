@@ -7,3 +7,10 @@ Say what you found, how to reproduce it, and what it affects. The maintainer wil
 
 If you find a secret, a transcript, holdings, or copied newsletter text in the repo or its history, report it the same
 way.
+
+## What counts as private
+
+Private: the owner's holdings and position sizes, contact details (phone, email, address), credentials, and the data in
+the private repositories. Fine to show: the owner's name, and positions that posters share publicly about themselves.
+The commit hooks and CI enforce this: a hashed private-word list, a check for any email address or phone number, and
+gitleaks. Report anything that slipped through the same way as a secret.

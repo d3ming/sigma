@@ -12,6 +12,17 @@ disabled. Private migration notes never enter this repository or its history.
 This file holds only what a capable agent would get wrong here without being told. The code and each command's
 `--help` own the rest.
 
+## Where things are
+
+- [SECURITY.md](SECURITY.md): what counts as private, and how to report a problem.
+- [CONTRIBUTING.md](CONTRIBUTING.md): how to propose a change and what stays out of the repo.
+- [REVIEW.md](REVIEW.md): how to review a change and the `develop`→`main` release PR.
+- [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
+- [deploy/mac/README.md](deploy/mac/README.md): the macOS setup, scheduled jobs and the release and publish flow.
+- [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
+- [prompts/](prompts/): the prompts the scheduled agents follow word for word.
+- [schema/](schema/): the JSON schemas that validate the agent's output files.
+
 ## Tenets
 
 - **An ungrounded claim stops the work.** Every published signal carries a speaker, a timestamp and a link, and code
@@ -42,8 +53,9 @@ Everything else is yours to decide. Be bold with reversible work.
 - Work in a worktree, never in the primary checkout.
 - Commit subjects are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), 72 characters at most.
 - Err toward a body. The subject says what changed; the body says why, what you chose over what, and how you proved it.
-- Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the
-  maintainer". `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
+- Do not name people in files or commit messages: write "the owner" or "the maintainer". The one exception is the
+  owner's real name, which is allowed in LICENSE and in credits. The owner's handle, domains and anything about their
+  holdings stay out. `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
   `scripts/private_words.py --add` adds one from stdin, so a word never lands in a file. A missing list fails. An optional
   git-ignored `.private-words` adds plain words on one machine. Run `git config core.hooksPath .githooks` once per clone.
 - Early history, before this guard, names the owner's domains and handle. The owner accepted it as it stands: no history
