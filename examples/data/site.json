@@ -2,6 +2,5 @@
   "base_url": "http://localhost:8787",
   "maker": "",
   "x_profile": "",
-  "search_api_url": "/api/search",
   "site_name": "Sigma"
 }

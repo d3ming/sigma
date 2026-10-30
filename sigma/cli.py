@@ -717,10 +717,6 @@ def _main(argv=None):
     dp.add_argument("names", nargs="*", help="folders under data/published/ (default: all)")
     dp.add_argument("--dry-run", action="store_true", help="report what would go; write nothing")
     sub.add_parser("check-claims", help="fail when an exported claims file lists the same point twice")
-    sx = sub.add_parser("search-index", help="export the library's transcript index, minus no_search shows, for the site's search; --upload puts it in the private Blob store")
-    sx.add_argument("--library", default=str(DATA / "library.sqlite"), help="the library to copy from (read only; `sigma library ingest` fills it)")
-    sx.add_argument("--out", default=str(DATA / "search-index.sqlite"), help="index file to write")
-    sx.add_argument("--upload", action="store_true", help="then upload it to the private Blob store; needs SEARCH_READ_WRITE_TOKEN (environment or .env.local)")
     rp = sub.add_parser("rank-prep", help="condense transcripts the library has not scored and split them into reader batches")
     rp.add_argument("run")
     rp.add_argument("--batches", type=int, default=4)
@@ -927,10 +923,6 @@ def _main(argv=None):
         from . import signals_index
 
         return signals_index.signals_index_cmd(args)
-    if args.cmd == "search-index":
-        from . import searchindex
-
-        return searchindex.search_index_cmd(args)
     if args.cmd in own:
         return own[args.cmd](args)
     if args.cmd == "site":

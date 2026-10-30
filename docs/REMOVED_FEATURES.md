@@ -40,3 +40,7 @@ The package and command named `wire`, the `podcast-alpha` alias, the `WIRE_*` an
 ## Separate podcast and YouTube feeds
 
 The home page listed podcast picks while `/social/` listed YouTube creator videos. Both now share one feed ordered by original publication time, with X separate. Source detail pages, search and Signals data remain available; `/social/` redirects to the combined feed for existing links. The last separate implementation is `4f377a0:sigma/site.py`.
+
+## Hosted transcript search
+
+Find's hosted transcript search returned short excerpts and timestamp links from a private search index. It added a serverless function and a separate Blob upload flow. It was removed as unnecessary; the local library continues to ingest and search transcripts. The last public copies are `9fc0a80:api/search.py` and `9fc0a80:sigma/searchindex.py`.

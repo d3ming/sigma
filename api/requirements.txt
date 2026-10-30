@@ -1,2 +1,0 @@
-# api/search.py needs only the standard library. This file is the dependency file nearest to the function, so Vercel uses it and
-# does not install the root pyproject.toml (the command-line tool: feedparser, yt-dlp, ...) into the function. Keep it free of packages.

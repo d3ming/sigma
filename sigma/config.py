@@ -27,7 +27,6 @@ class Source:
     transcripts: list[str] = field(default_factory=list)
     youtube_channel_id: str | None = None  # UC... id; links uses the free channel RSS to find the episode video
     itunes_id: int | None = None  # Apple collection id; person-search hits on this show inherit its tier
-    no_search: bool = False  # true: leave this show out of the site's search index (sigma search-index); a creator asked, or the owner decided
     news: bool = False  # daily news/market-recap show: not whispered unless transcribe --news
     aliases: list[str] = field(default_factory=list)  # other names Apple or YouTube list the show under
 
