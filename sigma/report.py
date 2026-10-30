@@ -3,6 +3,7 @@ from __future__ import annotations
 import functools
 import json
 import re
+from decimal import Decimal
 from pathlib import Path
 
 import jsonschema
@@ -293,25 +294,58 @@ _UNITS = {w: i for i, w in enumerate(
     "zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
     "seventeen eighteen nineteen".split())}
 _TENS = {w: 10 * i for i, w in enumerate("_ _ twenty thirty forty fifty sixty seventy eighty ninety".split()) if w != "_"}
-_MAGNITUDES = {"thousand", "million", "billion", "trillion"}
-_NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+")
+_MAGNITUDE_SCALE = {"thousand": Decimal(1_000), "million": Decimal(1_000_000),
+                    "billion": Decimal(1_000_000_000), "trillion": Decimal(1_000_000_000_000),
+                    "k": Decimal(1_000), "m": Decimal(1_000_000), "b": Decimal(1_000_000_000),
+                    "bn": Decimal(1_000_000_000), "t": Decimal(1_000_000_000_000)}
+_MAGNITUDE_SCALE.update({f"{unit}s": scale for unit, scale in tuple(_MAGNITUDE_SCALE.items()) if len(unit) > 1})
+_MAGNITUDES = set(_MAGNITUDE_SCALE)
+_PERCENT_WORDS = {"percent", "percentage", "%"}
+_NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+|%")
+_CITE_NUMBER = re.compile(
+    r"(?<![A-Za-z\d.,])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)"
+    r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?"
+    r"(?P<unit>\s+(?:thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
 
 
-def _num_key(v: float) -> str:
-    return f"{v:g}"
+def _num_key(v: float | Decimal, unit: str | None = None) -> str:
+    value = Decimal(str(v))
+    if unit in _PERCENT_WORDS or unit == "%":
+        return f"percent:{format(value.normalize(), 'f')}"
+    if unit:
+        value *= _MAGNITUDE_SCALE[unit.lower()]
+    return format(value.normalize(), "f")
 
 
-def cite_numbers(text: str) -> list[str]:
-    """Numbers worth checking in a cite: digits with commas/decimals; $ % B M T GW suffixes fall away.
+def cite_numbers(text: str) -> list[tuple[str, str]]:
+    """Numbers worth checking in a cite as (unit-aware key, display text).
     Whole numbers 0-9 and years 2000-2099 are skipped as too noisy (decimals like 1.5 are kept)."""
     out = []
-    for tok in re.findall(r"(?<![A-Za-z\d.,])\d+(?:,\d{3})*(?:\.\d+)?", text.replace("-", " ")):  # not a16z, H100
-        v = float(tok.replace(",", ""))
-        whole = "." not in tok
-        if whole and (v < 10 or 2000 <= v <= 2099):
+    matches = list(_CITE_NUMBER.finditer(text))
+    for i, match in enumerate(matches):
+        token = match.group("number")
+        unit = (match.group("unit") or match.group("suffix") or "").strip().lower()
+        if not unit:
+            for j in (i - 1, i + 1):
+                if not 0 <= j < len(matches):
+                    continue
+                other = matches[j]
+                gap = text[match.end():other.start()] if j > i else text[other.end():match.start()]
+                other_unit = (other.group("unit") or other.group("suffix") or "").strip().lower()
+                if other_unit and re.fullmatch(r"\s*(?:[-–—]|to|through|or)\s*", gap, re.I):
+                    unit = other_unit
+                    break
+        if unit.endswith("s") and unit[:-1] in _MAGNITUDE_SCALE:
+            unit = unit[:-1]
+        if unit == "x":
+            unit = ""
+        value = Decimal(token.replace(",", ""))
+        whole = "." not in token
+        if not unit and whole and (value < 10 or 2000 <= value <= 2099):
             continue
-        if (k := _num_key(v)) not in out:
-            out.append(k)
+        item = (_num_key(value, unit), token)
+        if item[0] not in {key for key, _ in out}:
+            out.append(item)
     return out
 
 
@@ -328,27 +362,37 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             if next_unit and next_unit != unit:
                 i += 6
                 continue
-            out.append((ts, "1.5"))
+            out.append((ts, _num_key(1.5, unit)))
             i += 6 if next_unit else 5
             continue
         if w[0].isdigit():
-            out.append((ts, _num_key(float(w.replace(",", "")))))
-            i += 1
+            value = Decimal(w.replace(",", ""))
+            unit = words[i + 1][0] if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else None
+            if unit is None and i + 3 < n and words[i + 1][0] in {"to", "through", "or"} and \
+                    words[i + 2][0][:1].isdigit() and words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
+                unit = words[i + 3][0]
+            if unit is None and i + 2 < n and words[i + 1][0][:1].isdigit() and \
+                    words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS:
+                unit = words[i + 2][0]
+            out.append((ts, _num_key(value, unit)))
+            i += 2 if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else 1
             continue
-        if w in _UNITS or w in _TENS or w == "hundred":
+        if w in _UNITS or w in _TENS or w == "hundred" or (w == "a" and i + 1 < n and words[i + 1][0] in _MAGNITUDES):
             cur, j = 0, i
+            magnitude = None
             while j < n:
                 x = words[j][0]
                 r = cur % 100
-                if x in _UNITS and (r == 0 or (r >= 20 and r % 10 == 0 and _UNITS[x] < 10)):
+                if x == "a" and cur == 0 and j + 1 < n and words[j + 1][0] in _MAGNITUDES:
+                    cur = 1
+                elif x in _UNITS and (r == 0 or (r >= 20 and r % 10 == 0 and _UNITS[x] < 10)):
                     cur += _UNITS[x]
                 elif x in _TENS and r == 0:
                     cur += _TENS[x]
                 elif x == "hundred" and cur < 100:
                     cur = (cur or 1) * 100
-                elif x == "thousand" and 100 <= cur < 1000:
-                    out.append((ts, _num_key(cur)))
-                    cur *= 1000
+                elif x in _MAGNITUDES and x.rstrip("s") == "thousand":
+                    cur = (cur or 1) * 1000
                 elif x == "and" and cur >= 100 and j + 1 < n and (words[j + 1][0] in _UNITS or words[j + 1][0] in _TENS):
                     pass
                 elif x == "and" and cur > 0 and j + 2 < n and [words[j + 1][0], words[j + 2][0]] == ["a", "half"]:
@@ -364,6 +408,7 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                     i = j + 5
                     continue
                 cur += 0.5
+                magnitude = words[j][0]
                 j += 5 if next_unit else 4
             val = str(cur) if cur % 1 else str(int(cur))
             if j + 1 < n and words[j][0] == "point" and words[j + 1][0] in _UNITS and _UNITS[words[j + 1][0]] < 10:
@@ -372,7 +417,14 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                     val += ("." if "." not in val else "") + str(_UNITS[words[k][0]])
                     k += 1
                 j = k
-            out.append((ts, _num_key(float(val))))
+            if magnitude is None and j < n and words[j][0] in _MAGNITUDES:
+                magnitude = words[j][0]
+                j += 1
+            unit = magnitude
+            if unit is None and j < n and words[j][0] in _PERCENT_WORDS:
+                unit = words[j][0]
+                j += 1
+            out.append((ts, _num_key(Decimal(val), unit)))
             i = j
             continue
         i += 1
@@ -412,10 +464,10 @@ def _number_warnings(ep: dict, index: list[tuple[float, str]], source: str = "tr
         if ts is None:
             continue
         near = {k for t, k in index if abs(t - ts) <= NUM_WINDOW}
-        for num in cite_numbers(c["text"]):
-            if num in near:
+        for key, num in cite_numbers(c["text"]):
+            if key in near:
                 continue
-            spoken = [t for t, k in index if k == num]
+            spoken = [t for t, k in index if k == key]
             if spoken:
                 t = min(spoken, key=lambda x: abs(x - ts))
                 tail = (f"nearest mention {_clock(t)} ({int(abs(t - ts))}s {'later' if t > ts else 'earlier'}); "
@@ -539,8 +591,8 @@ def estimate_offset(ep: dict, index: list[tuple[float, str]]) -> tuple[float, in
     for _, c in _cites(ep):
         if c["timestamp"] is None:
             continue
-        for num in cite_numbers(c["text"]):
-            spoken = [t for t, k in index if k == num]
+        for key, _ in cite_numbers(c["text"]):
+            spoken = [t for t, k in index if k == key]
             if not spoken:
                 continue
             delta = c["timestamp"] - min(spoken, key=lambda t: abs(t - c["timestamp"]))

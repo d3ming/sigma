@@ -148,7 +148,7 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     root = day
     words = [(w, 0) for w in "a billion and a half one and a half million two billion and a half".split()]
     spoken = report_mod.spoken_numbers(words)
-    assert spoken == [(0, "1.5"), (0, "1.5"), (0, "2.5")]
+    assert spoken == [(0, "1500000000"), (0, "1500000"), (0, "2500000000")]
     for phrase in ("a billion and a half million", "two billion and a half million"):
         assert report_mod.spoken_numbers([(w, 0) for w in phrase.split()]) == []
     near = {"episode_id": "synthetic", "signal": [{"text": "Raised 1.5 billion", "timestamp": 120}], "sections": []}
@@ -166,6 +166,29 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     assert report_mod._number_warnings(coefficient_amount, spoken_amount) == []
     assert len(report_mod._number_warnings(wrong_amount, spoken_amount)) == 1
     assert len(report_mod._number_warnings(outside_window, spoken_amount)) == 1
+    spoken_trillion = report_mod.spoken_numbers([(w, 284) for w in "a trillion dollars".split()])
+    trillion_claim = {"episode_id": "synthetic", "signal": [{"text": "Market is worth $1t", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(trillion_claim, spoken_trillion) == []
+    spoken_millions = report_mod.spoken_numbers([(w, 284) for w in "fifty million dollars are forecast".split()])
+    wrong_magnitude = {"episode_id": "synthetic", "signal": [{"text": "Revenue is $50 billion", "timestamp": 284}], "sections": []}
+    correct_magnitude = {"episode_id": "synthetic", "signal": [{"text": "Revenue is $50m", "timestamp": 284}], "sections": []}
+    assert len(report_mod._number_warnings(wrong_magnitude, spoken_millions)) == 1
+    assert report_mod._number_warnings(correct_magnitude, spoken_millions) == []
+    spoken_percent = report_mod.spoken_numbers([(w, 284) for w in "fifty percent growth".split()])
+    percent_claim = {"episode_id": "synthetic", "signal": [{"text": "Growth is 50%", "timestamp": 284}], "sections": []}
+    amount_claim = {"episode_id": "synthetic", "signal": [{"text": "Growth is 50", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(percent_claim, spoken_percent) == []
+    assert len(report_mod._number_warnings(amount_claim, spoken_percent)) == 1
+    spoken_percent_range = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "49 or 50%"}]))
+    percent_range_claim = {"episode_id": "synthetic", "signal": [{"text": "Growth is 49–50%", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(percent_range_claim, spoken_percent_range) == []
+    wrong_multiple = {"episode_id": "synthetic", "signal": [{"text": "Growth is 10x", "timestamp": 284}], "sections": []}
+    spoken_ten_percent = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "ten percent"}]))
+    assert len(report_mod._number_warnings(wrong_multiple, spoken_ten_percent)) == 1
+    spoken_range = report_mod.spoken_numbers([(w, 284) for w in "1.9 to 2 billion".split()])
+    assert spoken_range == [(284, "1900000000"), (284, "2000000000")]
+    range_claim = {"episode_id": "synthetic", "signal": [{"text": "Revenue was $1.9 billion", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(range_claim, spoken_range) == []
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     path = write(root, "report.json", report_json())
     captions = {"abcdefghijk": [(540, "our capex is 450 billion dollars"), (1140, "gross margin is 38 percent")],  # a minute early
