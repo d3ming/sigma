@@ -52,6 +52,9 @@ def test_a_source_falls_back_in_order_and_a_person_hit_inherits_its_shows_tier(m
     assert calls == ["rss"] and how == "itunes" and [e.id for e in eps] == ["rss:55e1f0ea0fe53832"]
     assert eps[0].audio_url == "https://traffic.libsyn.com/n.mp3"
     assert eps[0].show_image_url == "https://example.invalid/show.jpg" and eps[0].image_url == "https://example.invalid/episode.jpg"
+    p.write_text("sources:\n  - {id: a, name: A, tier: 1, rss: x, discover_youtube: true}\n")
+    with pytest.raises(ValueError):
+        load_sources(p)
     srcs = [Source(id="tbpn", name="TBPN", tier=1, rss="https://feeds.transistor.fm/technology-brother", itunes_id=1772360235),
             Source(id="t3", name="Ticker Symbol YOU", tier=3, rss="https://x.example/rss"),
             Source(id="iltb", name="Invest Like the Best", tier=1, rss="https://x.example/iltb"),

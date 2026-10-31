@@ -285,6 +285,20 @@ def test_fetch_duplicate_identity_preserves_episode_numbers_and_transcript_filen
     year_left.url, year_right.url = "https://example.invalid/left", "https://example.invalid/right"
     assert not fetch_mod.same_episode(year_right, year_left)
 
+    import sqlite3
+
+    old_db = tmp_path / "old.sqlite"
+    con = sqlite3.connect(old_db)
+    con.execute("CREATE TABLE episodes (id TEXT PRIMARY KEY, source_id TEXT, title TEXT, url TEXT, "
+                "published_at TEXT, transcript_source TEXT, processed_at REAL)")
+    original = ("rss:old", "show", "Original title", "https://publisher.invalid/original", NOW.isoformat(), "publisher", 42.0)
+    con.execute("INSERT INTO episodes VALUES (?,?,?,?,?,?,?)", original)
+    con.commit()
+    con.close()
+    migrated = Store(old_db)
+    assert migrated.db.execute("SELECT * FROM episodes").fetchone() == (*original, None)
+    assert migrated.known_since(NOW - timedelta(days=1))[0].url == original[3]
+
     shared = "An exceptionally long shared episode title that extends past the filename limit and ends in "
     long_a = ep("rss:long-a", shared + "twenty one", "show")
     long_b = ep("rss:long-b", shared + "twenty two", "show")
@@ -302,3 +316,69 @@ def test_fetch_duplicate_identity_preserves_episode_numbers_and_transcript_filen
     validate(influencer, ranking=False)
     with pytest.raises(RankedError, match="tier 3 can never be a top pick"):
         validate(influencer)
+
+
+def test_rss_and_supplemental_youtube_keep_rss_and_skip_verified_copies_across_runs(tmp_path, monkeypatch):
+    """stated-rule: restore YouTube-only interviews, retain RSS media, and dedupe before transcription."""
+    from sigma import ingest
+
+    source = tmp_path / "dual.yaml"
+    source.write_text("sources:\n  - {id: show, name: Show, tier: 1, rss: 'https://feed.invalid/show', "
+                      "youtube: 'https://www.youtube.com/channel/UCexample/videos', discover_youtube: true}\n")
+    rss = ep("rss:published", "A full interview with the operator", "show")
+    rss.published_at = NOW - timedelta(hours=3)
+    rss.url = "https://publisher.invalid/interview"
+    rss.description = "Watch the full interview: https://www.youtube.com/watch?v=abcdefghijk"
+    rss.duration = 3600
+    video = ep("yt:abcdefghijk", "Retitled interview", "show")
+    video.youtube_id, video.url = "abcdefghijk", "https://www.youtube.com/watch?v=abcdefghijk"
+    video.published_at = NOW - timedelta(hours=2)
+    exclusive = ep("yt:lmnopqrstuv", "YouTube-only full interview", "show")
+    exclusive.youtube_id, exclusive.url = "lmnopqrstuv", "https://www.youtube.com/watch?v=lmnopqrstuv"
+    exclusive.published_at = NOW - timedelta(hours=1)
+    monkeypatch.setitem(ingest.FINDERS, "rss", lambda *a: [rss])
+    monkeypatch.setitem(ingest.FINDERS, "ytdlp", lambda *a: [video, exclusive])
+    monkeypatch.setattr(transcribe, "get_transcript", lambda episode, budget: (LONG, "podcast:transcript"))
+
+    def run(name):
+        main(["fetch", "--sources", str(source), "--runs", str(tmp_path / "runs"), "--run-name", name,
+              "--db", str(tmp_path / "seen.sqlite"), "--people", "", "--days", "7", "--per-source", "2"])
+        return json.loads((tmp_path / "runs" / name / "manifest.json").read_text())
+
+    first = run("first")
+    assert {r["episode_id"] for r in first["episodes"]} == {rss.id, exclusive.id}
+    published = next(row for row in first["episodes"] if row["episode_id"] == rss.id)
+    assert (published["url"], published["audio_url"], published["youtube_id"]) == (rss.url, rss.audio_url, "abcdefghijk")
+    assert first["sources"]["show"]["found"] == 2
+    known = Store(tmp_path / "seen.sqlite").known_since(NOW - timedelta(days=7))
+    assert next(row for row in known if row.id == rss.id).url == rss.url
+    assert not run("second")["episodes"]
+    monkeypatch.setitem(ingest.FINDERS, "rss", lambda *a: [])
+    assert not run("youtube-later")["episodes"]
+    monkeypatch.setitem(ingest.FINDERS, "rss", lambda *a: [rss])
+    monkeypatch.setitem(ingest.FINDERS, "ytdlp", lambda *a: (_ for _ in ()).throw(OSError("channel unavailable")))
+    partial = run("partial")
+    assert partial["sources"]["show"]["error"] and partial["sources"]["show"]["found"] == 1
+
+    ambiguous = ep("rss:unresolved", "A distinct title for an unverified counterpart", "show")
+    ambiguous.published_at, ambiguous.duration = NOW - timedelta(hours=2), 3600
+    uncertain = ep("yt:uncertain11", "A completely retitled interview", "show")
+    uncertain.youtube_id, uncertain.duration = "uncertain11", 3601
+    uncertain.published_at = NOW - timedelta(hours=1)
+    monkeypatch.setitem(ingest.FINDERS, "rss", lambda *a: [ambiguous])
+    monkeypatch.setitem(ingest.FINDERS, "ytdlp", lambda *a: [uncertain])
+    monkeypatch.setattr(ingest, "publisher_videos", lambda episode: set())
+    held = run("unresolved")
+    assert [row["episode_id"] for row in held["episodes"]] == [ambiguous.id]
+    assert held["sources"]["show"]["youtube_pending"][0]["episode_id"] == uncertain.id
+
+    part_one = ep("rss:part-one", "An unusually detailed interview on the future of enterprise computing Part 1", "show")
+    part_two = ep("yt:parttwo1111", "An unusually detailed interview on the future of enterprise computing Part 2", "show")
+    part_one.duration, part_two.duration = 3600, 3600
+    part_two.youtube_id = "parttwo1111"
+    assert not fetch_mod.same_episode(part_two, part_one)
+
+    extended = ep("yt:zyxwvutsrqp", rss.title + " extended Q and A", "show")
+    extended.youtube_id, extended.duration = "zyxwvutsrqp", 5400
+    assert not fetch_mod.same_episode(extended, rss)
+    assert not fetch_mod.same_episode(exclusive, video)
