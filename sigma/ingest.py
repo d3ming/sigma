@@ -35,6 +35,7 @@ class Episode:
     duration: int | None = None  # seconds, when the feed/search reports it
     style: str = "interview"  # the show's style in sources.yaml; influencer episodes are scored apart (sigma/rank.py)
     image_url: str | None = None
+    show_image_url: str | None = None
 
 
 def canonical_id(guid: str | None, youtube_id: str | None, link: str | None) -> str:
@@ -150,6 +151,7 @@ def from_rss(src: Source, now: datetime, days: int, parsed=None) -> list[Episode
             published_at=dt, transcript_urls=transcript_links(e), audio_url=audio,
             description=e.get("summary", "")[:2000], duration=parse_duration(e.get("itunes_duration")),
             image_url=e.get("image_url") or data.get("image_url"),
+            show_image_url=data.get("image_url"),
         ))
     return out
 
@@ -198,7 +200,11 @@ def from_itunes(src: Source, now: datetime, days: int, get=None) -> list[Episode
     r = (get or requests.get)("https://itunes.apple.com/lookup", timeout=30,
                               params={"id": src.itunes_id, "entity": "podcastEpisode", "limit": 20})
     r.raise_for_status()
-    rows = [e for e in r.json().get("results", []) if e.get("wrapperType") == "podcastEpisode"]
+    results = r.json().get("results", [])
+    show_image = next((art for e in results if e.get("wrapperType") == "track" and e.get("kind") == "podcast"
+                       and e.get("collectionId") == src.itunes_id
+                       and (art := image_url(e.get("artworkUrl600") or e.get("artworkUrl100")))), None)
+    rows = [e for e in results if e.get("wrapperType") == "podcastEpisode"]
     dates = [d for e in rows if (d := parse_date(e.get("releaseDate")))]
     if dates and max(dates) < now - timedelta(days=STALE_FEED_DAYS):
         raise ValueError(f"stale on Apple too: newest episode {max(dates).date()}")  # Apple mirrors the stale feed
@@ -214,6 +220,7 @@ def from_itunes(src: Source, now: datetime, days: int, get=None) -> list[Episode
             published_at=dt, audio_url=e.get("episodeUrl"), description=(e.get("description") or "")[:2000],
             duration=round(e["trackTimeMillis"] / 1000) if e.get("trackTimeMillis") else None,
             image_url=image_url(e.get("artworkUrl600") or e.get("artworkUrl160")),
+            show_image_url=show_image,
         ))
     return out
 

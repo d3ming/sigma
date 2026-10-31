@@ -14,7 +14,8 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path)
                       "[0:05:00] Guest: Demand increased thirty percent because the new process saved time.\n"
                       "[0:10:00] Guest: That concludes the conversation.\n")
     row = {"episode_id": "rss:edit", "file": source.name, "has_transcript": True, "title": "Company conversation",
-           "source": "Example show", "tier": 2, "published": "2026-01-01", "url": "https://example.invalid/episode"}
+           "source": "Example show", "tier": 2, "published": "2026-01-01", "url": "https://example.invalid/episode",
+           "show_image_url": "https://example.invalid/show.jpg"}
     (run / "manifest.json").write_text(json.dumps({"episodes": [row]}))
     ranked = {"week_of": "2026-01-01", "run_dir": "runs/2026-01-01", "ranked_by": "Editor", "episodes": [
         {key: row[key] for key in ("episode_id", "title", "source", "tier", "published", "url")} | {
@@ -32,6 +33,9 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path)
     pub, _ = published.export(run, tmp_path / "published", resolver=lambda rows: {})
     exported = json.loads((pub / "episodes.json").read_text())[0]
     assert exported["key_insights"] == edit["key_insights"] and exported["dense_summary"] == edit["dense_summary"]
+    assert exported["show_image_url"] == row["show_image_url"]
+    registry = site.build_episodes(site.load_runs(tmp_path / "published"))
+    assert registry[row["episode_id"]]["show_image_url"] == row["show_image_url"]
     assert (pub / "ranked.json").read_bytes() == ranked_bytes and not (pub / "claims.jsonl").read_text()
     frozen = tmp_path / "frozen"
     published.freeze_publication_inputs(tmp_path, frozen)
@@ -62,13 +66,20 @@ def test_stated_rule_home_insights_and_detail_summary_are_separate():
                "published": "2026-01-01", "url": "https://example.invalid/episode", "page": "/episodes/rss_edit.html",
                "score": 7, "reason": "A useful conversation", "claims": [], "runs": [], "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
                "apple_url": None, "spotify_url": None, "spotify_kind": None, "transcript_url": None,
-               "key_insights": [insight], "dense_summary": [section], "editor_source": "whisper (youtube audio)"}
+               "key_insights": [insight], "dense_summary": [section], "editor_source": "whisper (youtube audio)",
+               "show_image_url": "https://example.invalid/show.jpg"}
     fragment, detail = site.claims_fragment(episode), site.episode_page(episode)
     assert "Homepage insight text" in fragment and section["text"] not in fragment
     assert "Key insights" in detail and "Dense summary" in detail and section["text"] in detail
+    home = site.top_entry(episode, expand=True)
+    assert 'src="https://example.invalid/show.jpg"' in home and "i.ytimg.com" not in home
+    unbranded = {**episode, "show_image_url": None, "image_url": "https://example.invalid/episode.jpg"}
+    assert "<img" not in site.top_entry(unbranded, expand=True)
+    assert 'src="https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"' in detail and 'src="https://example.invalid/show.jpg"' not in detail
     assert "t=12s" in fragment and "t=0s" in detail
     encoded = site.episode_json(episode)
     assert encoded["key_insights"] == [insight] and encoded["dense_summary"] == [section]
+    assert encoded["show_image_url"] == episode["show_image_url"]
     assert "## Key insights" in site.episode_md(episode) and section["text"] in site.episode_md(episode)
     podcast = {**episode, "editor_source": "whisper podcast audio"}
     assert "t=12s" not in site.claims_fragment(podcast) and "t=0s" not in site.episode_page(podcast)

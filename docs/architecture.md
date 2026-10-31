@@ -26,6 +26,8 @@ separate from the attributed account; automated checks do not establish semantic
 The exporter projects the two fields into episode metadata without rewriting scores, claims or stance labels. Frozen
 publication inputs retain the editorial file and its transcript evidence. [Editor evaluation](editor-evaluation.md)
 defines the separate, source-based prompt refinement and model comparison workflow. The app JSON and episode Markdown keep both
-fields. Expanding a homepage card shows key insights; the episode page additionally shows the dense summary. Episodes
-without an edit retain their existing claim view. Publisher artwork is metadata; a verified YouTube identity can supply
-a video thumbnail. Neither image selection nor editorial editing invents a clip or changes the source timeline.
+fields. `/episodes.json` retains interviews; `/social/episodes.json` exposes eligible creator episodes with their independent
+rating and `style: influencer`. Expanding a homepage card shows key insights; the episode page additionally shows the dense summary. Episodes
+without an edit retain their existing claim view. Publisher show artwork is retained separately as `show_image_url`
+for homepage identity; cards without verified show artwork retain their show name. Episode artwork and verified
+YouTube thumbnails remain on episode headers. Neither artwork selection nor editing changes the source timeline.

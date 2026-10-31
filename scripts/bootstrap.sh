@@ -45,6 +45,7 @@ sh scripts/setup.sh --hooks-only
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import sys
 import tempfile
@@ -71,6 +72,6 @@ if config.get("runtime") != runtime:
     path.write_text(json.dumps(config, indent=2) + "\n")
 print(f"Runtime bound to {checkout}")
 print(f"Private data: {root}")
-print("Next: .venv/bin/python -m sigma.cli doctor")
+print(f"Next: SIGMA_DATA_ROOT={shlex.quote(str(root))} {shlex.quote(sys.executable)} -m sigma.cli doctor")
 print("Then follow skills/daily-update/SKILL.md for ingestion and edition checks.")
 PY

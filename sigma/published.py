@@ -32,7 +32,7 @@ FILES = ("selected.json", "report.json", "report.md", "ranked.json", "scores.jso
 STANCES = "stances.jsonl"
 MAX_BYTES = 1_000_000  # a published file this large is almost certainly not a report; keep it out of git
 EPISODE_KEYS = ("episode_id", "title", "source", "tier", "style", "published", "url", "youtube_id", "transcript_url",
-                "has_transcript", "transcript_source", "excluded", "image_url")
+                "has_transcript", "transcript_source", "excluded", "image_url", "show_image_url")
 
 
 LINK_KEYS = ("youtube_url", "apple_url", "spotify_url", "spotify_kind")

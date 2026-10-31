@@ -38,10 +38,12 @@ def test_a_source_falls_back_in_order_and_a_person_hit_inherits_its_shows_tier(m
 
     # failure-seen (2026-10-26): libsyn's feeds returned 502 and 20VC came in empty. Apple's copy of the feed is next,
     # and keeps the feed's guid: rss:55e1f0ea0fe53832 is the id the feed gave this Nadella episode that night.
-    apple = {"results": [{"wrapperType": "track", "collectionName": "20VC"},
+    apple = {"results": [{"wrapperType": "track", "kind": "podcast", "collectionName": "20VC", "collectionId": 958230465,
+                          "artworkUrl600": "https://example.invalid/show.jpg"},
                          {"wrapperType": "podcastEpisode", "episodeGuid": "ade69352-b9cb-4e49-a952-a7d7741a3203",
                           "trackName": "20VC: Satya Nadella", "releaseDate": "2026-10-20T07:07:00Z", "trackTimeMillis": 1566000,
-                          "episodeUrl": "https://traffic.libsyn.com/n.mp3", "trackViewUrl": "https://podcasts.apple.com/e"}]}
+                          "episodeUrl": "https://traffic.libsyn.com/n.mp3", "trackViewUrl": "https://podcasts.apple.com/e",
+                          "artworkUrl600": "https://example.invalid/episode.jpg"}]}
     monkeypatch.setitem(ingest.FINDERS, "itunes",
                         lambda s, now, days: ingest.from_itunes(s, now, days, get=lambda *a, **k: SimpleNamespace(
                             raise_for_status=lambda: None, json=lambda: apple)))
@@ -49,6 +51,7 @@ def test_a_source_falls_back_in_order_and_a_person_hit_inherits_its_shows_tier(m
     eps, how = ingest.find(Source("20vc", "20VC", 2, rss="x", itunes_id=958230465, youtube="y", fallback=["itunes", "ytdlp"]), NOW, 7)
     assert calls == ["rss"] and how == "itunes" and [e.id for e in eps] == ["rss:55e1f0ea0fe53832"]
     assert eps[0].audio_url == "https://traffic.libsyn.com/n.mp3"
+    assert eps[0].show_image_url == "https://example.invalid/show.jpg" and eps[0].image_url == "https://example.invalid/episode.jpg"
     srcs = [Source(id="tbpn", name="TBPN", tier=1, rss="https://feeds.transistor.fm/technology-brother", itunes_id=1772360235),
             Source(id="t3", name="Ticker Symbol YOU", tier=3, rss="https://x.example/rss"),
             Source(id="iltb", name="Invest Like the Best", tier=1, rss="https://x.example/iltb"),

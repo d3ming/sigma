@@ -290,9 +290,17 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     weekly_path.write_text(json.dumps(weekly))
     episodes_path = pub / "2026-01-09-daily" / "episodes.json"
     episodes = json.loads(episodes_path.read_text())
+    creator_insights = [{"title": "Pricing limits", "text": "The creator distinguishes usage from revenue.",
+                         "why_it_matters": "", "speaker": "Creator", "start": 1, "end": 3,
+                         "companies": [], "inference": None}]
+    creator_summary = [{"title": "Pricing", "text": "The discussion follows the limits on revenue conversion.",
+                        "start": 0, "end": 5}]
     for episode in episodes:
         if episode.get("episode_id") == "rss:inf":
             episode["published"] = "2026-01-09T17:00:00+00:00"
+            episode.update(key_insights=creator_insights, dense_summary=creator_summary)
+    episodes.append({"episode_id": "rss:inf3", "title": "Creator three", "source": "Show I", "style": "influencer",
+                     "published": "2026-01-09T19:00:00+00:00", "key_insights": creator_insights, "dense_summary": creator_summary})
     episodes_path.write_text(json.dumps(episodes))
     earnings = pub / "2026-01-09-earnings"
     earnings.mkdir()
@@ -366,6 +374,11 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
         assert "Chart week" not in page and "Boss" not in page
     assert "Chart week" not in (out / "claims.jsonl").read_text() and "Calls for a long" not in (out / "llms-full.txt").read_text()
     assert not any(x["episode_id"] in ("rss:inf", "rss:inf2") for x in json.loads((out / "episodes.json").read_text())["episodes"])
+    social_json = {e["episode_id"]: e for e in json.loads((out / "social/episodes.json").read_text())["episodes"]}
+    assert social_json["rss:inf"]["key_insights"] == creator_insights
+    assert social_json["rss:inf"]["dense_summary"] == creator_summary
+    assert social_json["rss:inf"]["style"] == "influencer" and social_json["rss:inf"]["score"] == 10
+    assert "rss:inf3" not in social_json and EP not in social_json
     assert "Show I" not in (out / "shows.json").read_text() and "Show I" not in (out / "episodes.md").read_text()
     assert "Chart week" not in (out / "runs/2026-01-09-daily.md").read_text()
     tickers = {t["symbol"]: t for t in json.loads((out / "tickers.json").read_text())["tickers"]}

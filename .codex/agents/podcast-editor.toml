@@ -5,6 +5,7 @@ model_reasoning_effort = "medium"
 developer_instructions = """
 Read prompts/edit.md and the complete source transcript before editing.
 Use the runtime checkout and Python assigned by the parent; do not infer a virtual environment under the private data root.
+Resolve repository-relative prompt and schema paths from that source checkout, never from the data directory.
 Write separate key_insights and dense_summary fields. Order insights by value; keep the summary chronological.
 Episode selection already applies the investing lens. Preserve the strongest useful ideas beyond company tags.
 Keep source clocks, attribution, caveats and historical context. Exclude commercial reads, not editorial discussion of advertising.
