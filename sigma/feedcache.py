@@ -23,10 +23,11 @@ import time
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from .paths import data_root
 
-VERSION = 1  # bump when the reduced entry fields change
+VERSION = 2  # bump when the reduced entry fields change
 MAX_AGE = 30 * 86400  # a cache older than this is not trusted for conditional requests
 ACCEPT = "application/atom+xml,application/rdf+xml,application/rss+xml,application/x-netcdf,application/xml;q=0.9,text/xml;q=0.2,*/*;q=0.1"
 KEEP_LINK = ("href", "type", "rel")
@@ -43,6 +44,19 @@ def _plain(v):
     return json.loads(json.dumps(v, default=str))
 
 
+def image_url(value) -> str | None:
+    if isinstance(value, dict):
+        value = value.get("href") or value.get("url")
+    if not isinstance(value, str):
+        return None
+    url = value.strip()
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    return url if parsed.scheme in {"http", "https"} and parsed.hostname else None
+
+
 def reduce_entry(e) -> dict:
     """The fields ingest.from_rss, page_url, transcript_links and people.feed_transcripts read from a feedparser entry."""
     out = {k: str(e[k]) for k in ("id", "guid", "link", "title", "published", "updated", "itunes_duration") if e.get(k) is not None}
@@ -52,6 +66,8 @@ def reduce_entry(e) -> dict:
     out["links"] = [{k: l[k] for k in KEEP_LINK if l.get(k) is not None} for l in e.get("links", []) or []]
     if e.get("podcast_transcript") is not None:
         out["podcast_transcript"] = _plain(e["podcast_transcript"])
+    if image := image_url(e.get("image")):
+        out["image_url"] = image
     return out
 
 
@@ -61,7 +77,9 @@ def reduce_parsed(parsed) -> dict:
     error = None
     if not parsed.entries and (bozo or status >= 400):
         error = f"HTTP {status}" if status >= 400 else str(getattr(parsed, "bozo_exception", "") or "malformed feed")[:160]
-    return {"link": (parsed.get("feed") or {}).get("link"), "entries": [reduce_entry(e) for e in parsed.entries], "error": error}
+    feed = parsed.get("feed") or {}
+    return {"link": feed.get("link"), "image_url": image_url(feed.get("image")),
+            "entries": [reduce_entry(e) for e in parsed.entries], "error": error}
 
 
 def parse_bytes(body: bytes, headers: dict | None = None) -> dict:
@@ -155,17 +173,18 @@ def load_feed(url: str, *, get=None, parse=None, directory: Path | None | str = 
     if r.status_code == 304:
         if not cached:
             raise ValueError(f"no entries from {url}: HTTP 304 without a cached copy")
-        return {"link": cached["link"], "entries": cached["entries"]}
+        return {"link": cached["link"], "image_url": cached.get("image_url"), "entries": cached["entries"]}
     if r.status_code >= 400:
         raise ValueError(f"no entries from {url}: HTTP {r.status_code}")
     body = r.content
     sha = hashlib.sha256(body).hexdigest()
     if cached and cached.get("sha") == sha:
-        parsed = {"link": cached["link"], "entries": cached["entries"]}
+        parsed = {"link": cached["link"], "image_url": cached.get("image_url"), "entries": cached["entries"]}
     else:
         parsed = parse(body, {"content-type": r.headers.get("content-type", ""), "content-location": getattr(r, "url", url) or url})
         if parsed.get("error"):
             raise ValueError(f"no entries from {url}: {parsed['error']}")
     _write(url, d, {"v": VERSION, "url": url, "saved": time.time(), "sha": sha, "etag": r.headers.get("etag"),
-                    "last_modified": r.headers.get("last-modified"), "link": parsed["link"], "entries": parsed["entries"]})
-    return {"link": parsed["link"], "entries": parsed["entries"]}
+                    "last_modified": r.headers.get("last-modified"), "link": parsed["link"],
+                    "image_url": parsed.get("image_url"), "entries": parsed["entries"]})
+    return {"link": parsed["link"], "image_url": parsed.get("image_url"), "entries": parsed["entries"]}

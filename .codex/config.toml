@@ -1,0 +1,3 @@
+[agents.podcast_editor]
+description = "Edit selected podcasts into key insights and a dense chronological summary."
+config_file = "agents/podcast-editor.toml"

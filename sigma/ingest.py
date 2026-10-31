@@ -12,6 +12,7 @@ from email.utils import parsedate_to_datetime
 
 
 from .config import Source
+from .feedcache import image_url
 
 
 @dataclass
@@ -33,6 +34,7 @@ class Episode:
     feed_url: str | None = None
     duration: int | None = None  # seconds, when the feed/search reports it
     style: str = "interview"  # the show's style in sources.yaml; influencer episodes are scored apart (sigma/rank.py)
+    image_url: str | None = None
 
 
 def canonical_id(guid: str | None, youtube_id: str | None, link: str | None) -> str:
@@ -147,6 +149,7 @@ def from_rss(src: Source, now: datetime, days: int, parsed=None) -> list[Episode
             title=e.get("title", "").strip(), url=page_url(e, audio, data["link"]),
             published_at=dt, transcript_urls=transcript_links(e), audio_url=audio,
             description=e.get("summary", "")[:2000], duration=parse_duration(e.get("itunes_duration")),
+            image_url=e.get("image_url") or data.get("image_url"),
         ))
     return out
 
@@ -182,6 +185,7 @@ def from_youtube(src: Source, now: datetime, days: int, max_items: int = 8) -> l
             title=info.get("title", ""), url=f"https://www.youtube.com/watch?v={v['id']}",
             published_at=dt, youtube_id=v["id"], description=(info.get("description") or "")[:2000],
             duration=int(info["duration"]) if info.get("duration") else None,
+            image_url=image_url(info.get("thumbnail")),
         ))
     return out
 
@@ -209,6 +213,7 @@ def from_itunes(src: Source, now: datetime, days: int, get=None) -> list[Episode
             title=e.get("trackName", "").strip(), url=e.get("trackViewUrl") or e.get("episodeUrl", ""),
             published_at=dt, audio_url=e.get("episodeUrl"), description=(e.get("description") or "")[:2000],
             duration=round(e["trackTimeMillis"] / 1000) if e.get("trackTimeMillis") else None,
+            image_url=image_url(e.get("artworkUrl600") or e.get("artworkUrl160")),
         ))
     return out
 

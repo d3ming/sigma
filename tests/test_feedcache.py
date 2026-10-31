@@ -5,13 +5,15 @@ import feedparser
 import pytest
 import requests
 
-from sigma import feedcache, ingest
+from sigma import feedcache, fetch, ingest
 from sigma.config import Source
 
 RSS = b"""<?xml version="1.0"?><rss xmlns:podcast="https://podcastindex.org/namespace/1.0"
 xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" version="2.0"><channel><link>https://show.example</link>
+<image><url>https://show.example/show.jpg</url></image>
 <item><guid>ep-new</guid><title> New one </title><link>/new</link><pubDate>Mon, 19 Oct 2026 08:00:00 GMT</pubDate>
 <itunes:duration>01:02:03</itunes:duration><description>Hello</description>
+<itunes:image href="https://show.example/episode.jpg"/>
 <enclosure url="https://cdn.example/a.mp3" type="audio/mpeg" length="1"/>
 <podcast:transcript url="https://x/t.vtt" type="text/vtt"/></item>
 <item><guid>ep-old</guid><title>Old one</title><pubDate>Mon, 05 Oct 2026 08:00:00 GMT</pubDate></item>
@@ -80,6 +82,7 @@ def test_a_feed_that_fails_is_an_error_never_the_cached_copy(tmp_path):
 
 
 def test_cached_pool_and_direct_parsing_give_the_same_episodes(tmp_path, monkeypatch):
+    """stated-rule: publisher episode artwork wins; show artwork survives when the episode has none."""
     src = Source("s", "S", 1, rss=URL)
     direct = ingest.from_rss(src, NOW, 30, parsed=feedparser.parse(RSS, response_headers={"content-location": URL}))
     data = feedcache.load_feed(URL, get=Server(resp()), parse=feedcache.parse_bytes, directory=tmp_path)
@@ -87,6 +90,8 @@ def test_cached_pool_and_direct_parsing_give_the_same_episodes(tmp_path, monkeyp
     assert ingest.from_rss(src, NOW, 30) == direct and len(direct) == 2
     new = next(e for e in direct if e.title == "New one")
     assert new.duration == 3723 and new.audio_url.endswith("a.mp3") and new.transcript_urls[0]["url"] == "https://x/t.vtt"
+    assert [e.image_url for e in direct] == ["https://show.example/episode.jpg", "https://show.example/show.jpg"]
+    assert fetch.write_episode(tmp_path, new, None, None)["image_url"] == "https://show.example/episode.jpg"
     got = feedcache.pool_parse(RSS, {"content-location": URL})  # the worker-process path
     assert got == feedcache.parse_bytes(RSS, {"content-location": URL}) and len(got["entries"]) == 2
 

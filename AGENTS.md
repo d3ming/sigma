@@ -66,6 +66,9 @@ Everything else is yours to decide. Be bold with reversible work.
 - **Prove a change by using it.** Run the command a person or a routine would run, on real inputs, and put the command
   and what it printed in the commit message. A passing test suite is not proof that a tool works.
 - Use at most one helper agent, unless the owner has asked you to coordinate others.
+- Use the project `podcast_editor` agent for episode editing; its model and effort live in `.codex/agents/podcast-editor.toml`.
+- Use the `prompt-engineer` skill for repository instruction-text changes.
+- Keep the active task list in the configured private data root. Add steers to it, preserve earlier work unless canceled, and summarize the changed and remaining tasks after a steer.
 
 ## Commands
 
