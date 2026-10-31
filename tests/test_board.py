@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from sigma import board, stance, tickers
+from sigma import board, creators, stance, tickers
 
 US = {"AAA": "Signals Inc", "BBB": "Beta Inc"}
 TODAY = date(2026, 10, 26)
@@ -36,6 +36,24 @@ def test_each_speaker_gets_one_vote_and_mild_x_views_count():
     assert (cancelled["label"], cancelled["bull"], cancelled["bear"], cancelled["neutral"]) == ("Bullish", 1, 0, 1)
     alice = next(item for item in cancelled["items"] if item["speaker"] == "alice")
     assert alice["vote"] == 0 and {source["stance"] for source in alice["evidence"]} == {-2, 2}
+
+
+def test_a_configured_creator_has_one_vote_across_video_and_x(tmp_path, monkeypatch):
+    """Failure seen: a creator's video name and configured X handle counted as two independent voices."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps({"creators": [{"id": "ada", "name": "Ada Creator", "sources": ["ada-video"], "x": ["AdaTrades"]}]}))
+    monkeypatch.setattr(creators, "CREATORS_FILE", path)
+    scores = board.score([
+        {**rec("SPY", 2, "social", 0.8, "2026-10-25", "Ada Creator"), "key": "video"},
+        {**rec("SPY", -2, "x", 0.6, "2026-10-26", "@adatrades"), "key": "creator-post"},
+        {**rec("SPY", 1, "x", 0.6, "2026-10-26", "@OtherTrades"), "key": "other-post"},
+    ], TODAY, {"SPY": "S&P fund"})
+    assert [row["ticker"] for row in scores["rows"]] == ["SPY"]
+    assert [row["ticker"] for row in scores["market"]] == ["@MARKET"]
+    for row in scores["rows"] + scores["market"]:
+        assert (row["sources"], row["speakers"], row["bull"], row["bear"], row["neutral"], row["net"], row["label"]) == (2, 1, 1, 0, 1, 1.0, "Bullish")
+        creator = next(item for item in row["items"] if item["speaker"] == "Ada Creator")
+        assert creator["vote"] == 0 and {item["who"] for item in creator["evidence"]} == {"Ada Creator", "@adatrades"}
 
 
 def test_merge_refuses_non_us_tickers_and_unlabelled_candidates_and_writes_nothing(tmp_path, monkeypatch):

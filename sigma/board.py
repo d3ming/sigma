@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import signals_sentiment, stance, tickers
+from . import creators, signals_sentiment, stance, tickers
 
 MAX_AGE_DAYS = 30
 UNSCORED_QUALITY = 0.6                               # an episode with no score, and every X post; else score / 10
@@ -111,6 +111,8 @@ def broad_fund_reads(records: list[dict]) -> list[dict]:
 
 def score(records: list[dict], today: date, us: dict) -> dict:
     names = {**us, **{t: line[1] for t, line in MARKET_LINES.items()}}
+    identity = {name.casefold(): creator.name for creator in creators.load()
+                for name in (creator.name, *("@" + handle for handle in creator.x))}
     groups = {}
     for index, record in enumerate(records + broad_fund_reads(records)):
         age = _age(record["date"], today)
@@ -119,6 +121,7 @@ def score(records: list[dict], today: date, us: dict) -> dict:
         who = record["who"].strip()
         if not who or who.lower() in {"host", "guest", "unknown"}:
             who = str(record["sources"][0])
+        who = identity.get(who.casefold(), who)
         groups.setdefault(record["ticker"], []).append({**record, "speaker": who, "id": record.get("key") or str(index),
                                                      "target": names[record["ticker"]], "origin": record.get("origin", "recap")})
     out = []
