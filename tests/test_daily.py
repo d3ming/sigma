@@ -252,6 +252,37 @@ def test_status_follows_a_stuck_transcribe(day, monkeypatch):
     assert "stage: transcribe" in out.getvalue() and (run / "manifest.json").read_text() == before
 
 
+
+def test_status_keeps_deliberately_skipped_news_out_of_pending_work(tmp_path, monkeypatch):
+    """Failure seen: completed ingestion counted skipped news with triage.whisper true as unfinished work."""
+    root = sandbox(tmp_path, monkeypatch)
+    run = root / RUN
+    run.mkdir(parents=True)
+    base = {"has_transcript": False, "audio_url": "https://cdn.example/audio.mp3", "triage": {"whisper": True}}
+    rows = [{"episode_id": "rss:done", "has_transcript": True},
+            {**base, "episode_id": "rss:news", "news": True, "duration": 3600,
+             "transcribe_skip": "news or market-recap show; not whispered (--news)"},
+            {**base, "episode_id": "rss:budget", "duration": 600,
+             "transcribe_skip": "audio budget used up (60 of 60 min); left for the next transcribe run"},
+            {**base, "episode_id": "rss:triage", "triage": {"whisper": False}, "duration": 1200,
+             "transcribe_skip": "triage cap: rank 31 (score 5) is below the top 30; rerun with a larger --top"},
+            {**base, "episode_id": "rss:failed", "whisper_error": "download failed",
+             "transcribe_skip": "whisper failed: download failed"}]
+    m = {"episodes": rows, "timing": {"transcribe": {"end": "2026-10-30T12:00:00+00:00"}}}
+    (run / "manifest.json").write_text(json.dumps(m))
+    d = status(root)
+    assert d["transcribe"]["state"] == "finished"
+    assert d["transcribe"]["whisper_pending"] == 1 and d["transcribe"]["audio_minutes_pending"] == 10
+    assert d["transcribe"]["skipped_fixable"] == 3 and d["transcribe"]["errors"] == 1
+    assert d["transcribe"]["skipped_deliberate"] == 1
+    m["episodes"] = rows[:2]
+    (run / "manifest.json").write_text(json.dumps(m))
+    d = status(root)
+    assert d["transcribe"]["whisper_pending"] == 0 and d["transcribe"]["audio_minutes_pending"] == 0
+    assert d["transcribe"]["skipped_fixable"] == 0 and d["transcribe"]["skipped_deliberate"] == 1
+    assert d["stages"]["transcribe"] == "done" and d["stage"] == "rank_prep"
+
+
 def subprocess_free_status(run):
     out = io.StringIO()
     with redirect_stdout(out):

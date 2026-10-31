@@ -13,10 +13,7 @@ rewrites it from the whole day's scan, so a day scanned three times still has on
 
 - **Input:** only that day's scan folder (`scan/D/`), `x-accounts.json` and the previous day's digest. No other sources,
   no new X calls, no prices. A post that is not in the scan does not exist for the digest; skip any id in `ids_gone`.
-- **Output:** `$SIGMA_X_DIR/digest/D.md` in the private data repo, then the same text on D's report page, wherever the
-  deployment asked for it (a page per day under a month page, say). Find the page you made before (remember its link in
-  the file's front matter as `page_url`), else one with D's title, and create it only when neither exists; replace its
-  content, never append. Post text is quoted here, so the digest never goes in this repo or anywhere public.
+- **Output:** `$SIGMA_X_DIR/digest/D.md` in the private data repository, delivered through the scan PR as described below. Update D's configured private report page only when the session authorizes that write; a configured destination alone is not permission. Find the existing page through `page_url` in the digest front matter or D's title, creating one only when neither exists; replace its content, never append. Without authorization, save the digest and report the pending page update. Post text is quoted here, so the digest never goes in this repo or anywhere public.
 
 ## What it says
 
@@ -39,4 +36,5 @@ In this order, about two screens, plain and specific (numbers over adjectives, n
 - A poster's trade, call, weights or positions are theirs when the poster shared them publicly: attribute and link. No buy or sell advice of the digest's own, and nothing about the owner's holdings.
 - Link posts as `https://x.com/i/status/<id>`, only ids in the scan, and quote a post only in its own words.
 - Re-read before saving: every link is in the scan, every quote matches its post, every claim is labelled.
-- Commit only the digest file to the data repo and push; end with your clone clean.
+- Deliver the checked scan and heartbeat before preparing the digest; the digest never delays that handoff. Commit only `digest/D.md` to the scanner's date-specific private delivery branch and update its open PR. If the scan PR has merged, open a separate digest PR against the configured data branch. Never push the digest directly to that base branch or merge the PR yourself.
+- Report the PR URL and new head SHA so the coordinator can validate the changed head again. End with your delivery branch clean. A pushed digest or an accepted scan does not authorize a report-page write or public publication.

@@ -4,21 +4,32 @@ Sigma finds evidence-backed signals for the US stock market. Its checked podcast
 
 ## Run your own
 
-Use Python 3.10–3.14. The checkout supplies schemas, prompts and assets, so install it editable.
+Run `make setup` to install an editable Python environment, transcription tools and Git hooks. On macOS,
+install [Homebrew](https://brew.sh) first; elsewhere, install [uv](https://docs.astral.sh/uv/getting-started/installation/)
+and `ffmpeg` with your package manager. Setup chooses Python 3.12 and MLX on Apple silicon, or CPU Whisper elsewhere.
+
+For an existing private data directory:
 
 ```bash
-git clone https://github.com/d3ming/sigma
-cd sigma
-python3.12 -m venv .venv
-.venv/bin/pip install -e '.[dev]'
-export SIGMA_DATA_ROOT="$(mktemp -d)"
-cp -R examples/data/. "$SIGMA_DATA_ROOT/"
-scripts/setup.sh
-.venv/bin/sigma site --out /tmp/sigma-site
-.venv/bin/pytest -q
+export SIGMA_DATA_ROOT=/absolute/path/to/private/data
+make setup
+.venv/bin/python -m sigma.cli doctor
 ```
 
-This builds an empty desk without network access, private files or model credentials. Open `/tmp/sigma-site/index.html` to inspect it. The examples deliberately contain no follow list, claims or research post. Add your own sources and people before starting ingest. Transcription additionally needs `ffmpeg` and the `whisper` extra; Apple silicon can use `.[dev,whisper,mac]`.
+Setup updates only the private `operator.json` runtime paths, preserving scanner settings. Keep `SIGMA_DATA_ROOT`
+exported when running Sigma. `sh scripts/bootstrap.sh --help` describes installation and configuration behavior.
+
+For a separate empty demo, copy the examples explicitly before setup:
+
+```bash
+export SIGMA_DATA_ROOT="$(mktemp -d /tmp/sigma-demo.XXXXXX)"
+cp -R examples/data/. "$SIGMA_DATA_ROOT/"
+make setup
+.venv/bin/python -m sigma.cli site --out /tmp/sigma-site
+```
+
+The demo contains no follow list, claims or research posts. Open `/tmp/sigma-site/index.html`; add your own sources
+and people before ingesting. Neither setup nor a local build publishes a site or enables scheduled jobs.
 
 `SIGMA_DATA_ROOT` is the only home for operator inputs and output. Keep it outside the checkout, or use the ignored `data/` link. Public code never carries your follows, transcripts, drafts, scores or published content. Site identity belongs in `site.json` there; the checked-in example is generic.
 

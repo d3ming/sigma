@@ -63,6 +63,7 @@ def _starting(run: Path) -> bool:
 
 # transcribe_skip reasons (sigma.fetch.skip_reason) that a rerun fixes; news, reruns, clips and no-audio are choices, not gaps
 FIXABLE_SKIPS = ("triage cap", "audio budget", "YouTube bot check", "an earlier whisper", "whisper failed")
+DELIBERATE_SKIPS = ("news or market-recap", "rerun of", "no audio or YouTube source", "not whispered:")
 
 
 def transcribe_state(run: Path, manifest: dict) -> dict:
@@ -71,8 +72,11 @@ def transcribe_state(run: Path, manifest: dict) -> dict:
     eps = manifest.get("episodes", [])
     total = len(eps)
     done = sum(1 for e in eps if e.get("has_transcript"))
-    todo = [e for e in eps if not e.get("has_transcript") and can_whisper(e) and not e.get("whisper_error")
-            and not e.get("rerun") and e.get("triage", {}).get("whisper", True)]
+    missing = [e for e in eps if not e.get("has_transcript")]
+    deliberate = [e for e in missing if (e.get("transcribe_skip") or "").startswith(DELIBERATE_SKIPS)]
+    todo = [e for e in missing if can_whisper(e) and not e.get("whisper_error")
+            and not e.get("rerun") and e.get("triage", {}).get("whisper", True)
+            and not (e.get("transcribe_skip") or "").startswith(DELIBERATE_SKIPS)]
     lock, pid = run / "transcribe.lock", None
     if lock.exists():
         pid = lock.read_text().strip()
@@ -92,9 +96,10 @@ def transcribe_state(run: Path, manifest: dict) -> dict:
         state = "not_started"
     errors = sum(1 for e in eps if e.get("whisper_error"))
     audio_min = round(sum(e.get("duration") or 0 for e in todo) / 60)
-    fixable = [e for e in eps if (e.get("transcribe_skip") or "").startswith(FIXABLE_SKIPS)]
+    fixable = [e for e in missing if (e.get("transcribe_skip") or "").startswith(FIXABLE_SKIPS)]
     return {"state": state, "pid": pid if running else None, "transcribed": done, "total": total,
-            "whisper_pending": len(todo), "audio_minutes_pending": audio_min, "errors": errors, "skipped_fixable": len(fixable)}
+            "whisper_pending": len(todo), "audio_minutes_pending": audio_min, "errors": errors,
+            "skipped_fixable": len(fixable), "skipped_deliberate": len(deliberate)}
 
 
 def _check(kind: str, path: Path, run: Path):
@@ -216,9 +221,11 @@ def _daily(run, arg, manifest, out, finish, env):
                       restart_command(arg))
     st["transcribe"] = "done"
     if tr["whisper_pending"]:
-        out["notes"].append(f"transcribe finished with {tr['whisper_pending']} episodes still untranscribed (budget or triage)")
+        out["notes"].append(f"transcribe finished with {tr['whisper_pending']} eligible episodes still without a transcript")
     if tr["errors"]:
         out["notes"].append(f"{tr['errors']} episode(s) failed to transcribe (whisper_error)")
+    if tr["skipped_deliberate"]:
+        out["notes"].append(f"{tr['skipped_deliberate']} episode(s) skipped by transcription policy (see transcribe_skip in manifest.json)")
     if tr["skipped_fixable"]:
         out["notes"].append(f"{tr['skipped_fixable']} episode(s) have no transcript for a fixable reason (see transcribe_skip in manifest.json); "
                             "they cannot be scored until `sigma transcribe --top 0` runs")

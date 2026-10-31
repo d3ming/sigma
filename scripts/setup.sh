@@ -6,6 +6,7 @@ git rev-parse --git-dir >/dev/null 2>&1 || { echo "not a git clone" >&2; exit 1;
 chmod +x .githooks/* scripts/check.sh scripts/private-words.sh scripts/private_words.py
 git config --local core.hooksPath .githooks
 echo "hooks installed: git push runs scripts/check.sh; commits run the private-word check"
+[ "${1:-}" = "--hooks-only" ] && exit 0
 [ -x .venv/bin/python ] || echo "note: create .venv and install the dev extra before running scripts/check.sh" >&2
 DATA_ROOT="${SIGMA_DATA_ROOT:-$SIGMA/data}"
 mkdir -p "$DATA_ROOT"
