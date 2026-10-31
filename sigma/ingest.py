@@ -159,6 +159,8 @@ def from_rss(src: Source, now: datetime, days: int, parsed=None) -> list[Episode
 def _yt_json(args: list[str]) -> list[dict]:
     res = subprocess.run([sys.executable, "-m", "yt_dlp", "-j", "--skip-download", "--no-warnings", "--sleep-requests", "1", *args],
                          capture_output=True, text=True, timeout=300)
+    if getattr(res, "returncode", 0):
+        raise RuntimeError(f"yt-dlp failed: {res.stderr.strip()[-300:]}")
     return [json.loads(l) for l in res.stdout.splitlines() if l.strip()]
 
 
@@ -167,32 +169,37 @@ def from_youtube(src: Source, now: datetime, days: int, max_items: int = 8) -> l
 
     show_image = channel_image(src)
     out = []
-    for v in _yt_json(["--flat-playlist", "-I", f"1:{max_items}", src.youtube]):
-        info = _yt_json([f"https://www.youtube.com/watch?v={v['id']}"])
-        if not info:
-            continue
-        info = info[0]
-        ts = info.get("release_timestamp") or info.get("timestamp")
-        if ts:
-            dt = datetime.fromtimestamp(ts, timezone.utc)
-        elif info.get("upload_date"):
-            dt = datetime.strptime(info["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc)
-        else:
-            continue
-        if not in_window(dt, now, days):
-            if dt < now - timedelta(days=days):
-                break
-            continue
-        if (info.get("duration") or 0) < 300:
-            continue
-        out.append(Episode(
-            id=canonical_id(None, v["id"], None), source_id=src.id, source_name=src.name, tier=src.tier, style=src.style,
-            title=info.get("title", ""), url=f"https://www.youtube.com/watch?v={v['id']}",
-            published_at=dt, youtube_id=v["id"], description=(info.get("description") or "")[:2000],
-            duration=int(info["duration"]) if info.get("duration") else None,
-            image_url=image_url(info.get("thumbnail")), show_image_url=show_image,
-        ))
-    return out
+    start = 1
+    while True:
+        uploads = _yt_json(["--flat-playlist", "-I", f"{start}:{start + max_items - 1}", src.youtube])
+        for v in uploads:
+            info = _yt_json([f"https://www.youtube.com/watch?v={v['id']}"])
+            if not info:
+                continue
+            info = info[0]
+            ts = info.get("release_timestamp") or info.get("timestamp")
+            if ts:
+                dt = datetime.fromtimestamp(ts, timezone.utc)
+            elif info.get("upload_date"):
+                dt = datetime.strptime(info["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc)
+            else:
+                continue
+            if not in_window(dt, now, days):
+                if dt < now - timedelta(days=days):
+                    return out
+                continue
+            if (info.get("duration") or 0) < 300:
+                continue
+            out.append(Episode(
+                id=canonical_id(None, v["id"], None), source_id=src.id, source_name=src.name, tier=src.tier, style=src.style,
+                title=info.get("title", ""), url=f"https://www.youtube.com/watch?v={v['id']}",
+                published_at=dt, youtube_id=v["id"], description=(info.get("description") or "")[:2000],
+                duration=int(info["duration"]) if info.get("duration") else None,
+                image_url=image_url(info.get("thumbnail")), show_image_url=show_image,
+            ))
+        if not src.discover_youtube or len(uploads) < max_items:
+            return out
+        start += max_items
 
 
 def from_itunes(src: Source, now: datetime, days: int, get=None) -> list[Episode]:
@@ -231,9 +238,75 @@ def from_itunes(src: Source, now: datetime, days: int, get=None) -> list[Episode
 FINDERS = {"rss": from_rss, "itunes": from_itunes, "ytdlp": from_youtube}
 
 
-def find(src: Source, now: datetime, days: int) -> tuple[list[Episode], str]:
-    errors = []
-    for how in src.order:
+def video_id(ep) -> str | None:
+    from .links import yt_id
+
+    direct = (getattr(ep, "youtube_id", None) or (ep.id[3:] if ep.id.startswith("yt:") else None)
+              or yt_id(getattr(ep, "url", "")))
+    if direct:
+        return direct
+    description = getattr(ep, "description", "")
+    linked = re.search(r"watch(?: the)? full (?:show|episode|interview)(?: on youtube)?\s*:\s*(https?://\S+)", description, re.I)
+    return yt_id(linked[1]) if linked else None
+
+
+def counterparts(first, second) -> bool:
+    from .links import durations_agree, strict_similar
+
+    if getattr(first, "source_id", None) != getattr(second, "source_id", None):
+        return False
+    a, b = video_id(first), video_id(second)
+    if a and b:
+        return a == b
+    if first.id.startswith("yt:") == second.id.startswith("yt:"):
+        return False
+    def published(ep):
+        value = getattr(ep, "published_at", None)
+        return value if isinstance(value, datetime) else parse_date(value)
+    x, y = published(first), published(second)
+    if not x or not y or abs((x - y).total_seconds()) > 2 * 86400:
+        return False
+    if re.findall(r"\d+(?:[.,]\d+)*", first.title) != re.findall(r"\d+(?:[.,]\d+)*", second.title):
+        return False
+    return (strict_similar(first.title, second.title) >= 0.96 and len(first.title.split()) >= 4
+            and durations_agree(getattr(first, "duration", None), getattr(second, "duration", None)) is True)
+
+
+def publisher_videos(episode) -> set[str]:
+    import time
+    import requests
+    from html import unescape
+    from . import feedcache
+
+    url = episode.url
+    if not url.startswith(("https://", "http://")):
+        return set()
+    directory = feedcache.cache_dir()
+    cached = feedcache._read(url, directory)
+    if cached and "embedded_youtube_ids" in cached:
+        return set(cached["embedded_youtube_ids"])
+    response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
+    response.raise_for_status()
+    ids = set(re.findall(r'(?:youtube(?:-nocookie)?\.com/embed/)([A-Za-z0-9_-]{11})', unescape(response.text)))
+    feedcache._write(url, directory, {"v": feedcache.VERSION, "url": url, "saved": time.time(),
+                                     "embedded_youtube_ids": sorted(ids)})
+    return ids
+
+
+def candidate_counterparts(episode, videos: list[Episode]) -> list[Episode]:
+    from .links import durations_agree
+
+    return [video for video in videos
+            if abs((episode.published_at - video.published_at).total_seconds()) <= 2 * 86400
+            and durations_agree(episode.duration, video.duration) is True]
+
+
+def find(src: Source, now: datetime, days: int, health: dict | None = None) -> tuple[list[Episode], str]:
+    errors, tried = [], set()
+    found, via = None, None
+    order = src.order + (["ytdlp"] if src.discover_youtube and "ytdlp" not in src.order else [])
+    for how in order:
+        tried.add(how)
         try:
             eps = FINDERS[how](src, now, days)
         except Exception as exc:
@@ -241,10 +314,56 @@ def find(src: Source, now: datetime, days: int) -> tuple[list[Episode], str]:
             continue
         for e in eps:
             e.via, e.methods = e.via or how, src.transcripts or None
-        return eps, how
-    if errors and all("stale" in e for e in errors):
-        return [], "stale"  # every route is just quiet (an annual meeting, an event-only show): no error to report
-    raise LookupError("; ".join(errors) or "no usable source")
+        found, via = eps, how
+        break
+    if found is None:
+        if errors and all("stale" in e for e in errors):
+            return [], "stale"
+        raise LookupError("; ".join(errors) or "no usable source")
+    if src.discover_youtube and "ytdlp" not in tried:
+        try:
+            videos = FINDERS["ytdlp"](src, now, days)
+        except Exception as exc:
+            error = f"ytdlp: {type(exc).__name__}: {str(exc)[:200]}"
+            if health is not None:
+                health["error"] = error
+            print(f"[ingest] {src.id}: supplemental ERROR {error}")
+        else:
+            pending = []
+            for episode in found:
+                if video_id(episode) or not candidate_counterparts(episode, videos):
+                    continue
+                direct = [video for video in videos if counterparts(episode, video)]
+                if len(direct) == 1:
+                    episode.youtube_id = direct[0].youtube_id
+                    continue
+                try:
+                    embedded = publisher_videos(episode)
+                except Exception as exc:
+                    print(f"[ingest] {src.id}: publisher video lookup ERROR {type(exc).__name__}: {str(exc)[:120]}")
+                    embedded = set()
+                matches = [video for video in candidate_counterparts(episode, videos) if video.youtube_id in embedded]
+                if len(matches) == 1:
+                    episode.youtube_id = matches[0].youtube_id
+            for video in videos:
+                match = next((e for e in found if counterparts(e, video)), None)
+                if match:
+                    match.youtube_id = video.youtube_id
+                else:
+                    ambiguous = [episode for episode in found if not episode.id.startswith("yt:")
+                                 and not video_id(episode) and candidate_counterparts(episode, [video])]
+                    if ambiguous:
+                        pending.append({"episode_id": video.id, "title": video.title, "url": video.url,
+                                        "rss_candidates": [episode.id for episode in ambiguous]})
+                        continue
+                    video.via, video.methods = "ytdlp", src.transcripts or None
+                    found.append(video)
+            if pending:
+                if health is not None:
+                    health.update(error=f"{len(pending)} YouTube counterpart(s) need verification", youtube_pending=pending)
+                print(f"[ingest] {src.id}: {len(pending)} YouTube counterpart(s) need verification; not queued")
+            via += "+ytdlp"
+    return found, via
 
 
 def discover(sources: list[Source], now: datetime, days: int, t3_cap: int, per_source: int = 3,
@@ -257,15 +376,17 @@ def discover(sources: list[Source], now: datetime, days: int, t3_cap: int, per_s
 
     def look(src):
         try:
-            return find(src, now, days), None
+            coverage = {}
+            result = find(src, now, days, health=coverage) if src.discover_youtube else find(src, now, days)
+            return result, None, coverage
         except Exception as exc:
-            return None, exc
+            return None, exc, {}
 
     # Feeds are independent network calls: fetch them side by side, then apply the per-source and tier-3 caps in source order
     # so the result is the same as a sequential run.
     with ThreadPoolExecutor(min(8, max(1, len(sources)))) as pool:
         looked = list(pool.map(look, sources))
-    for src, (res, exc) in zip(sources, looked):
+    for src, (res, exc, coverage) in zip(sources, looked):
         if exc is not None:
             print(f"[ingest] {src.id}: ERROR {exc}")
             health[src.id] = {"via": None, "found": 0, "kept": 0, "error": str(exc)}
@@ -280,6 +401,6 @@ def discover(sources: list[Source], now: datetime, days: int, t3_cap: int, per_s
         capped = [{"title": e.title[:120], "published": e.published_at.isoformat()} for e in found[len(kept):]]  # in the window, over a cap
         found = kept
         print(f"[ingest] {src.id} via {how}: {len(found)} in window" + (f" ({len(capped)} over the cap)" if capped else ""))
-        health[src.id] = {"via": how, "found": n, "kept": len(found), "error": None, **({"capped": capped} if capped else {})}
+        health[src.id] = {"via": how, "found": n, "kept": len(found), "error": None, **coverage, **({"capped": capped} if capped else {})}
         eps.extend(found)
     return eps

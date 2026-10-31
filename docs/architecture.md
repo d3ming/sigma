@@ -14,6 +14,14 @@ The initial review is `seed` into `develop`. Reviewing source and cutting over a
 
 Explicit transcript speaker labels are checked at the cited segment. Unlabelled transcripts, including ordinary Whisper output, still need editorial attribution review; Sigma does not infer diarization.
 
+## Podcast and YouTube discovery
+
+A source normally uses its preferred discovery route and then fallbacks. Set `discover_youtube: true` with a
+`youtube` channel URL to also find full videos absent from its podcast feed. Confirmed counterparts retain the RSS
+episode, publisher audio and transcript preference. Counterparts are collapsed before source caps and transcription;
+ambiguous matches remain in source health for verification. A failed supplemental lookup keeps RSS results and reports
+incomplete YouTube coverage. Video identity does not establish timestamp alignment between media versions.
+
 ## Episode editing
 
 Investment scores and their claims remain owned by ranking. A run may separately contain `editor.json`, written with
@@ -30,5 +38,5 @@ fields. `/episodes.json` retains interviews; `/social/episodes.json` exposes eli
 rating and `style: influencer`. Expanding a homepage card shows key insights; the episode page additionally shows the dense summary. Episodes
 without an edit retain their existing claim view. Publisher show artwork is retained separately as `show_image_url`
 for homepage identity. Release preparation caches one compact PNG per source URL before the offline renderer copies it
-into the static output; source metadata keeps the original URL. Cards without prepared artwork retain their show name. Episode artwork and verified
+into the static output; source metadata keeps the original URL. Cards without prepared artwork use one shared local placeholder. Episode artwork and verified
 YouTube thumbnails remain on episode headers. Neither artwork selection nor editing changes the source timeline.

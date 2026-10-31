@@ -16,7 +16,7 @@ from . import events
 from .config import load_sources
 from .ingest import Episode, discover
 from .people import apply_source_tiers, discover_people, load_people
-from .ingest import different_youtube_videos, in_window, is_rerun
+from .ingest import counterparts, different_youtube_videos, in_window, is_rerun, video_id
 from .manifest import update as update_manifest
 from .transcribe import MIN_TRANSCRIPT_CHARS, fmt_ts, get_transcript, is_fallback, title_match, transcript_chars
 from .triage import DEFAULT_TOP
@@ -32,7 +32,11 @@ def slug(text: str, n: int = 60) -> str:
 def same_episode(ep, known) -> bool:
     if ep.id == known.id:
         return True
-    if different_youtube_videos(ep.id, known.id, ep.youtube_id, getattr(known, "youtube_id", None)):
+    if different_youtube_videos(ep.id, known.id, video_id(ep), video_id(known)):
+        return False
+    if counterparts(ep, known):
+        return True
+    if ep.id.startswith("yt:") != known.id.startswith("yt:"):
         return False
     numbers = re.findall(r"\d+(?:[.,]\d+)*", ep.title)
     old_numbers = re.findall(r"\d+(?:[.,]\d+)*", known.title)
@@ -160,7 +164,7 @@ def fetch(args) -> Path:
         if getattr(args, "youtube_mirror", False) and "youtube_mirror" not in (ep.methods or []):
             ep.methods = [m for m in (ep.methods or ["podcast_transcript", "whisper"]) if m != "whisper"] + \
                 ["youtube_mirror", "whisper"]
-        dup = not args.refetch and (ep.id in queued or store.seen(ep.id)
+        dup = not args.refetch and (ep.id in queued or any(same_episode(ep, k) for k in todo) or store.seen(ep.id)
                                     or any(same_episode(ep, k) for k in known))
         if dup:
             manifest["skipped_seen"].append(ep.id)

@@ -121,7 +121,7 @@ def test_the_process_pool_is_created_once_across_threads(monkeypatch):
 
 
 def test_youtube_ingest_uses_verified_cached_channel_art_and_keeps_video_on_identity_mismatch(tmp_path, monkeypatch):
-    """Stated rule: one channel identity per source, never video art. Outside-value: public YouTube channelMetadataRenderer shape."""
+    """Stated rules: channel identity and date-window coverage. Outside-values: channelMetadataRenderer; captured Latent uploads at positions 10/13."""
     import json
 
     channel = "UC" + "a" * 22
@@ -151,3 +151,21 @@ def test_youtube_ingest_uses_verified_cached_channel_art_and_keeps_video_on_iden
     assert not (tmp_path / "mismatch").exists()
     monkeypatch.setattr(requests, "get", unavailable)
     assert [(e.id, e.show_image_url) for e in ingest.from_youtube(source, NOW, 7)] == [("yt:abcdefghijk", None)]
+
+    source.discover_youtube = True
+    ids = [f"video{i:06d}" for i in range(1, 18)]
+    ids[9], ids[12] = "ZOH8Q401vt0", "zlD-CkLVKtU"
+    dates = {video_id: NOW.replace(day=20) for video_id in ids}
+    dates[ids[14]] = NOW.replace(month=9, day=1)
+    def ordered_uploads(args):
+        if "--flat-playlist" in args:
+            start, end = map(int, args[args.index("-I") + 1].split(":"))
+            return [{"id": video_id} for video_id in ids[start - 1:end]]
+        video_id = args[0].split("v=")[1]
+        return [{"id": video_id, "title": "Full interview", "timestamp": dates[video_id].timestamp(), "duration": 3600}]
+    monkeypatch.setattr(ingest, "_yt_json", ordered_uploads)
+    found = ingest.from_youtube(source, NOW, 30)
+    assert {"yt:ZOH8Q401vt0", "yt:zlD-CkLVKtU"} <= {episode.id for episode in found}
+    assert [episode.id for episode in found] == ["yt:" + video_id for video_id in ids[:14]]
+    source.discover_youtube = False
+    assert [episode.id for episode in ingest.from_youtube(source, NOW, 30)] == ["yt:" + video_id for video_id in ids[:8]]

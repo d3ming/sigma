@@ -8,7 +8,7 @@ from pathlib import Path
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS episodes (
   id TEXT PRIMARY KEY, source_id TEXT, title TEXT, url TEXT,
-  published_at TEXT, transcript_source TEXT, processed_at REAL
+  published_at TEXT, transcript_source TEXT, processed_at REAL, youtube_id TEXT
 );
 """
 
@@ -18,14 +18,20 @@ class Store:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(str(path))
         self.db.executescript(SCHEMA)
+        if "youtube_id" not in {row[1] for row in self.db.execute("PRAGMA table_info(episodes)")}:
+            self.db.execute("ALTER TABLE episodes ADD COLUMN youtube_id TEXT")
+            self.db.commit()
 
     def seen(self, episode_id: str) -> bool:
         return self.db.execute("SELECT 1 FROM episodes WHERE id=?", (episode_id,)).fetchone() is not None
 
     def add_episode(self, ep, transcript_source: str | None) -> bool:
+        from .ingest import video_id
+
         cur = self.db.execute(
-            "INSERT OR IGNORE INTO episodes VALUES (?,?,?,?,?,?,?)",
-            (ep.id, ep.source_id, ep.title, ep.url, ep.published_at.isoformat(), transcript_source, time.time()),
+            "INSERT OR IGNORE INTO episodes (id, source_id, title, url, published_at, transcript_source, processed_at, youtube_id) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (ep.id, ep.source_id, ep.title, ep.url, ep.published_at.isoformat(), transcript_source, time.time(), video_id(ep)),
         )
         self.db.commit()
         return cur.rowcount == 1
@@ -35,6 +41,6 @@ class Store:
         self.db.commit()
 
     def known_since(self, since) -> list[SimpleNamespace]:
-        rows = self.db.execute("SELECT id, title, source_id, url, published_at FROM episodes WHERE published_at >= ? AND source_id NOT LIKE 'person:%'",
+        rows = self.db.execute("SELECT id, title, source_id, url, published_at, youtube_id FROM episodes WHERE published_at >= ? AND source_id NOT LIKE 'person:%'",
                                (since.isoformat(),)).fetchall()
-        return [SimpleNamespace(id=i, title=t, source_id=s, url=u, published_at=p) for i, t, s, u, p in rows]
+        return [SimpleNamespace(id=i, title=t, source_id=s, url=u, published_at=p, youtube_id=v) for i, t, s, u, p, v in rows]

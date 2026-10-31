@@ -25,6 +25,7 @@ class Source:
     preferred_source: str = "rss"
     fallback: list[str] = field(default_factory=list)
     transcripts: list[str] = field(default_factory=list)
+    discover_youtube: bool = False
     youtube_channel_id: str | None = None  # UC... id; links uses the free channel RSS to find the episode video
     itunes_id: int | None = None  # Apple collection id; person-search hits on this show inherit its tier
     news: bool = False  # daily news/market-recap show: not whispered unless transcribe --news
@@ -57,5 +58,7 @@ def load_sources(path: str | Path) -> tuple[list[Source], int]:
         if s.style == "influencer" and not s.youtube:
             raise ValueError(f"{s.id}: an influencer source needs its YouTube channel in `youtube:`. Social is the YouTube side "
                              "and every episode must link to its video, so a creator who does not publish there does not belong in Social")
+        if not isinstance(s.discover_youtube, bool) or (s.discover_youtube and not s.youtube):
+            raise ValueError(f"{s.id}: discover_youtube requires a boolean and a youtube channel URL")
         check(s.id, vars(s))
     return sources, int(data.get("t3_weekly_cap", 2))
