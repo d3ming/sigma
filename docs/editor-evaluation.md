@@ -8,8 +8,8 @@ The editor follows [the editing prompt](../prompts/edit.md); the output contract
 [the editor schema](../schema/editor.schema.json). The reviewer follows
 [the evaluation prompt](../prompts/evaluate-edit.md), rubric `episode-edit-v1`. This procedure does not add a model
 API, change the configured editor model or automatically deploy a winning candidate.
-The [experimental editing prompt](../prompts/edit-experimental.md) is a candidate for this procedure, not the default.
-Keep its evaluated version separate until it meets the promotion rules below.
+Keep candidate prompts with their private evaluation evidence until they meet the promotion rules below.
+Promote the tested text into the single default editing prompt; retain previous versions with the trial.
 
 ## Freeze the comparison before generating edits
 

@@ -144,7 +144,7 @@ def selected(picks):
 
 
 def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
-    """check report --captions: one line per wrong number, naming each place that disagrees; a whole video offset is named once."""
+    """Check captions and the observed rejection of a faithful shared-unit valuation range."""
     root = day
     words = [(w, 0) for w in "a billion and a half one and a half million two billion and a half".split()]
     spoken = report_mod.spoken_numbers(words)
@@ -189,6 +189,25 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     assert spoken_range == [(284, "1900000000"), (284, "2000000000")]
     range_claim = {"episode_id": "synthetic", "signal": [{"text": "Revenue was $1.9 billion", "timestamp": 284}], "sections": []}
     assert report_mod._number_warnings(range_claim, spoken_range) == []
+    between = "Valuation lies between $1.5 and $2 trillion"
+    between_spoken = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": between}]))
+    assert between_spoken == [(284, "1500000000000"), (284, "2000000000000")]
+    assert report_mod.cite_numbers(between) == [("1500000000000", "1.5"), ("2000000000000", "2")]
+    between_claim = {"episode_id": "synthetic", "signal": [{"text": "Valuation lies between $1.5 trillion and $2 trillion", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(between_claim, between_spoken) == []
+    mixed_range = "Spending ranges from $100,000–$1 million"
+    assert report_mod.cite_numbers(mixed_range) == [("100000", "100,000"), ("1000000", "1")]
+    mixed_spoken = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "Spending ranges from 100,000 to 1 million"}]))
+    assert mixed_spoken == [(284, "100000"), (284, "1000000")]
+    assert report_mod.cite_numbers("Valuation ranges from $1.5–$2 trillion") == [("1500000000000", "1.5"), ("2000000000000", "2")]
+    unrelated = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "1.5 and 2 trillion"}]))
+    assert unrelated == [(284, "1.5"), (284, "2000000000000")]
+    assert len(report_mod._number_warnings(between_claim, unrelated)) == 1
+    percent_between = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "between 35 and 40%"}]))
+    assert percent_between == [(284, "percent:35"), (284, "percent:40")]
+    bare_units = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "35 of their shares grew by 1368"}]))
+    unsupported_percent = {"episode_id": "synthetic", "signal": [{"text": "Insiders own 35% and growth reached 1368%", "timestamp": 284}], "sections": []}
+    assert len(report_mod._number_warnings(unsupported_percent, bare_units)) == 2
     main(["check", "selected", write(root, "selected.json", selected(good_picks()))])
     path = write(root, "report.json", report_json())
     captions = {"abcdefghijk": [(540, "our capex is 450 billion dollars"), (1140, "gross margin is 38 percent")],  # a minute early

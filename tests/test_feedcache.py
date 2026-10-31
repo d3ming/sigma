@@ -82,7 +82,7 @@ def test_a_feed_that_fails_is_an_error_never_the_cached_copy(tmp_path):
 
 
 def test_cached_pool_and_direct_parsing_give_the_same_episodes(tmp_path, monkeypatch):
-    """stated-rule: publisher episode artwork wins; show artwork survives when the episode has none."""
+    """stated-rule: episode artwork and reusable show identity survive ingestion separately."""
     src = Source("s", "S", 1, rss=URL)
     direct = ingest.from_rss(src, NOW, 30, parsed=feedparser.parse(RSS, response_headers={"content-location": URL}))
     data = feedcache.load_feed(URL, get=Server(resp()), parse=feedcache.parse_bytes, directory=tmp_path)
@@ -91,7 +91,9 @@ def test_cached_pool_and_direct_parsing_give_the_same_episodes(tmp_path, monkeyp
     new = next(e for e in direct if e.title == "New one")
     assert new.duration == 3723 and new.audio_url.endswith("a.mp3") and new.transcript_urls[0]["url"] == "https://x/t.vtt"
     assert [e.image_url for e in direct] == ["https://show.example/episode.jpg", "https://show.example/show.jpg"]
-    assert fetch.write_episode(tmp_path, new, None, None)["image_url"] == "https://show.example/episode.jpg"
+    assert [e.show_image_url for e in direct] == ["https://show.example/show.jpg"] * 2
+    written = fetch.write_episode(tmp_path, new, None, None)
+    assert written["image_url"] == "https://show.example/episode.jpg" and written["show_image_url"] == "https://show.example/show.jpg"
     got = feedcache.pool_parse(RSS, {"content-location": URL})  # the worker-process path
     assert got == feedcache.parse_bytes(RSS, {"content-location": URL}) and len(got["entries"]) == 2
 

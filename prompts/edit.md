@@ -22,6 +22,29 @@ First map the whole conversation into topic beats. Then write two separate field
 Use enough detail to recover the conversation's substance. For an hour-long interview, a starting point is 7–10
 insights and 12–18 narrative sections; the evidence decides the length. Avoid padding, repeated explanations and
 lists of topics without their substance. Audit the final edit against every substantive source topic.
+Keep the concrete examples and contrasts that explain each topic; a topic heading alone does not preserve them.
+
+Write for a reader who has not heard the episode. Open with the specific claim, actor and mechanism, rather than
+announcing that the conversation raises an important question. Explain unfamiliar terms on first use. Keep each
+insight focused on one mechanism; separate distinct ideas rather than hiding them in a broad safety or leadership
+bullet. Preserve examples and reasoning when tightening sentences; do not trade substantive coverage for brevity.
+
+Make `why_it_matters` add a supported consequence, useful distinction or decision the insight changes. Leave it
+empty when it would only restate the paraphrase. Put your own extrapolation in `inference`, not in the speaker's
+account or an unlabeled implication. State a material qualification where it changes the claim. Do not end every
+item with a generic warning that the interview is not independent proof. Attribution and specific uncertainty
+must remain wherever a reader could otherwise mistake a prediction, personal impression or anecdote for fact.
+Keep titles as precise as their supporting text; a qualified possibility in the body must not become an observed
+event in its title. In an unlabelled multi-speaker transcript, use shared or unnamed attribution unless the text
+identifies the speaker of that specific reply through self-identification or an explicit named handoff. A nearby
+named question, a familiar viewpoint or biographical fit does not establish later turns. Keep useful substance
+without guessing who said it; state an uncertainty once where the reader needs it.
+
+Before returning the edit, check for repetitive openings, repeated caveats and implications that repeat the insight.
+Rewrite those passages without removing their evidence, conditions or useful detail.
+Check every factual sentence in an item, including `why_it_matters`, against its attached source interval. Evidence
+elsewhere in the episode does not support that timestamp. Split the item or adjust its interval to include the actual
+evidence; do not attach a later warning or example to an earlier discussion merely because their topics match.
 
 Distinguish predictions from events that had already happened when recorded. Attribute company and founder
 accounts rather than treating them as independently proven facts. Use a role or

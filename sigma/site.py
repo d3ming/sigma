@@ -195,7 +195,7 @@ min-height:34px;padding:6px 13px;cursor:pointer}
 .epc-t::after{content:"";width:.5em;height:.5em;border:solid var(--text-muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
 .epc-t[aria-expanded=true]::after{transform:rotate(45deg)}
 .epc-t:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
-.episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}}.key-insights,.dense-summary{clear:both;margin-top:1.8em}.key-insights li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
+.episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-head.show-identity{grid-template-columns:90px minmax(0,1fr)}.show-identity .episode-image{width:90px;height:90px;object-fit:contain}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}.episode-head.show-identity{grid-template-columns:64px minmax(0,1fr)}.show-identity .episode-image{width:64px;height:64px}}.key-insights,.dense-summary{clear:both;margin-top:1.8em}.key-insights li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
 .eps{margin-top:.6em}.eps:empty{margin:0}
 .eps.busy::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid var(--border);border-top-color:var(--text-muted);border-radius:50%;animation:epspin .8s linear infinite}
 @keyframes epspin{to{transform:rotate(360deg)}}
@@ -810,12 +810,15 @@ def claims_path(eid: str) -> str:
 
 
 def episode_image(e: dict, large: bool = False) -> str:
-    video = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})(?:[&?/#]|$)", e.get("youtube_url") or "")
-    source = f"https://i.ytimg.com/vi/{video[1]}/hqdefault.jpg" if video else safe_url(e.get("image_url"))
+    source = safe_url(e.get("show_image_url"))
+    if large:
+        video = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})(?:[&?/#]|$)", e.get("youtube_url") or "")
+        source = f"https://i.ytimg.com/vi/{video[1]}/hqdefault.jpg" if video else safe_url(e.get("image_url"))
     target = safe_url(e.get("youtube_url")) or safe_url(e.get("url"))
     if not source:
         return ""
-    image = f'<img class="episode-image" src="{esc(source)}" alt="{esc(e.get("show") or e.get("title") or "Episode")}" loading="lazy" decoding="async" width="160" height="90">'
+    width = 160 if large else 90
+    image = f'<img class="episode-image" src="{esc(source)}" alt="{esc(e.get("show") or e.get("title") or "Episode")}" loading="lazy" decoding="async" width="{width}" height="90">'
     return f'<a class="episode-image-link{" hero" if large else ""}" href="{esc(target)}" rel="noopener noreferrer">{image}</a>' if target else image
 
 
@@ -876,7 +879,8 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     toggle = f'<button type="button" class="epc-t" aria-label="Toggle details for {esc(title)}" aria-controls="{panel_id}" aria-expanded="false"></button>' if fold else ""
     heading = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>'
     image = episode_image(e)
-    head = (f'<div class="episode-head">{image}<div>{heading}</div></div>' if image else heading) + ("" if fold else take + picks)
+    identity = " show-identity" if safe_url(e.get("show_image_url")) else ""
+    head = (f'<div class="episode-head{identity}">{image}<div>{heading}</div></div>' if image else heading) + ("" if fold else take + picks)
     if fold:
         if e.get("page") and (e.get("claims") or e.get("key_insights")):
             details = f'<div class="epb" id="{panel_id}" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden>{take}<p class="meta eps" role="status"></p></div>'
@@ -1319,7 +1323,8 @@ def build_episodes(runs: list[dict]) -> dict:
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
-                     image_url=safe_url(m.get("image_url")), transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
+                     image_url=safe_url(m.get("image_url")), show_image_url=safe_url(m.get("show_image_url")),
+                     transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
     for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
         for x in r["scored"]:
@@ -2166,7 +2171,7 @@ def episode_json(e: dict) -> dict:
             "youtube_url": e["youtube_url"], "apple_url": e["apple_url"], "spotify_url": e["spotify_url"],
             "spotify_kind": e["spotify_kind"], "transcript_url": e["transcript_url"], "claims": len(e["claims"]), "issues": e["runs"],
             "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
-            "lenses": e.get("lenses", []), "image_url": e.get("image_url"),
+            "lenses": e.get("lenses", []), "image_url": e.get("image_url"), "show_image_url": e.get("show_image_url"),
             "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
             "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"), "editor_source": e.get("editor_source"),
             "page": absu(e["page"]) if e["page"] else None, "md": absu(md_of(e["page"])) if e["page"] else None}
@@ -2661,6 +2666,10 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     write(out / "tickers.json", dump({"base_url": BASE_URL, "tickers": tj}))
     write(out / "people.json", dump({"base_url": BASE_URL, "people": pj}))
     write(out / "episodes.json", dump({"base_url": BASE_URL, "episodes": ej}))
+    social_json = [{**episode_json(e), "style": "influencer"}
+                   for e in sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)
+                   if e["score"] >= MIN_SCORE and e["page"]]
+    write(out / "social" / "episodes.json", dump({"base_url": BASE_URL, "episodes": social_json}))
     write(out / "shows.json", dump({"base_url": BASE_URL, "shows": shows_json(reg, ent)}))
     write(out / "companies.json", dump({"base_url": BASE_URL, "companies": cj}))
     write(out / "llms.txt", llms_txt(runs, reg, pub, people, ireg, eds, adays or None))

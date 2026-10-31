@@ -316,6 +316,14 @@ def _num_key(v: float | Decimal, unit: str | None = None) -> str:
     return format(value.normalize(), "f")
 
 
+def _shared_range_unit(value: Decimal, other: str, unit: str) -> str | None:
+    other_value = Decimal(other.replace(",", ""))
+    scale = _MAGNITUDE_SCALE.get(unit)
+    if scale and value >= 1000 > other_value and value < other_value * scale:
+        return None
+    return unit
+
+
 def cite_numbers(text: str) -> list[tuple[str, str]]:
     """Numbers worth checking in a cite as (unit-aware key, display text).
     Whole numbers 0-9 and years 2000-2099 are skipped as too noisy (decimals like 1.5 are kept)."""
@@ -331,8 +339,11 @@ def cite_numbers(text: str) -> list[tuple[str, str]]:
                 other = matches[j]
                 gap = text[match.end():other.start()] if j > i else text[other.end():match.start()]
                 other_unit = (other.group("unit") or other.group("suffix") or "").strip().lower()
-                if other_unit and re.fullmatch(r"\s*(?:[-–—]|to|through|or)\s*", gap, re.I):
-                    unit = other_unit
+                left = match if j > i else other
+                between = re.search(r"\bbetween\s+\$?\s*$", text[:left.start()], re.I)
+                if other_unit and (re.fullmatch(r"\s*(?:[-–—]|to|through|or)\s*\$?\s*", gap, re.I) or
+                                   (j > i and between and re.fullmatch(r"\s+and\s+\$?\s*", gap, re.I))):
+                    unit = _shared_range_unit(Decimal(token.replace(",", "")), other.group("number"), other_unit) or ""
                     break
         if unit.endswith("s") and unit[:-1] in _MAGNITUDE_SCALE:
             unit = unit[:-1]
@@ -369,10 +380,14 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             unit = words[i + 1][0] if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else None
             if unit is None and i + 3 < n and words[i + 1][0] in {"to", "through", "or"} and \
                     words[i + 2][0][:1].isdigit() and words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = words[i + 3][0]
+                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
+            if unit is None and i > 0 and words[i - 1][0] == "between" and i + 3 < n and \
+                    words[i + 1][0] == "and" and words[i + 2][0][:1].isdigit() and \
+                    words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
+                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
             if unit is None and i + 2 < n and words[i + 1][0][:1].isdigit() and \
                     words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = words[i + 2][0]
+                unit = _shared_range_unit(value, words[i + 1][0], words[i + 2][0])
             out.append((ts, _num_key(value, unit)))
             i += 2 if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else 1
             continue
