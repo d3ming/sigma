@@ -62,7 +62,7 @@ def test_stated_rule_home_insights_and_detail_summary_are_separate():
                "published": "2026-01-01", "url": "https://example.invalid/episode", "page": "/episodes/rss_edit.html",
                "score": 7, "reason": "A useful conversation", "claims": [], "runs": [], "youtube_url": "https://www.youtube.com/watch?v=abcdefghijk",
                "apple_url": None, "spotify_url": None, "spotify_kind": None, "transcript_url": None,
-               "key_insights": [insight], "dense_summary": [section], "transcript_source": "whisper (youtube audio)"}
+               "key_insights": [insight], "dense_summary": [section], "editor_source": "whisper (youtube audio)"}
     fragment, detail = site.claims_fragment(episode), site.episode_page(episode)
     assert "Homepage insight text" in fragment and section["text"] not in fragment
     assert "Key insights" in detail and "Dense summary" in detail and section["text"] in detail
@@ -70,6 +70,6 @@ def test_stated_rule_home_insights_and_detail_summary_are_separate():
     encoded = site.episode_json(episode)
     assert encoded["key_insights"] == [insight] and encoded["dense_summary"] == [section]
     assert "## Key insights" in site.episode_md(episode) and section["text"] in site.episode_md(episode)
-    podcast = {**episode, "transcript_source": "whisper podcast audio"}
+    podcast = {**episode, "editor_source": "whisper podcast audio"}
     assert "t=12s" not in site.claims_fragment(podcast) and "t=0s" not in site.episode_page(podcast)
     assert "t=12s" not in site.episode_md(podcast)

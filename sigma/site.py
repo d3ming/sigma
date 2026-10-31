@@ -820,7 +820,7 @@ def episode_image(e: dict, large: bool = False) -> str:
 
 
 def editor_timestamp_url(e: dict, start: int) -> str:
-    if "youtube" not in str(e.get("transcript_source") or "").lower():
+    if "youtube" not in str(e.get("editor_source") or "").lower():
         return ""
     return ts_link(safe_url(e.get("youtube_url")), start)
 
@@ -1320,7 +1320,7 @@ def build_episodes(runs: list[dict]) -> dict:
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
                      image_url=safe_url(m.get("image_url")), transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
-                     dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"))
+                     dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
     for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
         for x in r["scored"]:
             e = entry(x["episode_id"])
@@ -2168,7 +2168,7 @@ def episode_json(e: dict) -> dict:
             "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
             "lenses": e.get("lenses", []), "image_url": e.get("image_url"),
             "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
-            "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"),
+            "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"), "editor_source": e.get("editor_source"),
             "page": absu(e["page"]) if e["page"] else None, "md": absu(md_of(e["page"])) if e["page"] else None}
 
 

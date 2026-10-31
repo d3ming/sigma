@@ -11,7 +11,7 @@ from .fetch import segments_from_md
 from .ranked import private_hits
 
 FILE = "editor.json"
-FIELDS = ("key_insights", "dense_summary", "context", "overview")
+FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source")
 
 
 def load(run_dir: str | Path) -> dict[str, dict]:
@@ -69,6 +69,7 @@ def load(run_dir: str | Path) -> dict[str, dict]:
                     if key not in near:
                         raise ValueError(f"{where}: number {number} is not spoken in the cited source interval")
         out[eid] = {field: episode[field] for field in FIELDS if field in episode}
+        out[eid]["editor_source"] = row.get("transcript_source") or ""
     return out
 
 
