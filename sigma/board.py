@@ -1,15 +1,4 @@
-"""The ticker board: stance labels (stance.py) added up per US-listed ticker, with recent items counting most. The same
-sum, with the same weights, runs over the three market targets (MARKET_LINES): Market, Rates, Credit.
-
-    score = sum over items of  stance x KIND_WEIGHT[kind] x quality x 0.5 ** (age_days / HALF_LIFE_DAYS)
-
-over items at most MAX_AGE_DAYS old. Age runs from the item's date (the episode's publish date, the X edition's
-date, the X post's date) to the build date. `bull` and `bear` are the positive and negative parts of the same sum kept apart, because
-the net hides disagreement; `sources` counts distinct episodes and X accounts behind a ticker. The board is the Sentiment
-page, /sentiment/ (site.board_pages).
-
-Standard library only, because the site host builds with nothing else.
-"""
+"""Collect source-backed stance records and summarize each speaker once per ticker."""
 from __future__ import annotations
 
 import json
@@ -17,17 +6,10 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from . import stance, tickers
+from . import creators, signals_sentiment, stance, tickers
 
-# Change a number here only.
-HALF_LIFE_DAYS = 30                                  # a stance loses half its weight a month, so a quiet week barely moves it
-MAX_AGE_DAYS = 90                                    # older items are left out; by then an item weighs 1/8
-KIND_WEIGHT = {"deep": 1.0, "social": 1.0, "x": 0.5}  # interviews, YouTube creators' calls, X posts
-# How much a mild view (+1/-1) counts against a strong one (+2/-2 counts 2). Strong opinions move the board; mild ones
-# barely do, and on X, which is noisy, not at all.
-MILD = {"deep": 0.25, "social": 0.25, "x": 0.0}
+MAX_AGE_DAYS = 30
 UNSCORED_QUALITY = 0.6                               # an episode with no score, and every X post; else score / 10
-TOP_ITEMS = 5                                        # items listed under a ticker, largest contribution first
 # The market lines, in page order: target -> (label, a few words on what it covers). Rates reads up when easing is expected.
 MARKET_LINES = {"@MARKET": ("Market", "US stocks"), "@RATES": ("Rates", "Bullish = easing"),
                 "@CREDIT": ("Credit", "Spreads, high yield")}
@@ -36,9 +18,6 @@ HANDLE = re.compile(r"[A-Za-z0-9_]{1,15}")
 DATED = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def contribution(stance_: int, kind: str, quality: float, age_days: int) -> float:
-    strength = 2 if abs(stance_) >= 2 else 2 * MILD[kind] * abs(stance_)
-    return (1 if stance_ > 0 else -1) * strength * KIND_WEIGHT[kind] * quality * 0.5 ** (max(age_days, 0) / HALF_LIFE_DAYS)
 
 
 def _age(d: str, today: date) -> int | None:
@@ -75,7 +54,7 @@ def collect(published: Path, episodes: dict, us: dict, labels: dict) -> list[dic
                 out.append({"key": key, "ticker": lab["ticker"], "stance": lab["stance"], "reason": lab["reason"], "kind": kind,
                             "quality": score / 10 if isinstance(score, (int, float)) else UNSCORED_QUALITY,
                             "date": str(c.get("date") or c.get("published") or "")[:10], "sources": [c["episode_id"]],
-                            "who": c.get("speaker") or "", "where": c.get("show") or "", "link": c.get("link") or c.get("url") or ""})
+                            "who": c.get("speaker") or "", "where": c.get("show") or "", "link": c.get("link") or c.get("url") or "", "origin": lab.get("origin", "recap")})
     # X: a day whose posts are labelled counts those posts; the edition sentences that sum them up would count them twice.
     # A day with only sentence labels (labelled before posts were) counts its sentences.
     posted = stance.post_rows(published)
@@ -93,7 +72,7 @@ def collect(published: Path, episodes: dict, us: dict, labels: dict) -> list[dic
             for lab in labels[r["key"]]:
                 out.append({"key": r["key"], "ticker": lab["ticker"], "stance": lab["stance"], "reason": lab["reason"], "kind": "x",
                             "quality": UNSCORED_QUALITY, "date": str(r["date"])[:10], "sources": [handle], "who": "@" + handle,
-                            "where": "X", "link": f"https://x.com/{handle}/status/{post_id}"})
+                            "where": "X", "link": f"https://x.com/{handle}/status/{post_id}", "origin": lab.get("origin", "recap")})
     editions = Path(published) / "x" / "editions"
     for f in sorted(editions.glob("*.json"), reverse=True) if editions.is_dir() else []:
         try:
@@ -113,7 +92,7 @@ def collect(published: Path, episodes: dict, us: dict, labels: dict) -> list[dic
             for lab in labels[it["key"]]:
                 out.append({"key": it["key"], "ticker": lab["ticker"], "stance": lab["stance"], "reason": lab["reason"], "kind": "x",
                             "quality": UNSCORED_QUALITY, "date": it["date"], "sources": handles,
-                            "who": ", ".join("@" + h for h in handles), "where": "X", "link": link})
+                            "who": ", ".join("@" + h for h in handles), "where": "X", "link": link, "origin": lab.get("origin", "recap")})
     return out
 
 
@@ -131,37 +110,43 @@ def broad_fund_reads(records: list[dict]) -> list[dict]:
 
 
 def score(records: list[dict], today: date, us: dict) -> dict:
-    """{"as_of", "rows", "market"}: `rows` has one row per ticker with a stance other than 0 in the window, most bullish
-    first; `market` has one row per MARKET_LINES target in page order, with no items when nothing was said."""
     names = {**us, **{t: line[1] for t, line in MARKET_LINES.items()}}
-    rows: dict[str, dict] = {}
-    for r in records + broad_fund_reads(records):
-        age = _age(r["date"], today)
-        if age is None or age > MAX_AGE_DAYS or r["ticker"] not in names:
+    identity = {name.casefold(): creator.name for creator in creators.load()
+                for name in (creator.name, *("@" + handle for handle in creator.x))}
+    groups = {}
+    for index, record in enumerate(records + broad_fund_reads(records)):
+        age = _age(record["date"], today)
+        if age is None or not 0 <= age < MAX_AGE_DAYS or record["ticker"] not in names:
             continue
-        row = rows.setdefault(r["ticker"], {"ticker": r["ticker"], "name": names[r["ticker"]], "net": 0.0, "bull": 0.0, "bear": 0.0,
-                                            "mentions": 0, "sources": set(), "last": "", "items": []})
-        c = contribution(r["stance"], r["kind"], r["quality"], age)
-        row["net"] += c
-        row["bull"] += max(c, 0)
-        row["bear"] += max(-c, 0)
-        row["mentions"] += 1
-        row["sources"].update(r["sources"])
-        row["last"] = max(row["last"], r["date"])
-        if c:
-            row["items"].append({**{k: r[k] for k in ("who", "where", "date", "stance", "reason", "link", "kind")}, "weight": abs(c)})
+        who = record["who"].strip()
+        if not who or who.lower() in {"host", "guest", "unknown"}:
+            who = str(record["sources"][0])
+        who = identity.get(who.casefold(), who)
+        groups.setdefault(record["ticker"], []).append({**record, "speaker": who, "id": record.get("key") or str(index),
+                                                     "target": names[record["ticker"]], "origin": record.get("origin", "recap")})
     out = []
-    for row in rows.values():
-        if not row["items"]:
+    for ticker, rows in groups.items():
+        if not any(row["stance"] for row in rows):
             continue
-        row["items"] = sorted(row["items"], key=lambda i: (-i["weight"], i["date"], i["who"]))[:TOP_ITEMS]
-        out.append({**row, "sources": len(row["sources"])})
-    by = {r["ticker"]: r for r in out}
-    market = [{**by[t], "label": line[0]} if t in by else
-              {"ticker": t, "label": line[0], "name": line[1], "net": 0.0, "bull": 0.0, "bear": 0.0, "mentions": 0, "sources": 0, "last": "", "items": []}
-              for t, line in MARKET_LINES.items()]
-    out = sorted((r for r in out if r["ticker"] not in MARKET_LINES), key=lambda r: (-r["net"], -r["bull"], r["ticker"]))
-    return {"as_of": today.isoformat(), "rows": out, "market": market}
+        by_speaker = {}
+        for row in rows:
+            by_speaker.setdefault(row["speaker"], []).append(row)
+        directional = [row for row in rows if row["stance"]]
+        neutral = len(set(by_speaker) - {row["speaker"] for row in directional})
+        aggregate = signals_sentiment.row(ticker, names[ticker], directional, neutral)
+        evidence = []
+        for speaker, items in by_speaker.items():
+            supporting = sorted(items, key=lambda item: (item["date"], abs(item["stance"]), item["id"]), reverse=True)
+            vote = signals_sentiment.row(ticker, names[ticker], [item for item in items if item["stance"]] or items)["net"]
+            evidence.append({**supporting[0], "speaker": speaker, "vote": vote, "evidence": supporting})
+        evidence.sort(key=lambda item: (item["date"], abs(item["stance"]), item["speaker"]), reverse=True)
+        out.append({**aggregate, "name": names[ticker], "mentions": len(rows), "sources": len(by_speaker),
+                    "last": max(row["date"] for row in rows), "items": evidence})
+    by = {row["ticker"]: row for row in out}
+    market = [{**by[ticker], "market_label": spec[0]} for ticker, spec in MARKET_LINES.items() if ticker in by]
+    rows = sorted((row for row in out if row["ticker"] not in MARKET_LINES),
+                  key=lambda row: (-row["sources"], -row["rank"], row["ticker"]))
+    return {"as_of": today.isoformat(), "rows": rows, "market": market, "days": MAX_AGE_DAYS}
 
 
 def pacific_tz():

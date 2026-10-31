@@ -5,9 +5,8 @@ Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDU
 ## Set up
 
 ```bash
-python3 -m venv .venv                      # python3.14 -m venv .venv if `python3` is 3.15 or newer
-.venv/bin/pip install -e '.[dev,whisper]'     # on Apple silicon: '.[dev,whisper,mac]'
-.venv/bin/pytest -q
+make setup
+make test
 ```
 
 The suite runs in a few seconds with no network access. A change is ready when it passes and you have shown the
@@ -40,7 +39,7 @@ in the commit message.
 
 Push changes to `develop` and propose a release PR into `main`. Keep source lists and editorial output in your configured data root; suggest generic examples instead of submitting a real follow list. Never commit `data/`, `runs/`, publication output, transcripts, `.env` content or local reference copies.
 
-Run `scripts/setup.sh` once to install the local hooks. Before pushing, run `scripts/check.sh` and exercise the affected command with real or clearly identified example inputs. Record the command, output and limits in the commit body. A passing offline suite does not prove a live deployment.
+Run `make setup` once to install dependencies and the local hooks. Before pushing, run `scripts/check.sh` and exercise the affected command with real or clearly identified example inputs. Record the command, output and limits in the commit body. A passing offline suite does not prove a live deployment.
 
 ## Commit messages
 

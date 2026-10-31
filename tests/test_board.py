@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from sigma import board, stance, tickers
+from sigma import board, creators, stance, tickers
 
 US = {"AAA": "Signals Inc", "BBB": "Beta Inc"}
 TODAY = date(2026, 10, 26)
@@ -12,27 +12,48 @@ TODAY = date(2026, 10, 26)
 
 def rec(ticker, st, kind, quality, d, source):
     return {"ticker": ticker, "stance": st, "reason": "r", "kind": kind, "quality": quality, "date": d, "sources": [source],
-            "who": "w", "where": "s", "link": ""}
+            "who": source, "where": "s", "link": "", "origin": "primary"}
 
 
-def test_score_follows_the_owners_formula_worked_by_hand():
-    """outside-value: score = strength x kind weight x quality x 0.5^(age/30), items up to 90 days old (owner's design,
-    2026-10-26; half-life 30 days, YouTube weight 1, mild views count a quarter and nothing on X, all 2026-10-27).
-    Strength: +-2 counts 2; +-1 counts 2 x .25 = .5 for deep and YouTube, 0 for X. By hand: deep +2, quality .8, 30 days
-    old = 2 x 1 x .8 x .5 = .8; YouTube -1, quality 1, today = -.5 x 1 = -.5; X +2, quality .6, 60 days old =
-    2 x .5 x .6 x .25 = .15; X +1 today = 0. A neutral or mild-X mention adds to the count only; an item 91 days old is
-    left out."""
+def test_each_speaker_gets_one_vote_and_mild_x_views_count():
+    """Owner rule: one vote per speaker across video and X. By hand: (2-1+1)/3=.67; one bear is one third, so Mixed.
+    Repeat claims and neutral mentions do not add voices or dilute a call; thirty-day-old items are outside the window."""
     rows = board.score([
-        rec("AAA", 2, "deep", 0.8, "2026-09-26", "ep1"), rec("AAA", -1, "social", 1.0, "2026-10-26", "ep2"),
-        rec("AAA", 2, "x", 0.6, "2026-08-27", "bob"), rec("AAA", 0, "deep", 0.8, "2026-10-26", "ep1"),
-        rec("AAA", 1, "x", 0.6, "2026-10-26", "carl"),
-        rec("AAA", 2, "x", 0.6, "2026-07-27", "old"),
-        rec("BBB", 0, "deep", 0.8, "2026-10-26", "ep3"),  # only a mention: no row
+        rec("AAA", 2, "deep", 0.8, "2026-10-25", "alice"), rec("AAA", 2, "deep", 0.8, "2026-10-26", "alice"),
+        rec("AAA", -1, "social", 1.0, "2026-10-26", "bob"), rec("AAA", 0, "deep", 0.8, "2026-10-26", "alice"),
+        rec("AAA", 1, "x", 0.6, "2026-10-26", "carl"), rec("AAA", 2, "x", 0.6, "2026-09-26", "old"),
+        rec("BBB", 0, "deep", 0.8, "2026-10-26", "news"),
     ], TODAY, US)["rows"]
-    assert [r["ticker"] for r in rows] == ["AAA"]
-    a = rows[0]
-    assert (round(a["net"], 3), round(a["bull"], 3), round(a["bear"], 3)) == (0.45, 0.95, 0.5)
-    assert (a["mentions"], a["sources"], a["last"]) == (5, 4, "2026-10-26")
+    assert [row["ticker"] for row in rows] == ["AAA"]
+    row = rows[0]
+    assert (row["label"], row["net"], row["bull"], row["bear"]) == ("Mixed", 0.67, 2, 1)
+    assert (row["mentions"], row["sources"], row["last"]) == (5, 3, "2026-10-26")
+    assert {item["speaker"] for item in row["items"]} == {"alice", "bob", "carl"}
+    cancelled = board.score([
+        rec("AAA", 2, "deep", 0.8, "2026-10-25", "alice"), rec("AAA", -2, "x", 0.6, "2026-10-26", "alice"),
+        rec("AAA", 1, "x", 0.6, "2026-10-26", "bob"),
+    ], TODAY, US)["rows"][0]
+    assert (cancelled["label"], cancelled["bull"], cancelled["bear"], cancelled["neutral"]) == ("Bullish", 1, 0, 1)
+    alice = next(item for item in cancelled["items"] if item["speaker"] == "alice")
+    assert alice["vote"] == 0 and {source["stance"] for source in alice["evidence"]} == {-2, 2}
+
+
+def test_a_configured_creator_has_one_vote_across_video_and_x(tmp_path, monkeypatch):
+    """Failure seen: a creator's video name and configured X handle counted as two independent voices."""
+    path = tmp_path / "creators.json"
+    path.write_text(json.dumps({"creators": [{"id": "ada", "name": "Ada Creator", "sources": ["ada-video"], "x": ["AdaTrades"]}]}))
+    monkeypatch.setattr(creators, "CREATORS_FILE", path)
+    scores = board.score([
+        {**rec("SPY", 2, "social", 0.8, "2026-10-25", "Ada Creator"), "key": "video"},
+        {**rec("SPY", -2, "x", 0.6, "2026-10-26", "@adatrades"), "key": "creator-post"},
+        {**rec("SPY", 1, "x", 0.6, "2026-10-26", "@OtherTrades"), "key": "other-post"},
+    ], TODAY, {"SPY": "S&P fund"})
+    assert [row["ticker"] for row in scores["rows"]] == ["SPY"]
+    assert [row["ticker"] for row in scores["market"]] == ["@MARKET"]
+    for row in scores["rows"] + scores["market"]:
+        assert (row["sources"], row["speakers"], row["bull"], row["bear"], row["neutral"], row["net"], row["label"]) == (2, 1, 1, 0, 1, 1.0, "Bullish")
+        creator = next(item for item in row["items"] if item["speaker"] == "Ada Creator")
+        assert creator["vote"] == 0 and {item["who"] for item in creator["evidence"]} == {"Ada Creator", "@adatrades"}
 
 
 def test_merge_refuses_non_us_tickers_and_unlabelled_candidates_and_writes_nothing(tmp_path, monkeypatch):
@@ -56,26 +77,22 @@ def test_merge_refuses_non_us_tickers_and_unlabelled_candidates_and_writes_nothi
     assert [x["ticker"] for x in json.loads((pub / "r1" / "stances.jsonl").read_text())["labels"]] == ["AAA", "BBB"]
 
 
-def test_market_lines_follow_the_same_formula_and_count_broad_funds_once():
-    """outside-value, by hand with the formula above and the rule that a broad index fund also speaks
-    for Market, once per item. All dated today, so no decay. Market: @MARKET deep +2, quality .8 = 1.6; SPY YouTube +1,
-    quality 1 = .5 (mild; no Market label of its own, so it counts); an item with @MARKET YouTube -1 = -.5 and SPY deep +2 (the
-    fund adds nothing, the item already speaks for Market); IWM +2 with QQQ -2 is a bet between funds (nothing); a sector
-    fund XLK +2 (nothing). Net 1.6 + .5 - .5 = 1.6, bull 2.1, bear .5, three items. Rates has none."""
+def test_market_uses_the_same_speaker_votes_and_counts_broad_funds_once():
+    """By hand: direct Market +2, broad SPY +1 and direct Market -1 give .67 and two bulls/one bear.
+    A source labeling Market adds no second vote through SPY. Long IWM/short QQQ is relative; XLK is sector-only."""
     us = {"SPY": "S&P fund", "IWM": "R2000 fund", "QQQ": "Nasdaq fund", "XLK": "Tech fund"}
-    keyed = lambda key, *a: {**rec(*a), "key": key}
-    sc = board.score([
+    keyed = lambda key, *args: {**rec(*args), "key": key}
+    scores = board.score([
         keyed("k1", "@MARKET", 2, "deep", 0.8, "2026-10-26", "e1"),
         keyed("k2", "SPY", 1, "social", 1.0, "2026-10-26", "e2"),
         keyed("k3", "@MARKET", -1, "social", 1.0, "2026-10-26", "e3"), keyed("k3", "SPY", 2, "deep", 1.0, "2026-10-26", "e3"),
         keyed("k4", "IWM", 2, "deep", 1.0, "2026-10-26", "e4"), keyed("k4", "QQQ", -2, "deep", 1.0, "2026-10-26", "e4"),
         keyed("k5", "XLK", 2, "deep", 1.0, "2026-10-26", "e5"),
     ], TODAY, us)
-    assert [m["label"] for m in sc["market"]] == ["Market", "Rates", "Credit"]
-    m = sc["market"][0]
-    assert (round(m["net"], 3), round(m["bull"], 3), round(m["bear"], 3), m["mentions"]) == (1.6, 2.1, 0.5, 3)
-    assert sc["market"][1]["items"] == [] and sc["market"][2]["items"] == []
-    assert {r["ticker"] for r in sc["rows"]} == set(us)  # the funds keep their own rows; no market line among the tickers
+    assert len(scores["market"]) == 1
+    market = scores["market"][0]
+    assert (market["market_label"], market["label"], market["net"], market["bull"], market["bear"], market["sources"]) == ("Market", "Mixed", 0.67, 2, 1, 3)
+    assert {row["ticker"] for row in scores["rows"]} == set(us)
 
 
 def test_market_labels_are_added_to_labelled_items_without_touching_their_ticker_labels(tmp_path, monkeypatch):

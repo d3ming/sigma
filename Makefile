@@ -1,10 +1,14 @@
-.PHONY: check test test-fast
+.PHONY: setup check test test-fast
+export SIGMA_DATA_ROOT
 check:
 	@scripts/check.sh
 test:
 	@scripts/check.sh --tests
 test-fast:
 	@scripts/check.sh --fast
+
+setup:
+	@sh scripts/bootstrap.sh
 
 .PHONY: preview preview-stop preview-logs
 # Local preview on http://localhost:8787, rebuilt on change. See scripts/preview.sh.

@@ -8,7 +8,7 @@ contract_version: 2
 
 You collect the day's posts from the accounts in `x-accounts.json`; Sigma filters, ranks and writes the edition. So keep
 every post the API returns, judge nothing, and add nothing of your own to the scan. After it is delivered, write the
-day's private digest (step 8).
+day's private digest (step 8). Delivery is a pull request in the configured private data repository; a pushed branch is not yet accepted data.
 
 The contract is this file, `schema/x-scan.schema.json` and `sigma x scan-check`. Copy `contract_version` (front matter)
 into every manifest; `scan-check` refuses another version, which means your copy of this file is stale: pull and re-read.
@@ -20,7 +20,7 @@ When a rule here cannot be met, deliver what you have with `complete: false` and
   points to the private data repo, which contains `x-accounts.json`.
 - `SIGMA_X_DIR`: the folder scans go in, inside a private data repo you can push to. Post text is the authors' and never
   goes in this repo or anywhere public.
-- Use clones of your own, not working trees another job commits from. Pull both before a run; end it with both clean.
+- Use clones of your own, not working trees another job commits from. Refresh the Sigma checkout and the configured private data base branch before a run, then create a date-specific delivery branch. Reuse its open pull request when extending that day; never push scan data directly to the base branch.
 
 ## Each run, for date D (today, Pacific time)
 
@@ -37,9 +37,8 @@ When a rule here cannot be met, deliver what you have with `complete: false` and
 5. **Write** `scan/D/posts.jsonl`, `quoted.jsonl` and, last, `manifest.json`, as the schema says.
 6. **Check** with `.venv/bin/sigma x scan-check D` until it prints `ok`, and act on its warnings. Fix the files, never
    the check.
-7. **Deliver.** `.venv/bin/sigma x heartbeat scan --by <your name>`, then commit `scan/D/` and the heartbeat to the data
-   repo and push. Beat after every run, a failed one too: it is how Sigma tells "the scanner is down" from "a quiet day".
-8. **Digest.** Follow `skills/x-digest` for D. It never delays step 7.
+7. **Deliver.** `.venv/bin/sigma x heartbeat scan --by <your name>`, then commit only `scan/D/` and `heartbeat/scan.json` under the configured private X directory. Beat after a failed run too. Push the delivery branch and open or update its pull request against the configured data branch. Keep raw post text out of the PR title and body. Report the PR URL, exact head SHA, Pacific date, UTC window, account and post counts, completeness, warnings, and the command and result from `scan-check`. A failed check delivers an explicitly incomplete PR; it never becomes usable scan data. Do not merge the PR.
+8. **Digest.** Follow `skills/x-digest` for D. Add only `digest/D.md` to the same delivery branch and PR; if that PR has merged, use a separate digest PR against the configured data branch. It never delays step 7 or authorizes a report-page write. End with your clone clean and report any new head SHA.
 
 ## Rules
 

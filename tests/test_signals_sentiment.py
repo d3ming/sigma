@@ -94,8 +94,8 @@ def test_the_built_day_file_carries_tickers_counts_neutral_speakers_and_validate
     assert (out["tickers"][0]["speakers"], out["tickers"][0]["neutral"]) == (1, 2)
 
 
-def test_the_site_shows_the_x_aggregate_on_the_tape_the_day_page_and_the_sentiment_column(tmp_path):
-    """stated-rule (the owner's brief): the tape scrolls 'TICKER ▲ Bullish' items only, and the Sentiment page carries an X column next to Net, which stays."""
+def test_site_shows_the_same_speaker_votes_on_x_and_sentiment(tmp_path):
+    """Owner rule: Sentiment and X use the same per-speaker votes, and Sentiment has one reading with source evidence."""
     from sigma import site
     pub, out = tmp_path / "published", tmp_path / "out"
     from tests.test_site import make_published
@@ -128,17 +128,21 @@ def test_the_site_shows_the_x_aggregate_on_the_tape_the_day_page_and_the_sentime
     assert "Lower rates" in card("RATES") and "▲" in top("RATES")  # rates read as what is expected of them
     md = (out / "signals" / "2026-01-09.md").read_text()
     assert "## Daily picks" in md and "### AAA: Strongly bullish 2/2" in md and "### BBB: Mixed 1/1" in md and "## X sentiment by ticker" not in md
-    # the Sentiment page: the X column next to Net, a ticker with a board row gets its read, one without goes under 'X on ...'
-    row = lambda t, net: {"ticker": t, "name": t + " Inc", "net": net, "bull": 1.0, "bear": 0.0, "mentions": 2, "sources": 1, "last": "2026-01-09", "items": []}
-    sc = {"as_of": "2026-01-09", "rows": [row("AAA", 0.8), row("BBB", 0.0)], "market": []}
-    xs = {"day": "2026-01-09", "tickers": site.signals_sentiment.aggregate(sigs), "markets": site.signals_sentiment.aggregate(sigs, market=True)}
-    html = site.board_html(sc, {}, xs)
-    assert html.count('class="bx pos"') == 1 and html.count('class="bx mix"') >= 1 and "▲▲ Bullish <span class=\"tl\">2/2</span>" in html and "◆ Mixed <span class=\"tl\">1/1</span>" in html
-    assert "X Jan 9" in html and "+0.8" in html and "Net" in html and "X on Jan 9: 1 other ticker without a board row" in html and "CCC" in html
-    md = site.board_md(sc, {}, xs)
-    assert "net +0.8" in md and "X 2026-01-09: Strongly bullish 2/2" in md and "tickers without a board row" in md and "- CCC Strongly bearish 1/1" in md
-    assert 'class="bx none"' in site.board_html(sc, {}, {"day": "2026-01-09", "tickers": [], "markets": []})
-    assert "bx" not in site.board_md(sc, {}, None) and "X 20" not in site.board_md(sc, {}, None)
+    from datetime import date
+    from sigma import board
+
+    records = [{"key": signal["id"], "ticker": signal["ticker"], "stance": signal["stance"], "reason": signal["reason"],
+                "origin": signal["origin"], "kind": "x", "quality": 0.6, "date": signal["date"],
+                "sources": [signal["speaker"]], "who": signal["speaker"], "where": "X", "link": signal["link"]}
+               for signal in sigs]
+    scores = board.score(records, date(2026, 1, 9), {"AAA": "Alpha", "BBB": "Beta", "CCC": "Gamma"})
+    assert {row["ticker"]: row["label"] for row in scores["rows"]} == {"AAA": "Strongly bullish", "BBB": "Mixed", "CCC": "Strongly bearish"}
+    html = site.board_html(scores)
+    assert "Net" not in html and "X column" not in html and "without a board row" not in html
+    assert "Strongly bullish" in html and "Strongly bearish" in html and "2 voices" in html and 'href="https://x.com/a/status/1"' in html
+    markdown = site.board_md(scores)
+    assert "AAA: Strongly bullish" in markdown and "BBB: Mixed" in markdown and "CCC: Strongly bearish" in markdown
+    assert "1 bullish, 1 bearish" in markdown
 
 
 def test_the_tally_is_one_compact_figure_and_the_summary_says_what_was_said_once():
