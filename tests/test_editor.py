@@ -72,7 +72,7 @@ def test_stated_rule_home_insights_and_detail_summary_are_separate():
     assert "Homepage insight text" in fragment and section["text"] not in fragment
     assert "Key insights" in detail and "Dense summary" in detail and section["text"] in detail
     home = site.top_entry(episode, expand=True)
-    assert 'src="https://example.invalid/show.jpg"' in home and "i.ytimg.com" not in home
+    assert "i.ytimg.com" not in home and episode["show_image_url"] not in home
     unbranded = {**episode, "show_image_url": None, "image_url": "https://example.invalid/episode.jpg"}
     assert "<img" not in site.top_entry(unbranded, expand=True)
     assert 'src="https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"' in detail and 'src="https://example.invalid/show.jpg"' not in detail

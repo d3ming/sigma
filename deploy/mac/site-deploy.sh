@@ -6,6 +6,9 @@ cd "$SIGMA"
 DATA_ROOT="${SIGMA_DATA_ROOT:-$SIGMA/data}"
 [[ $DATA_ROOT == /* ]] || DATA_ROOT="$CALLER_PWD/$DATA_ROOT"
 export SIGMA_DATA_ROOT="$DATA_ROOT"
+SHOW_ART_CACHE="${SIGMA_SHOW_ART_CACHE:-$DATA_ROOT/feed_cache/show-art}"
+[[ $SHOW_ART_CACHE == /* ]] || SHOW_ART_CACHE="$CALLER_PWD/$SHOW_ART_CACHE"
+export SIGMA_SHOW_ART_CACHE="$SHOW_ART_CACHE"
 PYTHON=${SIGMA_PYTHON:-}
 if [[ -z $PYTHON ]]; then
   COMMON_DIR=$(git -C "$SIGMA" rev-parse --git-common-dir)
@@ -97,6 +100,7 @@ if [[ ( $MODE == --site-only || $MODE == --deploy-staged ) && -z $BASE_URL ]]; t
   BASE_URL=$(SIGMA_DATA_ROOT="$DATA_ROOT" PYTHONPATH="$SIGMA" "$PYTHON" -m sigma.site_config) || { echo "[site] could not resolve the configured base URL" >&2; exit 1; }
 fi
 if [[ $MODE == --site-only ]]; then
+  PYTHONPATH="$SIGMA" "$PYTHON" -m sigma.show_art "$DATA_ROOT/published" --cache "$SHOW_ART_CACHE"
   PYTHONPATH="$SIGMA" SIGMA_BASE_URL="$BASE_URL" "$PYTHON" - "$SIGMA" <<'PY'
 import hashlib
 import os
@@ -205,9 +209,10 @@ PY
     BASE_URL=$(cd "$SOURCE" && SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" PYTHONPATH=. "$PYTHON" -m sigma.site_config) \
       || { echo "[site] could not resolve the configured base URL from staged source" >&2; exit 1; }
   fi
+  (cd "$SOURCE" && SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" PYTHONPATH=. "$PYTHON" -m sigma.show_art "$BUILD_DATA_ROOT/published" --cache "$SHOW_ART_CACHE")
   OUTPUT="$SOURCE/.vercel/output"
   PYTHON_PATH=${PYTHON:h}
-  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_X_DIR="$BUILD_DATA_ROOT/x" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" SIGMA_BASE_URL="$BASE_URL" vercel build --yes --target production) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
+  if (cd "$SOURCE" && PATH="$PYTHON_PATH:$PATH" SIGMA_DATA_ROOT="$BUILD_DATA_ROOT" SIGMA_X_DIR="$BUILD_DATA_ROOT/x" SIGMA_SITE_CONFIG="$BUILD_DATA_ROOT/site.json" SIGMA_BASE_URL="$BASE_URL" SIGMA_SHOW_ART_CACHE="$SHOW_ART_CACHE" vercel build --yes --target production) >"$BUILD_OUT" 2>"$BUILD_ERR"; then
     :
   else
     rc=$?

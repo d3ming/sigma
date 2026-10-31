@@ -810,7 +810,7 @@ def claims_path(eid: str) -> str:
 
 
 def episode_image(e: dict, large: bool = False) -> str:
-    source = safe_url(e.get("show_image_url"))
+    source = e.get("_show_art_url", "")
     if large:
         video = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})(?:[&?/#]|$)", e.get("youtube_url") or "")
         source = f"https://i.ytimg.com/vi/{video[1]}/hqdefault.jpg" if video else safe_url(e.get("image_url"))
@@ -2515,6 +2515,10 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         e.update(influencer=True, topics=[], edges={}, lenses=[], people=[], _marks=social_mark(), _show_path="")
     ipub = collect_tickers([{"claims": [c for c in r["claims"] if c.get("episode_id") in ireg]} for r in iruns])[0]
     allreg = {**reg, **ireg}
+    from .show_art import cache_root, copy_show_art, show_sources
+    artwork = copy_show_art(show_sources(allreg.values()), cache=cache_root(), out=out)
+    for e in allreg.values():
+        e["_show_art_url"] = artwork.get(e.get("show_image_url"), "")
     try:
         source_of = creators.source_names(SOURCES_FILE)
     except OSError:
