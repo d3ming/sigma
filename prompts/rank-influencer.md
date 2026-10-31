@@ -23,7 +23,11 @@ performance claims, or a positive company fact alone.
 
 Then write the claims. A claim is one ticker's investment view or one checkable fact behind it. Combine related
 actions for the same ticker in one concise claim where useful, retaining their timestamps. Prioritize the strongest
-distinct ticker views before background facts; skip intros, sponsors, channel business and general market chatter.
+distinct ticker views before background facts; skip intros, channel business and general market chatter. Score and
+summarize editorial content only: exclude sponsor reads, promo codes, house ads and commercial-break claims. Do not
+treat a paid promotional claim as an independent investment view. Keep relevant conflict-of-interest disclosures;
+editorial discussion of advertising or sponsorship economics is not itself an ad. Keep the original audio and
+transcript timeline intact: omit ads from the output without trimming or retiming the source or its citations.
 
 - `ticker`: the tickers it is about. Every claim here names at least one.
 - `claim`: one falsifiable sentence in your words that says what the creator called: the direction (long, short,
