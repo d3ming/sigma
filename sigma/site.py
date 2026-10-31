@@ -815,10 +815,13 @@ def episode_image(e: dict, large: bool = False) -> str:
         video = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})(?:[&?/#]|$)", e.get("youtube_url") or "")
         source = f"https://i.ytimg.com/vi/{video[1]}/hqdefault.jpg" if video else safe_url(e.get("image_url"))
     target = safe_url(e.get("youtube_url")) or safe_url(e.get("url"))
-    if not source:
+    if not source and large:
         return ""
+    placeholder = not source
+    source = source or "/podcast-placeholder.svg"
+    alt = "Show artwork unavailable" if placeholder else e.get("show") or e.get("title") or "Episode"
     width = 160 if large else 90
-    image = f'<img class="episode-image" src="{esc(source)}" alt="{esc(e.get("show") or e.get("title") or "Episode")}" loading="lazy" decoding="async" width="{width}" height="90">'
+    image = f'<img class="episode-image" src="{esc(source)}" alt="{esc(alt)}" loading="lazy" decoding="async" width="{width}" height="90">'
     return f'<a class="episode-image-link{" hero" if large else ""}" href="{esc(target)}" rel="noopener noreferrer">{image}</a>' if target else image
 
 
@@ -879,7 +882,7 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     toggle = f'<button type="button" class="epc-t" aria-label="Toggle details for {esc(title)}" aria-controls="{panel_id}" aria-expanded="false"></button>' if fold else ""
     heading = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>'
     image = episode_image(e)
-    identity = " show-identity" if safe_url(e.get("show_image_url")) else ""
+    identity = " show-identity"
     head = (f'<div class="episode-head{identity}">{image}<div>{heading}</div></div>' if image else heading) + ("" if fold else take + picks)
     if fold:
         if e.get("page") and (e.get("claims") or e.get("key_insights")):

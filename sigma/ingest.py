@@ -163,6 +163,9 @@ def _yt_json(args: list[str]) -> list[dict]:
 
 
 def from_youtube(src: Source, now: datetime, days: int, max_items: int = 8) -> list[Episode]:
+    from .youtube_art import channel_image
+
+    show_image = channel_image(src)
     out = []
     for v in _yt_json(["--flat-playlist", "-I", f"1:{max_items}", src.youtube]):
         info = _yt_json([f"https://www.youtube.com/watch?v={v['id']}"])
@@ -187,7 +190,7 @@ def from_youtube(src: Source, now: datetime, days: int, max_items: int = 8) -> l
             title=info.get("title", ""), url=f"https://www.youtube.com/watch?v={v['id']}",
             published_at=dt, youtube_id=v["id"], description=(info.get("description") or "")[:2000],
             duration=int(info["duration"]) if info.get("duration") else None,
-            image_url=image_url(info.get("thumbnail")),
+            image_url=image_url(info.get("thumbnail")), show_image_url=show_image,
         ))
     return out
 

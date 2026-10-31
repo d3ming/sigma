@@ -118,3 +118,36 @@ def test_the_process_pool_is_created_once_across_threads(monkeypatch):
     [t.start() for t in ts]
     [t.join() for t in ts]
     assert len(made) == 1
+
+
+def test_youtube_ingest_uses_verified_cached_channel_art_and_keeps_video_on_identity_mismatch(tmp_path, monkeypatch):
+    """Stated rule: one channel identity per source, never video art. Outside-value: public YouTube channelMetadataRenderer shape."""
+    import json
+
+    channel = "UC" + "a" * 22
+    source = Source("channel", "Channel", 1, youtube=f"https://www.youtube.com/channel/{channel}/videos")
+    video = {"id": "abcdefghijk", "title": "Interview", "timestamp": NOW.timestamp(), "duration": 3600,
+             "thumbnail": "https://example.invalid/video.jpg"}
+    monkeypatch.setattr(ingest, "_yt_json", lambda args: [video])
+    metadata = {"externalId": channel, "avatar": {"thumbnails": [
+        {"url": "https://example.invalid/avatar.jpg", "width": 900, "height": 900}]}}
+    def response(url, **kwargs):
+        assert url == f"https://www.youtube.com/channel/{channel}/about"
+        return SimpleNamespace(raise_for_status=lambda: None,
+                               text='<script>var ytInitialData = {"metadata":{"channelMetadataRenderer":' + json.dumps(metadata) + '}};</script>')
+    monkeypatch.setattr(requests, "get", response)
+    first = ingest.from_youtube(source, NOW, 7)
+    assert [(e.image_url, e.show_image_url) for e in first] == [
+        ("https://example.invalid/video.jpg", "https://example.invalid/avatar.jpg")]
+    def unavailable(*args, **kwargs):
+        raise requests.ConnectionError("offline")
+    monkeypatch.setattr(requests, "get", unavailable)
+    assert ingest.from_youtube(source, NOW, 7) == first
+    monkeypatch.setenv("SIGMA_FEED_CACHE", str(tmp_path / "mismatch"))
+    metadata["externalId"] = "UC" + "b" * 22
+    monkeypatch.setattr(requests, "get", response)
+    rejected = ingest.from_youtube(source, NOW, 7)
+    assert [(e.id, e.show_image_url) for e in rejected] == [("yt:abcdefghijk", None)]
+    assert not (tmp_path / "mismatch").exists()
+    monkeypatch.setattr(requests, "get", unavailable)
+    assert [(e.id, e.show_image_url) for e in ingest.from_youtube(source, NOW, 7)] == [("yt:abcdefghijk", None)]

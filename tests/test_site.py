@@ -415,8 +415,11 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "Creator four" in home_md and "Creator three" not in home_md
 
     images = re.findall(r'<img class="episode-image" src="([^"]+)"', home)
-    assert len(images) >= 2 and all(image.startswith("/show-art/") for image in images)
-    assert len(set(images)) == 1 and (out / images[0].lstrip("/")).read_bytes() == compact
+    assert len(images) >= 2 and all(image.startswith("/show-art/") or image == "/podcast-placeholder.svg" for image in images)
+    prepared = [image for image in images if image.startswith("/show-art/")]
+    assert len(set(prepared)) == 1 and (out / prepared[0].lstrip("/")).read_bytes() == compact
+    assert "/podcast-placeholder.svg" in images
+    assert (out / "podcast-placeholder.svg").read_text().startswith("<svg")
     assert not any(url in home for url in art_urls)
     assert social_json["rss:inf"]["show_image_url"] == art_urls[1]
     public_episodes = {e["episode_id"]: e for e in json.loads((out / "episodes.json").read_text())["episodes"]}
@@ -425,7 +428,10 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     monkeypatch.setenv("SIGMA_SHOW_ART_CACHE", str(tmp_path / "empty-art-cache"))
     main(["site", "--out", str(out), "--published", str(pub)])
     empty_home = (out / "index.html").read_text()
-    assert "Boss" in empty_home and "Chart week" in empty_home and 'class="episode-image"' not in empty_home
+    assert "Boss" in empty_home and "Chart week" in empty_home
+    assert set(re.findall(r'<img class="episode-image" src="([^"]+)"', empty_home)) == {"/podcast-placeholder.svg"}
+    assert 'alt="Show artwork unavailable"' in empty_home
+    assert empty_home.count('class="episode-head show-identity"') == empty_home.count('class="episode-image"')
     assert not any(url in empty_home for url in art_urls)
 
 
