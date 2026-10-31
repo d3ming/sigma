@@ -13,3 +13,18 @@ Deployment builds on the operator's machine, then uploads the prebuilt output. C
 The initial review is `seed` into `develop`. Reviewing source and cutting over a production instance are separate decisions. Publishing a new page type, changing a domain, or changing an account needs the owner's explicit authorization.
 
 Explicit transcript speaker labels are checked at the cited segment. Unlabelled transcripts, including ordinary Whisper output, still need editorial attribution review; Sigma does not infer diarization.
+
+## Episode editing
+
+Investment scores and their claims remain owned by ranking. A run may separately contain `editor.json`, written with
+`prompts/edit.md` and checked by `python -m sigma.editor <run>`. Each edit names an existing episode and the SHA-256
+of its complete timestamped source transcript. `key_insights` is importance ordered and has no ticker requirement;
+`dense_summary` is chronological. The publication exporter validates source identity, intervals, explicit speaker
+labels, figures in each cited interval and extended copied text before replacing output. Editorial inference remains
+separate from the attributed account; automated checks do not establish semantic truth or identify unlabelled voices.
+
+The exporter projects the two fields into episode metadata without rewriting scores, claims or stance labels. Frozen
+publication inputs retain the editorial file and its transcript evidence. The app JSON and episode Markdown keep both
+fields. Expanding a homepage card shows key insights; the episode page additionally shows the dense summary. Episodes
+without an edit retain their existing claim view. Publisher artwork is metadata; a verified YouTube identity can supply
+a video thumbnail. Neither image selection nor editorial editing invents a clip or changes the source timeline.

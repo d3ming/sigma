@@ -81,6 +81,7 @@ def write_episode(run_dir: Path, ep: Episode, segs, tsrc, min_chars: int = MIN_T
             "fallback_text": fallback, "fallback_from": tsrc if fallback else None, "transcript_chars": transcript_chars(segs),
             "transcript_minutes": round(segs[-1]["start"] / 60) if segs and not fallback else 0, "audio_url": ep.audio_url,
             "youtube_id": ep.youtube_id, "transcript_url": ep.transcript_url, "rerun": is_rerun(ep.title, ep.description), "duration": ep.duration,
+            **({"image_url": ep.image_url} if ep.image_url else {}),
             "description": re.sub(r"<[^>]+>", " ", ep.description or "")[:1500]}
 
 

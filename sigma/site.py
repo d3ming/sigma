@@ -195,7 +195,7 @@ min-height:34px;padding:6px 13px;cursor:pointer}
 .epc-t::after{content:"";width:.5em;height:.5em;border:solid var(--text-muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
 .epc-t[aria-expanded=true]::after{transform:rotate(45deg)}
 .epc-t:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
-.epb{margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
+.episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}}.key-insights,.dense-summary{clear:both;margin-top:1.8em}.key-insights li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
 .eps{margin-top:.6em}.eps:empty{margin:0}
 .eps.busy::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid var(--border);border-top-color:var(--text-muted);border-radius:50%;animation:epspin .8s linear infinite}
 @keyframes epspin{to{transform:rotate(360deg)}}
@@ -766,8 +766,7 @@ const hit=[...document.querySelectorAll('#top>li')].find(row=>!row.hidden&&row.d
 
 
 
-# An opened home-page row (li.fold) fills from its own small fragment (claims_path): about 2 KB, 6 KB at most, against 137 KB for every row's
-# summaries in the page itself. The newest day's rows (at most EPC_AHEAD) are fetched one at a time when the browser is idle, any other row when a
+# The newest day's rows (at most EPC_AHEAD) are fetched one at a time when the browser is idle, any other row when a
 # pointer, finger or the keyboard reaches it, so opening one is usually instant; if it is not in yet a loading line shows. Without a script the
 # title stays a link to the episode's page; the script turns it into a disclosure button (aria-expanded) and the whole card toggles on a click
 # that is not on a link or a control. A failed fragment says so, links the page, and is tried again on the next open, not on every hover.
@@ -810,11 +809,45 @@ def claims_path(eid: str) -> str:
     return f"/episodes/{quote(slug(eid))}.claims.html"
 
 
+def episode_image(e: dict, large: bool = False) -> str:
+    video = re.search(r"(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})(?:[&?/#]|$)", e.get("youtube_url") or "")
+    source = f"https://i.ytimg.com/vi/{video[1]}/hqdefault.jpg" if video else safe_url(e.get("image_url"))
+    target = safe_url(e.get("youtube_url")) or safe_url(e.get("url"))
+    if not source:
+        return ""
+    image = f'<img class="episode-image" src="{esc(source)}" alt="{esc(e.get("show") or e.get("title") or "Episode")}" loading="lazy" decoding="async" width="160" height="90">'
+    return f'<a class="episode-image-link{" hero" if large else ""}" href="{esc(target)}" rel="noopener noreferrer">{image}</a>' if target else image
+
+
+def editor_stamp(e: dict, item: dict) -> str:
+    label = f'{fmt_ts(item["start"])}–{fmt_ts(item["end"])}'
+    url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+    return f'<a class="ts" href="{esc(url)}" rel="noopener noreferrer">{esc(label)}</a>' if url else esc(label)
+
+
+def key_insights_html(e: dict) -> str:
+    items = []
+    for insight in e.get("key_insights") or []:
+        why = f'<p>{esc(insight["why_it_matters"])}</p>' if insight.get("why_it_matters") else ""
+        inference = f'<p><b>Editorial inference:</b> {esc(insight["inference"])}</p>' if insight.get("inference") else ""
+        items.append(f'<li><h3>{esc(insight["title"])}</h3><p>{esc(insight["text"])}</p>{why}{inference}'
+                     f'<div class="meta">{esc(insight["speaker"])} · {editor_stamp(e, insight)}</div></li>')
+    return '<section class="key-insights"><h2>Key insights</h2><ul class="claims">' + "".join(items) + '</ul></section>'
+
+
+def dense_summary_html(e: dict) -> str:
+    sections = []
+    for i, section in enumerate(e.get("dense_summary") or []):
+        paragraphs = "".join(f'<p>{esc(text)}</p>' for text in section["text"].split("\n\n") if text.strip())
+        sections.append(f'<section id="summary-{i + 1}"><h3>{editor_stamp(e, section)} {esc(section["title"])}</h3>{paragraphs}</section>')
+    return '<section class="dense-summary"><h2>Dense summary</h2>' + "".join(sections) + '</section>'
+
+
 def claims_fragment(e: dict) -> str:
     """What an opened home-page row shows: the episode's summaries with their timestamps, then the way to its own page."""
     cls = "claims influencer" if e.get("influencer") else "claims"
-    return (f'<ul class="{cls}">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-            f'<p class="meta"><a href="{esc(e["page"])}">Open the episode page</a></p>\n')
+    content = key_insights_html(e) if e.get("key_insights") else f'<ul class="{cls}">{"".join(claim_li(c) for c in e["claims"])}</ul>'
+    return content + f'<p class="meta"><a href="{esc(e["page"])}">Open the episode page</a></p>\n'
 
 
 def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", expand: bool = False) -> str:
@@ -825,7 +858,7 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     t = f'<a href="{esc(e["page"])}">{esc(title)}</a>' if e.get("page") else (ext_link(e.get("url"), title) or esc(title))
     fold = bool(expand)
     meta = " · ".join(x for x in [show_name(e), esc(human_date(board.publication_day(e["published"]))) if e.get("published") else "", esc(why)] if x) + listen_icons(e)
-    take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") else ""
+    take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") and not e.get("key_insights") else ""
     rated = rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") and isinstance(e.get("score"), int) else "")
     picks = f'<ul class="claims influencer">{"".join(claim_li(c) for c in e["claims"][:5])}</ul>' if e.get("influencer") and e["claims"] else ""
     score = e["score"] if isinstance(e.get("score"), int) else ""
@@ -835,9 +868,11 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}" data-published="{published}" data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
     panel_id = f'epb-{quote(str(e["id"]), safe="")}'
     toggle = f'<button type="button" class="epc-t" aria-label="Toggle details for {esc(title)}" aria-controls="{panel_id}" aria-expanded="false"></button>' if fold else ""
-    head = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>{"" if fold else take}{"" if fold else picks}'
+    heading = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>'
+    image = episode_image(e)
+    head = (f'<div class="episode-head">{image}<div>{heading}</div></div>' if image else heading) + ("" if fold else take + picks)
     if fold:
-        if e.get("page") and e.get("claims"):
+        if e.get("page") and (e.get("claims") or e.get("key_insights")):
             details = f'<div class="epb" id="{panel_id}" data-src="{esc(claims_path(e["id"]))}" data-page="{esc(e["page"])}" hidden>{take}<p class="meta eps" role="status"></p></div>'
         else:
             static_details = take or '<p class="meta">No transcript claims are available.</p>'
@@ -1277,7 +1312,9 @@ def build_episodes(runs: list[dict]) -> dict:
             if eid:
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
-                     spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"))
+                     spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
+                     image_url=safe_url(m.get("image_url")), key_insights=m.get("key_insights"),
+                     dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"))
     for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
         for x in r["scored"]:
             e = entry(x["episode_id"])
@@ -1287,7 +1324,7 @@ def build_episodes(runs: list[dict]) -> dict:
                 e["score"], e["reason"], e["rubric"] = x["score"], x.get("reason"), r["rubric"]
     for e in reg.values():
         e["claims"] = sorted(claimdedupe.dedupe(uniq_claims(e["claims"]))[0], key=claim_ts)  # two runs can word one moment differently
-        e["page"] = episode_path(e["id"]) if e["claims"] else ""
+        e["page"] = episode_path(e["id"]) if e["claims"] or e.get("key_insights") else ""
         e["date"] = board.publication_day(e["published"] or max([claim_date(c) for c in e["claims"]] or [""]))
     return reg
 
@@ -1713,9 +1750,10 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     chips = [f'<a class="chip" href="{esc(company_path(cid))}">{esc(cos[cid]["name"])}</a>' for cid in e.get("edges", {}) if cos and cid in cos]
     chips += [f'<a class="chip" href="/shows/?topic={esc(tp)}#{esc(tp)}">{esc(ent.topic_names[tp])}</a>' for tp in e.get("topics", []) if ent]
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
-    li = "".join(claim_li(c) for c in e["claims"])
-    return page(f"{title} · {SITE}", f'<h1>{t}</h1><div class="meta">{meta}</div>{kind}{take}{about}'
-                f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{li}</ul>', "podcasts", md=md_of(e["page"]), updated=e["date"])
+    context = f'<p>{esc(e["context"])}</p>' if e.get("context") else ""
+    content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta}</div>{kind}{take}{about}{context}{content}',
+                "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
 # ---------------------------------------------------------------- Markdown
@@ -1944,7 +1982,21 @@ def episode_md(e: dict) -> str:
     out = episode_head_md(e, 1, self_page=True)
     issues = ", ".join(mlink(issue_name, absu(run_md_path(issue_name))) for issue_name in e["runs"])
     rated = f"Rated {e['score']}/10 as social commentary. " if e.get("influencer") else ""
-    out += [f"{rated}{plural(len(e['claims']), 'claim')}. Issues: {issues}. [HTML]({absu(e['page'])})", "", NOTE, ""]
+    count = (f"{len(e['key_insights'])} key insights, {len(e.get('dense_summary') or [])} summary sections"
+             if e.get("key_insights") else plural(len(e["claims"]), "claim"))
+    out += [f"{rated}{count}. Issues: {issues}. [HTML]({absu(e['page'])})", "", NOTE, ""]
+    if e.get("key_insights"):
+        out += [mt(e.get("context") or ""), "", mt(e.get("overview") or ""), "", "## Key insights", ""]
+        for item in e["key_insights"]:
+            url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+            out += [f'- **{mt(item["title"])}** — {mt(item["text"])} {mt(item.get("why_it_matters") or "")} — {mt(item["speaker"])} · {mlink(fmt_ts(item["start"]), url)}']
+            if item.get("inference"):
+                out += [f'  Editorial inference: {mt(item["inference"])}']
+        out += ["", "## Dense summary", ""]
+        for item in e.get("dense_summary") or []:
+            url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+            out += [f'### {mlink(fmt_ts(item["start"]), url)} {mt(item["title"])}', "", mt(item["text"]), ""]
+        return doc(out)
     return doc(out + [claim_md(c) for c in e["claims"]])
 
 
@@ -2016,7 +2068,7 @@ def index_md(runs: list[dict], reg: dict, pub: dict, people: dict, ireg: dict | 
                 title = mlink(e["title"] or e["id"], absu(md_of(e["page"])) if e.get("page") else e.get("url"))
                 platform = "YouTube" if e.get("influencer") else "Podcast"
                 published = e.get("published") or e.get("date")
-                out.append(f"- {platform}: {title}, {mt(e.get('show'))}, {mt(published)}" + (f": {mt(e['reason'])}" if e.get("reason") else ""))
+                out.append(f"- {platform}: {title}, {mt(e.get('show'))}, {mt(published)}" + (f": {mt(e['reason'])}" if e.get("reason") and not e.get("key_insights") else ""))
         if wk := [r for r in runs if r["kind"] == "weekly"][:1]:
             out += ["", f"## Latest weekly: {issue_title(wk[0])}", ""]
             out += themes_md(wk[0], reg, 3)
@@ -2108,7 +2160,9 @@ def episode_json(e: dict) -> dict:
             "youtube_url": e["youtube_url"], "apple_url": e["apple_url"], "spotify_url": e["spotify_url"],
             "spotify_kind": e["spotify_kind"], "transcript_url": e["transcript_url"], "claims": len(e["claims"]), "issues": e["runs"],
             "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
-            "lenses": e.get("lenses", []),
+            "lenses": e.get("lenses", []), "image_url": e.get("image_url"),
+            "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
+            "context": e.get("context"), "overview": e.get("overview"),
             "page": absu(e["page"]) if e["page"] else None, "md": absu(md_of(e["page"])) if e["page"] else None}
 
 

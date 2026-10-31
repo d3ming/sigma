@@ -28,18 +28,18 @@ from urllib.parse import urlsplit
 from .paths import data_root
 
 ROOT = data_root() / "published"
-FILES = ("selected.json", "report.json", "report.md", "ranked.json", "scores.json", "scores-influencer.json")
+FILES = ("selected.json", "report.json", "report.md", "ranked.json", "scores.json", "scores-influencer.json", "editor.json")
 STANCES = "stances.jsonl"
 MAX_BYTES = 1_000_000  # a published file this large is almost certainly not a report; keep it out of git
 EPISODE_KEYS = ("episode_id", "title", "source", "tier", "style", "published", "url", "youtube_id", "transcript_url",
-                "has_transcript", "transcript_source", "excluded")
+                "has_transcript", "transcript_source", "excluded", "image_url")
 
 
 LINK_KEYS = ("youtube_url", "apple_url", "spotify_url", "spotify_kind")
 DATA = data_root()
 
 
-def episodes(manifest: dict, found: dict | None = None) -> list[dict]:
+def episodes(manifest: dict, found: dict | None = None, edits: dict | None = None) -> list[dict]:
     """Episode metadata without descriptions or local paths. `found` ({episode_id: links}) adds the listen links; a
     youtube_url is also derived from youtube_id."""
     out = []
@@ -49,6 +49,7 @@ def episodes(manifest: dict, found: dict | None = None) -> list[dict]:
         if e.get("youtube_id") and not links.get("youtube_url"):
             links["youtube_url"] = f"https://www.youtube.com/watch?v={e['youtube_id']}"
         row.update({k: links[k] for k in LINK_KEYS if links.get(k)})
+        row.update((edits or {}).get(e.get("episode_id"), {}))
         out.append(row)
     return out
 
@@ -217,7 +218,9 @@ def validate_publication_inputs(published_root: str | Path, runs_root: str | Pat
 
     published_root, runs_root = Path(published_root).resolve(), Path(runs_root).resolve()
     claim_files = ("ranked.json", "scores.json", "scores-influencer.json", "report.json")
-    public_fields = set(EPISODE_KEYS) | set(LINK_KEYS)
+    from . import editor
+
+    public_fields = set(EPISODE_KEYS) | set(LINK_KEYS) | set(editor.FIELDS)
     for public_run in sorted(p for p in published_root.iterdir() if p.is_dir()):
         source_run = runs_root / public_run.name
         if not (public_run / "claims.jsonl").is_file() and not any((public_run / f).is_file() for f in claim_files) and \
@@ -238,6 +241,11 @@ def validate_publication_inputs(published_root: str | Path, runs_root: str | Pat
             validate_claim_inputs(source_run)
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"[published] source claim grounding failed for {public_run.name}") from exc
+        edits = editor.load(source_run)
+        public_editor, source_editor = public_run / editor.FILE, source_run / editor.FILE
+        if public_editor.is_file() != source_editor.is_file() or (public_editor.is_file() and
+                (public_editor.is_symlink() or public_editor.read_bytes() != source_editor.read_bytes())):
+            raise ValueError(f"[published] editor.json differs from source run {public_run.name}")
         manifest = json.loads(manifest_path.read_text())
         episodes_file = public_run / "episodes.json"
         if not episodes_file.is_file():
@@ -265,7 +273,7 @@ def validate_publication_inputs(published_root: str | Path, runs_root: str | Pat
                     links.yt_id(cached["youtube_url"]) != source_episode["youtube_id"]:
                 raise ValueError(f"[published] episodes.json has an invalid link cache for {public_run.name}")
             found[episode_id] = cached
-        if actual_episodes != episodes(manifest, found):
+        if actual_episodes != episodes(manifest, found, edits):
             raise ValueError(f"[published] episodes.json differs from source run {public_run.name}")
         public_themes, source_themes = public_run / "themes.json", source_run / "themes.json"
         if public_themes.is_file() != source_themes.is_file():
@@ -485,6 +493,11 @@ def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) 
                 if source.is_symlink() or not source.is_file():
                     raise ValueError(f"[published] {filename} missing from source run {public_run.name}")
                 shutil.copy2(source, dest_run / filename)
+        editor_source = source_run / "editor.json"
+        if editor_source.is_file():
+            if editor_source.is_symlink():
+                raise ValueError(f"[published] editor.json missing from source run {public_run.name}")
+            shutil.copy2(editor_source, dest_run / "editor.json")
         theme_source = source_run / "themes.json"
         if theme_source.is_file():
             if theme_source.is_symlink():
@@ -492,6 +505,8 @@ def freeze_publication_inputs(data_root: str | Path, snapshot_root: str | Path) 
             shutil.copy2(theme_source, dest_run / theme_source.name)
         data = json.loads(manifest.read_text())
         cited_episodes = set()
+        if editor_source.is_file():
+            cited_episodes.update(e["episode_id"] for e in json.loads(editor_source.read_text())["episodes"])
         for filename in claim_files:
             source = source_run / filename
             if not source.is_file():
@@ -594,7 +609,7 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
     episodes.json and claims.jsonl also carry per-episode listen links (see resolve_links for `resolver`).
     A run with a themes.json also gets the resolved themes.json (themes.py); `top` is the digest's top N that its
     evidence must sit in. An invalid themes.json raises ThemesError before anything is replaced."""
-    from . import themes
+    from . import editor, themes
 
     run_dir = Path(run_dir).resolve()
     dest = Path(root or ROOT) / (name or run_dir.name)
@@ -613,7 +628,10 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
     for p in srcs:  # before anything is replaced: a private phrase in any file stops the export
         if p.suffix in (".md", ".json", ".jsonl") and (hits := private_hits_file(p)):
             raise ValueError(f"[published] {p.name} looks private ({hits}); fix it in the run folder, never in published/")
+        if p.name == editor.FILE and p.stat().st_size > MAX_BYTES:
+            raise ValueError(f"[published] editor.json exceeds the {MAX_BYTES // 1000} KB publication limit")
     validate_claim_inputs(run_dir)
+    edits = editor.load(run_dir)
     found = resolve_links(run_dir, manifest, previous, resolver)
     youtube = {e["episode_id"]: u for e in episodes(manifest, found) if (u := e.get("youtube_url"))}
     resolved_themes = themes.export(run_dir, top=top, youtube_urls=youtube)
@@ -635,7 +653,7 @@ def export(run_dir: str | Path, root: str | Path | None = None, name: str | None
             shutil.copy2(p, stage / p.name)
             written.append(p.name)
         if man.exists():
-            (stage / "episodes.json").write_text(json.dumps(episodes(manifest, found), indent=1, ensure_ascii=False) + "\n")
+            (stage / "episodes.json").write_text(json.dumps(episodes(manifest, found, edits), indent=1, ensure_ascii=False) + "\n")
             written.append("episodes.json")
         (stage / "claims.jsonl").write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows))
         written.append("claims.jsonl")
