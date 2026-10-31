@@ -16,7 +16,11 @@ the absolute anchors below, not against the other episodes in your batch.
 ## 1. Read and extract claims
 
 For each episode with a transcript, read it and keep the claims an investor, or someone tracking AI and robotics, could act on or check.
-Skip ads, intros, banter and vague opinion. Each claim has:
+Score and summarize the editorial content. Exclude sponsor reads, promo codes, house ads and claims made in commercial
+breaks, along with intros, banter and vague opinion. Keep relevant conflict-of-interest disclosures. An editorial
+discussion of advertising or sponsorship economics is not itself an ad.
+Keep the original audio and transcript timeline intact: omit ads from the output, not from the source. Do not trim
+or retime citations; use the clock of the transcribed source. Each claim has:
 
 - `ticker`: list of tickers it is about (`private:Name` for private companies; empty if none).
 - `claim`: one falsifiable sentence in your words. No hedging filler.

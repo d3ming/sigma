@@ -27,6 +27,10 @@ Rules:
 - Every `signal` bullet and claim needs `speaker` (name from the transcript, else role, else `unknown`) and
   `timestamp` in seconds from the nearest `[h:mm:ss]` line. Use `null` only when the episode has no transcript.
 - Paraphrase. Quote at most a short phrase. No claims that are not in the transcript.
+- Exclude sponsor reads, promo codes, house ads and commercial-break claims from insights and summaries. Keep relevant
+  conflict disclosures in `interests`; editorial discussion of advertising or sponsorship economics is not itself an ad.
+  Leave the source timeline intact and cite the transcribed source's clock. Do not trim ads or retime citations to
+  make them fit another recording.
 - Put conflicts of interest the speaker mentions (investments, board seats) in `interests`.
 - No owner holdings, weights or position data. A speaker's public statement about their own positions may be reported as theirs. No investment advice.
 
