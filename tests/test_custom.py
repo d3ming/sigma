@@ -113,6 +113,29 @@ def manifest(run):
     return json.loads((run / "manifest.json").read_text())
 
 
+def test_recurring_youtube_titles_keep_their_own_video_and_transcript(tmp_path):
+    """Failure seen: custom-run reused another day's video transcript because the recurring title matched."""
+    title = "Live Premarket Stock Market Update"
+    old = yt_ep("yt:old-video", title, "Market Desk", days_ago=6)
+    old_pick = custom.candidate(old, "youtube")
+    old_run = make_run(tmp_path / "runs" / "earlier", [old], segs=[{"start": 0, "speaker": None, "text": "earlier evidence " * 500}])
+    first = custom.candidate(yt_ep("yt:new-video", title, "Market Desk", days_ago=5), "youtube")
+    second = custom.candidate(yt_ep("yt:next-video", title, "Market Desk", days_ago=4), "youtube")
+    assert len(custom.merge_candidates([first, second])) == 2
+    custom.mark_transcribed([old_pick, first], tmp_path / "runs")
+    assert old_pick["transcribed"]["run"] == old_run.name and first["transcribed"] is None
+    run = custom_run(tmp_path, [first, second], "requested")
+    rows = manifest(run)["episodes"]
+    assert {row["episode_id"] for row in rows} == {"yt:new-video", "yt:next-video"}
+    assert all(not row["has_transcript"] and "reused_from" not in row for row in rows)
+    assert all("earlier evidence" not in (run / row["file"]).read_text() for row in rows)
+    same = custom_run(tmp_path, [old_pick], "same-original")
+    row = manifest(same)["episodes"][0]
+    assert row["has_transcript"] and row["reused_from"].startswith(old_run.name + "/")
+    assert "earlier evidence" in (same / row["file"]).read_text()
+    assert not fetch_mod.same_episode(old, yt_ep("yt:new-video", title, "Market Desk", days_ago=6))
+
+
 def test_transcribe_a_custom_run_and_follow_it_with_status(monkeypatch, tmp_path):
     """A custom run whispers every pick (no triage), YouTube-only picks from the video's audio; a failed download is recorded."""
     run = custom_run(tmp_path, [pick(episode_id="yt:xyz", audio_url=None, youtube_id="xyz", title="Altman, staying human"),
