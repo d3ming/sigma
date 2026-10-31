@@ -20,6 +20,8 @@ and ad boundaries in that reference. Editors receive the source and editing cont
 frozen topic reference. Neither receives the blind-label mapping.
 
 Keep the evaluation under the configured private data root, with one directory per experiment and episode:
+Full transcripts and any requests or logs containing their raw text stay local and Git-ignored, including in a
+private operator repository. Back them up separately. Version hashes, source references and editorial results.
 
 ```text
 evaluations/editor/<experiment>/

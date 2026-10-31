@@ -18,6 +18,12 @@ date is the Pacific day it covers. The scanner delivers the X scan before each X
 Install [Homebrew](https://brew.sh), clone Sigma, and work from a worktree. Restore your private data directory
 separately; rebuilding the Python environment does not restore transcripts or scan history.
 
+Before retiring a machine, inventory its ignored data and local worktree notes. Preserve exact transcript versions,
+library databases, feed caches and automation journals in a private backup outside Git. Snapshot a running SQLite
+database consistently; copying its main file alone can miss uncheckpointed data. Verify copied file hashes and any
+remaining unreadable paths before treating the migration as complete. Rebind runtime paths with setup rather than
+activating the old configuration or recurring jobs.
+
 ```bash
 export SIGMA_DATA_ROOT=/absolute/path/to/private/data
 make setup
