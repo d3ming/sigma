@@ -257,12 +257,27 @@ def test_entities_filter_shows_companies_and_lenses(tmp_path):
     assert tk["NVDA"]["claims"] == 2 and tk["NVDA"]["latest_date"] == "2026-01-11" and tk["NVDA"]["md"] == "https://example.invalid/tickers/NVDA.md"
 
 
-def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate(tmp_path):
-    """Owner-stated rule: one newest-first podcast/video feed. Failure-seen: an editor-only interview advertised a missing expansion fragment."""
+def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate(tmp_path, monkeypatch):
+    """Owner-stated rule: one newest-first podcast/video feed. Failure-seen: an editor-only interview advertised a missing expansion fragment; live cards fetched megabyte show originals."""
     site.ENTITIES_FILE.write_text(json.dumps(ENTITIES))
     pub = tmp_path / "published"
     for make in (make_published, make_daily, make_people, make_speakers):
         make(pub)
+    import base64
+    from sigma.show_art import cache_file
+
+    cache = tmp_path / "show-art"
+    cache.mkdir()
+    monkeypatch.setenv("SIGMA_SHOW_ART_CACHE", str(cache))
+    compact = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
+    art_urls = ["https://example.com/podcast-original.png", "https://example.com/creator-original.png"]
+    for folder, url in zip(("2026-01-05-weekly", "2026-01-09-daily"), art_urls):
+        metadata = pub / folder / "episodes.json"
+        entries = json.loads(metadata.read_text())
+        for entry in entries:
+            entry.update(show_image_url=url, image_url="https://example.com/episode-large.jpg")
+        metadata.write_text(json.dumps(entries))
+        cache_file(url, cache).write_bytes(compact)
     weekly_path = pub / "2026-01-05-weekly" / "ranked.json"
     weekly = json.loads(weekly_path.read_text())
     weekly["episodes"][0]["published"] = "2026-01-09T20:30:00+00:00"
@@ -398,6 +413,20 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "Social" in (out / "tickers/NVDA.md").read_text() and "Calls for a long above 180" in (out / "tickers/NVDA.md").read_text()
     home_md = (out / "index.md").read_text()
     assert "Creator four" in home_md and "Creator three" not in home_md
+
+    images = re.findall(r'<img class="episode-image" src="([^"]+)"', home)
+    assert len(images) >= 2 and all(image.startswith("/show-art/") for image in images)
+    assert len(set(images)) == 1 and (out / images[0].lstrip("/")).read_bytes() == compact
+    assert not any(url in home for url in art_urls)
+    assert social_json["rss:inf"]["show_image_url"] == art_urls[1]
+    public_episodes = {e["episode_id"]: e for e in json.loads((out / "episodes.json").read_text())["episodes"]}
+    assert public_episodes[EP]["show_image_url"] == art_urls[0]
+    assert 'src="https://example.com/episode-large.jpg"' in (out / "episodes/rss_aaa.html").read_text()
+    monkeypatch.setenv("SIGMA_SHOW_ART_CACHE", str(tmp_path / "empty-art-cache"))
+    main(["site", "--out", str(out), "--published", str(pub)])
+    empty_home = (out / "index.html").read_text()
+    assert "Boss" in empty_home and "Chart week" in empty_home and 'class="episode-image"' not in empty_home
+    assert not any(url in empty_home for url in art_urls)
 
 
 def test_updated_line_is_pacific_time(monkeypatch):
