@@ -28,6 +28,11 @@ make setup
 failures before following [the daily update skill](../../skills/daily-update/SKILL.md). A missing X scan needs the
 configured scanner; installing local tools cannot replace it.
 
+The project `podcast_editor` role is registered in `.codex/config.toml`; its model and effort are set in
+`.codex/agents/podcast-editor.toml`. Codex must trust the primary repository checkout before it loads project
+settings, including when working in a linked worktree. After setup, verify that the named role can spawn; a role
+file existing on disk does not prove that Codex loaded it.
+
 ## Optional scheduled jobs
 
 Only after the daily run works, inspect the shipped plists and choose the schedule. Installing jobs is separate
