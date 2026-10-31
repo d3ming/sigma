@@ -16,7 +16,7 @@ from . import events
 from .config import load_sources
 from .ingest import Episode, discover
 from .people import apply_source_tiers, discover_people, load_people
-from .ingest import in_window, is_rerun
+from .ingest import different_youtube_videos, in_window, is_rerun
 from .manifest import update as update_manifest
 from .transcribe import MIN_TRANSCRIPT_CHARS, fmt_ts, get_transcript, is_fallback, title_match, transcript_chars
 from .triage import DEFAULT_TOP
@@ -32,6 +32,8 @@ def slug(text: str, n: int = 60) -> str:
 def same_episode(ep, known) -> bool:
     if ep.id == known.id:
         return True
+    if different_youtube_videos(ep.id, known.id, ep.youtube_id, getattr(known, "youtube_id", None)):
+        return False
     numbers = re.findall(r"\d+(?:[.,]\d+)*", ep.title)
     old_numbers = re.findall(r"\d+(?:[.,]\d+)*", known.title)
     if numbers != old_numbers:
@@ -507,6 +509,8 @@ class ReuseIndex:
         for k in self.keys(e):
             if k in self.by:
                 d, old = self.by[k]
+                if k.startswith("title:") and different_youtube_videos(e["episode_id"], old["episode_id"], e.get("youtube_id"), old.get("youtube_id")):
+                    continue
                 if (d / old["file"]).exists():
                     return d, old
         return None
@@ -515,6 +519,8 @@ class ReuseIndex:
         for k in self.keys(e):
             if k in self.by:
                 d, old = self.by[k]
+                if k.startswith("title:") and different_youtube_videos(e["episode_id"], old["episode_id"], e.get("youtube_id"), old.get("youtube_id")):
+                    continue
                 md = d / old["file"]
                 if md.exists():
                     segs = segments_from_md(md.read_text())

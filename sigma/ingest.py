@@ -43,6 +43,12 @@ def canonical_id(guid: str | None, youtube_id: str | None, link: str | None) -> 
     return "url:" + hashlib.sha1((link or "").encode()).hexdigest()[:16]
 
 
+def different_youtube_videos(first_id: str, second_id: str, first_video: str | None = None, second_video: str | None = None) -> bool:
+    first_video = first_video or (first_id[3:] if first_id.startswith("yt:") else None)
+    second_video = second_video or (second_id[3:] if second_id.startswith("yt:") else None)
+    return bool(first_video and second_video and first_video != second_video)
+
+
 def parse_date(value: str | None) -> datetime | None:
     if not value:
         return None

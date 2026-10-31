@@ -17,7 +17,7 @@ from pathlib import Path
 
 from . import people as ppl
 from .fetch import ReuseIndex, write_episode
-from .ingest import Episode, parse_date
+from .ingest import Episode, different_youtube_videos, parse_date
 from .manifest import update as update_manifest
 from .transcribe import title_match
 
@@ -29,6 +29,8 @@ def same_episode(a: dict, b: dict) -> bool:
     """Same id, or nearly the same title published within a couple of days (an episode and its YouTube copy)."""
     if a["episode_id"] == b["episode_id"]:
         return True
+    if different_youtube_videos(a["episode_id"], b["episode_id"], a.get("youtube_id"), b.get("youtube_id")):
+        return False
     da, db = parse_date(a["published"]), parse_date(b["published"])
     if not da or not db or abs((da - db).total_seconds()) > DATE_SLACK_DAYS * 86400:
         return False
@@ -95,7 +97,7 @@ def mark_transcribed(cands: list[dict], runs: Path) -> None:
     """Set `transcribed` on candidates whose transcript already sits in a run folder under `runs`."""
     reuse = ReuseIndex(runs)
     for c in cands:
-        hit = reuse.locate({"episode_id": c["episode_id"], "audio_url": c["audio_url"], "title": c["title"], "source": c["show"]})
+        hit = reuse.locate({"episode_id": c["episode_id"], "youtube_id": c.get("youtube_id"), "audio_url": c["audio_url"], "title": c["title"], "source": c["show"]})
         if hit:
             c["transcribed"] = {"run": hit[0].name, "file": hit[1]["file"], "source": hit[1].get("transcript_source")}
 
@@ -143,7 +145,7 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
     prior = json.loads(path.read_text()) if path.exists() else None
     if prior and prior.get("kind") != "custom":
         sys.exit(f"[custom-run] {run_dir} is a {prior.get('kind') or 'daily/weekly'} run, not a custom run; pick another name")
-    have = [{"episode_id": e["episode_id"], "title": e["title"], "published": e["published"]} for e in (prior or {}).get("episodes", [])]
+    have = [{"episode_id": e["episode_id"], "youtube_id": e.get("youtube_id"), "title": e["title"], "published": e["published"]} for e in (prior or {}).get("episodes", [])]
     run_dir.mkdir(parents=True, exist_ok=True)
     reuse = ReuseIndex(run_dir.parent, exclude=run_dir)
     tiers = None
@@ -160,7 +162,7 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
         ep = to_episode(pick)
         if tiers:
             ppl.apply_source_tiers([ep], tiers)
-        hit = reuse.find({"episode_id": ep.id, "audio_url": ep.audio_url, "title": ep.title, "source": ep.source_name})
+        hit = reuse.find({"episode_id": ep.id, "youtube_id": ep.youtube_id, "audio_url": ep.audio_url, "title": ep.title, "source": ep.source_name})
         segs, tsrc = (hit[0], hit[1]) if hit else (None, None)
         if hit:
             ep.transcript_url = hit[3]
@@ -172,7 +174,7 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
         if hit:
             row["reused_from"] = hit[2]
         rows.append(row)
-        have.append({"episode_id": ep.id, "title": ep.title, "published": pick["published"]})
+        have.append({"episode_id": ep.id, "youtube_id": ep.youtube_id, "title": ep.title, "published": pick["published"]})
 
     oldest = min([parse_date(h["published"]) for h in have if parse_date(h["published"])] or [now])
     entry = {"at": now.isoformat(timespec="seconds"), "added": len(rows), "reused": reused}
