@@ -7,6 +7,8 @@ description: Write Sigma's daily X edition from a completed scanner run, validat
 
 Refresh the configured private scan data through its operator workflow. Loop on `sigma x status [D] --json` and follow `next` until done. The status output owns the order and paths.
 
+An isolated truncated or unusable post is a post-level exclusion, not an edition blocker. Recover it or preserve its original row with its id and reason in private `scan/D/excluded.jsonl`, remove it from usable scan input, disclose the omission in manifest notes and digest coverage, and rerun `scan-check`. Never cite the excluded text or depend on it. Missing account/window coverage and failed validation still stop the edition; all published sentences must pass the existing grounding checks.
+
 - For `command`, run the supplied command.
 - For `agent`, write `next.output` using `prompts/x-daily.md`, then run `sigma x check D`. Fix the file when validation fails.
 - For `stop`, publish nothing from another source; report the exact scan problem. A missing X scan does not invent an edition or prevent an independently checked podcast issue.

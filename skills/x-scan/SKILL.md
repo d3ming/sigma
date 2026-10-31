@@ -6,13 +6,13 @@ contract_version: 2
 
 # X scan (scanner)
 
-You collect the day's posts from the accounts in `x-accounts.json`; Sigma filters, ranks and writes the edition. So keep
-every post the API returns, judge nothing, and add nothing of your own to the scan. After it is delivered, write the
+You collect the day's posts from the accounts in `x-accounts.json`; Sigma filters, ranks and writes the edition. Preserve
+every post the API returns, judge no investment view, and add nothing of your own to the scan. After it is delivered, write the
 day's private digest (step 8). Delivery is a pull request in the configured private data repository; a pushed branch is not yet accepted data.
 
 The contract is this file, `schema/x-scan.schema.json` and `sigma x scan-check`. Copy `contract_version` (front matter)
 into every manifest; `scan-check` refuses another version, which means your copy of this file is stale: pull and re-read.
-When a rule here cannot be met, deliver what you have with `complete: false` and say why in the manifest's `notes`.
+Missing accounts, an uncovered window, failed paging or other systemic collection gaps require `complete: false` and an explanation in the manifest's `notes`. An isolated unusable post follows the exclusion rule below; it does not block the usable scan.
 
 ## Setup
 
@@ -26,11 +26,12 @@ When a rule here cannot be met, deliver what you have with `complete: false` and
 
 1. **Window.** From the `window_end` of the newest manifest under `$SIGMA_X_DIR/scan/` (24 hours back when there is
    none) to now, never more than 72 hours. If `scan/D/` already exists this run extends it: add only posts whose id is
-   not there yet and rewrite its manifest to cover the whole day. Never overwrite earlier posts.
+   not there yet and rewrite its manifest to cover the whole day. Preserve earlier posts, including any moved to the exclusion record.
 2. **Accounts.** Every `core` account in `x-accounts.json`.
 3. **Posts.** Each account's own posts in the window: no reposts, no replies to other people (replies to itself, its
    threads, stay), the full text of long posts, and each quoted post once (`quoted.jsonl`). Make sure paging covered
    the whole window for every account; an account with nothing usually means the search missed it, so check it alone.
+   If an individual post is truncated or otherwise unusable, try to recover it. If it remains unusable, preserve its original row with its id and reason in private `scan/D/excluded.jsonl`, omit it from usable `posts.jsonl` or `quoted.jsonl`, and disclose the count and reason in the manifest's `notes` and digest coverage. Do not cite excluded text or statements that depend on it. `complete` describes account and window coverage; a disclosed isolated exclusion does not require `complete: false`.
 4. **Deletions.** If `$SIGMA_X_DIR/check-ids.json` lists ids, look each up and report in `ids_gone` the ones X says no
    longer exist or are no longer visible. X's terms require Sigma to delete those, and Sigma deletes on your word, so a
    failed or unclear lookup is never "gone": leave it unchecked and say so in `notes`. Never post text here.
