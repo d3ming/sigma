@@ -74,7 +74,7 @@ def test_stated_rule_home_insights_and_detail_summary_are_separate():
     home = site.top_entry(episode, expand=True)
     assert "i.ytimg.com" not in home and episode["show_image_url"] not in home
     unbranded = {**episode, "show_image_url": None, "image_url": "https://example.invalid/episode.jpg"}
-    assert "<img" not in site.top_entry(unbranded, expand=True)
+    assert 'src="/podcast-placeholder.svg"' in site.top_entry(unbranded, expand=True)
     assert 'src="https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg"' in detail and 'src="https://example.invalid/show.jpg"' not in detail
     assert "t=12s" in fragment and "t=0s" in detail
     encoded = site.episode_json(episode)

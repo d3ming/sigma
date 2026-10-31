@@ -8,6 +8,7 @@ from urllib.parse import quote_plus
 
 import yaml
 
+from .feedcache import image_url
 from .ingest import Episode, _yt_json, canonical_id, in_window, parse_date
 from .config import check
 from .transcribe import title_match
@@ -146,6 +147,9 @@ def from_youtube_query(query: str, now: datetime, days: int, limit: int = 5, min
 
 
 def parse_itunes(person: Person, results: list[dict], now: datetime, days: int, min_minutes: int = 20) -> list[Episode]:
+    show_art = {r["collectionId"]: art for r in results
+                if r.get("wrapperType") == "track" and r.get("kind") == "podcast" and r.get("collectionId")
+                and (art := image_url(r.get("artworkUrl600") or r.get("artworkUrl100")))}
     out = []
     for r in results:
         dt = parse_date(r.get("releaseDate"))
@@ -158,7 +162,9 @@ def parse_itunes(person: Person, results: list[dict], now: datetime, days: int, 
         out.append(_ep(person, id=canonical_id(r.get("episodeGuid"), None, r.get("trackViewUrl")), show=r.get("collectionName", ""),
                        title=r.get("trackName", ""), url=r.get("trackViewUrl") or r.get("episodeUrl", ""), published_at=dt,
                        audio_url=r.get("episodeUrl"), feed_url=r.get("feedUrl"), description=(r.get("description") or "")[:2000],
-                       duration=round(r["trackTimeMillis"] / 1000) if r.get("trackTimeMillis") else None))
+                       duration=round(r["trackTimeMillis"] / 1000) if r.get("trackTimeMillis") else None,
+                       image_url=image_url(r.get("artworkUrl600") or r.get("artworkUrl160")),
+                       show_image_url=show_art.get(r.get("collectionId")) or image_url(r.get("collectionArtworkUrl600"))))
     return out
 
 
@@ -188,16 +194,34 @@ def itunes_search(term: str, get=None, sleep=None) -> list[dict]:
     raise AssertionError("unreachable")
 
 
+def attach_collection_art(episodes: list[Episode], results: list[dict], get=None) -> list[Episode]:
+    from .apple_art import collection_image
+
+    collections = {canonical_id(row.get("episodeGuid"), None, row.get("trackViewUrl")): row.get("collectionId")
+                   for row in results}
+    artwork = {}
+    for episode in episodes:
+        collection = collections.get(episode.id)
+        if episode.show_image_url or not isinstance(collection, int) or collection <= 0:
+            continue
+        if collection not in artwork:
+            artwork[collection] = collection_image(collection, get)
+        episode.show_image_url = artwork[collection]
+    return episodes
+
+
 def from_itunes(person: Person, now: datetime, days: int, get=None, sleep=None, min_minutes: int = 20) -> list[Episode]:
-    return parse_itunes(person, itunes_search(person.name, get, sleep), now, days, min_minutes)
+    rows = itunes_search(person.name, get, sleep)
+    return attach_collection_art(parse_itunes(person, rows, now, days, min_minutes), rows, get)
 
 
 def from_itunes_query(query: str, now: datetime, days: int, get=None, sleep=None, min_minutes: int = 20) -> list[Episode]:
     """Free-text podcast-episode search (a company, a topic): episodes in the window and long enough, whose title,
     description or show has every query word. Same off-topic filter as a person search."""
     generic = Person(name=query, role="", priority="watch")
+    rows = itunes_search(query, get, sleep)
     out = []
-    for r in itunes_search(query, get, sleep):
+    for r in rows:
         dt = parse_date(r.get("releaseDate"))
         if not dt or not in_window(dt, now, days) or (r.get("trackTimeMillis") or 0) < min_minutes * 60000:
             continue
@@ -209,8 +233,10 @@ def from_itunes_query(query: str, now: datetime, days: int, get=None, sleep=None
                            source_name=r.get("collectionName", ""), tier=2, title=r.get("trackName", ""),
                            url=r.get("trackViewUrl") or r.get("episodeUrl", ""), published_at=dt, audio_url=r.get("episodeUrl"),
                            feed_url=r.get("feedUrl"), description=(r.get("description") or "")[:2000],
-                           duration=round(r["trackTimeMillis"] / 1000) if r.get("trackTimeMillis") else None))
-    return out
+                           duration=round(r["trackTimeMillis"] / 1000) if r.get("trackTimeMillis") else None,
+                       image_url=image_url(r.get("artworkUrl600") or r.get("artworkUrl160")),
+                       show_image_url=image_url(r.get("collectionArtworkUrl600"))))
+    return attach_collection_art(out, rows, get)
 
 
 def dedupe(channel_eps: list[Episode], person_eps: list[Episode], threshold: float = 0.8) -> list[Episode]:
