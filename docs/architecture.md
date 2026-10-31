@@ -24,7 +24,8 @@ labels, figures in each cited interval and extended copied text before replacing
 separate from the attributed account; automated checks do not establish semantic truth or identify unlabelled voices.
 
 The exporter projects the two fields into episode metadata without rewriting scores, claims or stance labels. Frozen
-publication inputs retain the editorial file and its transcript evidence. The app JSON and episode Markdown keep both
+publication inputs retain the editorial file and its transcript evidence. [Editor evaluation](editor-evaluation.md)
+defines the separate, source-based prompt refinement and model comparison workflow. The app JSON and episode Markdown keep both
 fields. Expanding a homepage card shows key insights; the episode page additionally shows the dense summary. Episodes
 without an edit retain their existing claim view. Publisher artwork is metadata; a verified YouTube identity can supply
 a video thumbnail. Neither image selection nor editorial editing invents a clip or changes the source timeline.
