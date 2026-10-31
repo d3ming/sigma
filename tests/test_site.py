@@ -258,7 +258,7 @@ def test_entities_filter_shows_companies_and_lenses(tmp_path):
 
 
 def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate(tmp_path):
-    """Owner-stated rule: podcasts and YouTube videos share one newest-first feed, ordered by publication time; X remains a separate feed."""
+    """Owner-stated rule: one newest-first podcast/video feed. Failure-seen: an editor-only interview advertised a missing expansion fragment."""
     site.ENTITIES_FILE.write_text(json.dumps(ENTITIES))
     pub = tmp_path / "published"
     for make in (make_published, make_daily, make_people, make_speakers):
@@ -301,6 +301,9 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
             episode.update(key_insights=creator_insights, dense_summary=creator_summary)
     episodes.append({"episode_id": "rss:inf3", "title": "Creator three", "source": "Show I", "style": "influencer",
                      "published": "2026-01-09T19:00:00+00:00", "key_insights": creator_insights, "dense_summary": creator_summary})
+    episodes.append({"episode_id": "rss:pod4", "title": "Interview four", "source": "Show A",
+                     "published": "2026-01-09T18:30:00+00:00",
+                     "key_insights": [{**creator_insights[0], "speaker": "Guest"}], "dense_summary": creator_summary})
     episodes_path.write_text(json.dumps(episodes))
     earnings = pub / "2026-01-09-earnings"
     earnings.mkdir()
@@ -339,7 +342,10 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     creator_without_claims = next(row for row in cards if "Creator four" in row)
     assert "No transcript claims are available." in creator_without_claims and 'aria-expanded="false"' in creator_without_claims
     podcast_without_claims = next(row for row in cards if "Interview four" in row)
-    assert "No transcript claims are available." in podcast_without_claims and 'aria-expanded="false"' in podcast_without_claims
+    assert f'data-src="{site.claims_path("rss:pod4")}"' in podcast_without_claims and 'aria-expanded="false"' in podcast_without_claims
+    editor_fragment = (out / site.file_of(site.claims_path("rss:pod4"))).read_text()
+    assert "Pricing limits" in editor_fragment and "The creator distinguishes usage from revenue." in editor_fragment
+    assert "The discussion follows the limits on revenue conversion." not in editor_fragment
     google_page = (out / site.file_of(site.episode_path("yt:google"))).read_text()
     assert "Show I · Jan 9, 2026" in google_page
     find_rows = {e["i"]: e for e in json.loads((out / "find-index.json").read_text())["eps"]}

@@ -2658,7 +2658,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         if e["page"]:
             emit(e["page"], episode_page(e, ent, cos), episode_md(e), e["date"])
     for e in home_rows:  # the summaries a home-page row opens to (top_entry expand)
-        if e["page"] and e["claims"]:
+        if e["page"] and (e["claims"] or e.get("key_insights")):
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))
     write(out / "episodes.md", episodes_md(reg))
     sm.append(("/episodes.md", newest))
