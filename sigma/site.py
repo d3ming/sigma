@@ -819,9 +819,15 @@ def episode_image(e: dict, large: bool = False) -> str:
     return f'<a class="episode-image-link{" hero" if large else ""}" href="{esc(target)}" rel="noopener noreferrer">{image}</a>' if target else image
 
 
+def editor_timestamp_url(e: dict, start: int) -> str:
+    if "youtube" not in str(e.get("transcript_source") or "").lower():
+        return ""
+    return ts_link(safe_url(e.get("youtube_url")), start)
+
+
 def editor_stamp(e: dict, item: dict) -> str:
     label = f'{fmt_ts(item["start"])}–{fmt_ts(item["end"])}'
-    url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+    url = editor_timestamp_url(e, item["start"])
     return f'<a class="ts" href="{esc(url)}" rel="noopener noreferrer">{esc(label)}</a>' if url else esc(label)
 
 
@@ -1313,7 +1319,7 @@ def build_episodes(runs: list[dict]) -> dict:
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
-                     image_url=safe_url(m.get("image_url")), key_insights=m.get("key_insights"),
+                     image_url=safe_url(m.get("image_url")), transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"))
     for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
         for x in r["scored"]:
@@ -1988,13 +1994,13 @@ def episode_md(e: dict) -> str:
     if e.get("key_insights"):
         out += [mt(e.get("context") or ""), "", mt(e.get("overview") or ""), "", "## Key insights", ""]
         for item in e["key_insights"]:
-            url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+            url = editor_timestamp_url(e, item["start"])
             out += [f'- **{mt(item["title"])}** — {mt(item["text"])} {mt(item.get("why_it_matters") or "")} — {mt(item["speaker"])} · {mlink(fmt_ts(item["start"]), url)}']
             if item.get("inference"):
                 out += [f'  Editorial inference: {mt(item["inference"])}']
         out += ["", "## Dense summary", ""]
         for item in e.get("dense_summary") or []:
-            url = ts_link(safe_url(e.get("youtube_url")) or safe_url(e.get("url")), item["start"])
+            url = editor_timestamp_url(e, item["start"])
             out += [f'### {mlink(fmt_ts(item["start"]), url)} {mt(item["title"])}', "", mt(item["text"]), ""]
         return doc(out)
     return doc(out + [claim_md(c) for c in e["claims"]])
@@ -2162,7 +2168,7 @@ def episode_json(e: dict) -> dict:
             "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
             "lenses": e.get("lenses", []), "image_url": e.get("image_url"),
             "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
-            "context": e.get("context"), "overview": e.get("overview"),
+            "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"),
             "page": absu(e["page"]) if e["page"] else None, "md": absu(md_of(e["page"])) if e["page"] else None}
 
 
