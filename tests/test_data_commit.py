@@ -1,6 +1,8 @@
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -96,14 +98,17 @@ def test_branch_delta_lands_on_private_main_without_touching_checkout_or_sibling
     assert f"[data] main: {main}" in result.stdout
     assert f"[data] owned tree: {planned_tree}" in result.stdout
     assert f"[data] owned tree: {git('rev-parse', f'{main}:sigma', cwd=source)}" in result.stdout
-    assert git("show", f"{main}:sigma/site.json", cwd=source) == '{"version":2}'
-    assert git("show", f"{main}:sigma/published/signals.json", cwd=source) == '{"signals":1}'
-    assert git("show", f"{main}:sigma/runs/baseline-transcript.md", cwd=source) == "old local transcript"
-    assert git("show", f"{main}:sigma/runs/episode-01.md", cwd=source) == "old local episode transcript"
-    assert git("show", f"{main}:sigma/runs/feed-cache.json", cwd=source) == "old local feed cache"
-    assert git("show", f"{main}:sigma/library.sqlite", cwd=source) == "old local sqlite"
-    assert git("show", f"{main}:sigma/.env.local", cwd=source) == "token=old-local"
-    assert git("show", f"{main}:sigma/.private-words", cwd=source) == "old local private marker"
+    archive = subprocess.run(["git", "archive", "--format=tar", main, "sigma"], cwd=source, check=True, capture_output=True).stdout
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tree:
+        saved = {member.name: tree.extractfile(member).read() for member in tree if member.isfile()}
+    assert saved["sigma/site.json"] == b'{"version":2}\n'
+    assert saved["sigma/published/signals.json"] == b'{"signals":1}\n'
+    assert saved["sigma/runs/baseline-transcript.md"] == b"old local transcript\n"
+    assert saved["sigma/runs/episode-01.md"] == b"old local episode transcript\n"
+    assert saved["sigma/runs/feed-cache.json"] == b"old local feed cache\n"
+    assert saved["sigma/library.sqlite"] == b"old local sqlite"
+    assert saved["sigma/.env.local"] == b"token=old-local\n"
+    assert saved["sigma/.private-words"] == b"old local private marker\n"
     assert git("rev-parse", "HEAD", cwd=source) == head_before
     assert git("status", "--porcelain", cwd=source) == status_before
     assert working_files(source) == files_before
