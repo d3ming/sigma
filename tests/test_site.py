@@ -135,7 +135,7 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     banned = re.compile(r"\b(agents?|whisper|novelty|verifiable|tiers?|fetched|grounded|pipeline|transcripts?|2026-01-05-weekly|"
                         r"2026-01-09-daily|score|about)\b", re.I)
     for f in out.rglob("*.html"):
-        text = visible(f.read_text())
+        text = visible(f.read_text()).replace("Public transcript", "")
         assert not banned.search(text), (f, banned.search(text).group(0))
     idx = json.loads((out / "runs.json").read_text())
     assert idx["runs"][-1] == {"run": "2026-01-05-weekly", "kind": "weekly", "date": "2026-01-05", "episodes": 1, "claims": 2,
@@ -258,7 +258,7 @@ def test_entities_filter_shows_companies_and_lenses(tmp_path):
 
 
 def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate(tmp_path, monkeypatch):
-    """Owner-stated rule: one newest-first podcast/video feed. Failure-seen: an editor-only interview advertised a missing expansion fragment; live cards fetched megabyte show originals."""
+    """Owner-stated rule: one newest-first podcast/video feed. Failure-seen: an editor-only interview advertised a missing expansion fragment; live cards fetched megabyte show originals; metadata-only publisher transcript links disappeared."""
     site.ENTITIES_FILE.write_text(json.dumps(ENTITIES))
     pub = tmp_path / "published"
     for make in (make_published, make_daily, make_people, make_speakers):
@@ -317,7 +317,7 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     episodes.append({"episode_id": "rss:inf3", "title": "Creator three", "source": "Show I", "style": "influencer",
                      "published": "2026-01-09T19:00:00+00:00", "key_insights": creator_insights, "dense_summary": creator_summary})
     episodes.append({"episode_id": "rss:pod4", "title": "Interview four", "source": "Show A",
-                     "published": "2026-01-09T18:30:00+00:00",
+                     "published": "2026-01-09T18:30:00+00:00", "transcript_url": "https://example.com/public-podcast.vtt",
                      "key_insights": [{**creator_insights[0], "speaker": "Guest"}], "dense_summary": creator_summary})
     episodes_path.write_text(json.dumps(episodes))
     earnings = pub / "2026-01-09-earnings"
@@ -358,6 +358,10 @@ def test_podcasts_and_youtube_share_a_timestamp_sorted_feed_and_x_stays_separate
     assert "No transcript claims are available." in creator_without_claims and 'aria-expanded="false"' in creator_without_claims
     podcast_without_claims = next(row for row in cards if "Interview four" in row)
     assert f'data-src="{site.claims_path("rss:pod4")}"' in podcast_without_claims and 'aria-expanded="false"' in podcast_without_claims
+    assert 'href="https://example.com/public-podcast.vtt"' in podcast_without_claims
+    assert "Public transcript" in podcast_without_claims and "Public transcript" not in creator_without_claims
+    public_episodes = {e["episode_id"]: e for e in json.loads((out / "episodes.json").read_text())["episodes"]}
+    assert public_episodes["rss:pod4"]["transcript_url"] == "https://example.com/public-podcast.vtt"
     editor_fragment = (out / site.file_of(site.claims_path("rss:pod4"))).read_text()
     assert "Pricing limits" in editor_fragment and "The creator distinguishes usage from revenue." in editor_fragment
     assert "The discussion follows the limits on revenue conversion." not in editor_fragment
