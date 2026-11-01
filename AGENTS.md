@@ -55,7 +55,7 @@ Everything else is yours to decide. Be bold with reversible work.
 - Commit subjects are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), 72 characters at most.
 - Err toward a body. The subject says what changed; the body says why, what you chose over what, and how you proved it.
 - Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the maintainer".
-  Private holdings, contact details and identity stay out. `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
+  Private holdings, contact details and personal identity stay out. Keep public site identity in operator configuration; a handle explicitly designated public is not a private word. `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
   `scripts/private_words.py --add` adds one from stdin, so a word never lands in a file. A missing list fails. An optional
   git-ignored `.private-words` adds plain words on one machine. Run `git config core.hooksPath .githooks` once per clone.
 - Early history, before this guard, names the owner's domains and handle. The owner accepted it as it stands: no history
