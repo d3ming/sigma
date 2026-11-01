@@ -1,6 +1,6 @@
 [project]
 name = "sigma-signals"
-version = "0.3.10"
+version = "0.3.11"
 description = "Cited podcast and X signals checked against their sources"
 readme = "README.md"
 license = "MIT"
@@ -17,6 +17,7 @@ Documentation = "https://github.com/d3ming/sigma/blob/develop/docs/architecture.
 whisper = ["faster-whisper>=1.2", "av<16"]
 mac = ["mlx-whisper"]
 dev = ["pytest"]
+verify = ["playwright>=1.49"]
 
 [project.scripts]
 sigma = "sigma.cli:main"

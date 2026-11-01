@@ -75,6 +75,17 @@ Everything else is yours to decide. Be bold with reversible work.
 - `make check`: the private-word guard, the agent-doc check and the full suite. The pre-push hook runs the same.
 - `make test`: the suite alone. `make test-fast`: the suite without the `slow` modules, stopping at the first failure.
 
+## Verification
+
+Choose proof with [verify](skills/verify/SKILL.md) and its feature map.
+
+- UI: drive affected journeys and entry points; retain actions, results and browser evidence. HTTP/HTML checks do not prove interaction.
+- CLI/data: run the actual command in isolated data and inspect outputs and side effects. Keep automatic proof of grounding, calculations, privacy and stored-data integrity.
+- Instructions: run document guards; exercise changed instructions in a fresh context when practical.
+- Publication: use reviewed main, `make publish` and live checks. Never release fictional fixtures.
+
+Browser driving is opt-in, outside pytest/pre-push; run affected journeys, then `make check` before pushing. Manual proof cannot replace unique automatic coverage. Remove overlaps only after preserving distinct assertions and proving retained checks catch deliberate breaks. A timing retry does not repair the five-second target.
+
 ## Tests
 
 - **No test-driven development.** Do not write a test before the code it tests, and do not write tests to steer a

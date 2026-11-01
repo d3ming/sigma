@@ -129,7 +129,11 @@ def test_site_pages_are_safe_plain_and_linked(tmp_path, capsys):
     assert "<script>alert" not in (out / "episodes/rss_aaa.html").read_text()
     dmd = (out / "runs/2026-01-09-daily.md").read_text()
     assert "Friday, Jan 9, 2026" in dmd and "Capacity is tight" in dmd and "0:01:01" not in dmd and "1:01" in dmd
-    home = (out / "index.html").read_text()
+    home, md = (out / "index.html").read_text(), (out / "index.md").read_text()
+    assert "<h2>Podcasts & YouTube</h2>" in home
+    assert "## Podcasts & YouTube" in md and "/runs/2026-01-12-daily.md" in md
+    assert (out / "runs/2026-01-12-daily.md").exists()
+    assert "/runs/2026-01-12-daily/claims.jsonl" in (out / "runs.json").read_text()
     assert "Weekly issues" in home and "Daily issues" not in home and "Latest issue" not in home and "/runs/2026-01-09-daily/" not in home and 'href="/runs.json"' in home
     assert not private_hits(home) and '<a class="brand" href="/">Sigma</a>' in home
     banned = re.compile(r"\b(agents?|whisper|novelty|verifiable|tiers?|fetched|grounded|pipeline|transcripts?|2026-01-05-weekly|"
@@ -478,16 +482,6 @@ def test_a_claim_with_a_raw_u2028_in_its_text_is_still_read(tmp_path):
     assert [c["id"] for c in site.read_jsonl(p)] == [1, 2]
 
 
-def test_home_lists_combined_feed_and_keeps_daily_issue_index_and_markdown(tmp_path):
-    """The home lists the selected podcast and YouTube feed; run metadata and Markdown issue links remain available to agents."""
-    out = build(tmp_path)
-    home, md = (out / "index.html").read_text(), (out / "index.md").read_text()
-    assert "<h2>Podcasts & YouTube</h2>" in home and "Latest issue" not in home and "Daily issues" not in home
-    assert "## Podcasts & YouTube" in md and "/runs/2026-01-12-daily.md" in md
-    assert (out / "runs/2026-01-12-daily.md").exists()
-    assert "/runs/2026-01-12-daily/claims.jsonl" in (out / "runs.json").read_text()  # the agent index still lists the issue and its claims
-
-
 def test_a_home_row_opens_to_its_timestamped_summaries_loaded_from_a_small_fragment(tmp_path):
     """Failure-seen (live home feed): every podcast and creator card has a closed detail control; claims load from small fragments."""
     out = build(tmp_path)
@@ -675,15 +669,16 @@ def test_user_pick_survives_newer_issue_without_changing_rating_floor():
     from sigma import entities
 
     eid = "rss:owner-pick"
-    meta = {"episode_id": eid, "title": "A chosen conversation", "source": "Example Show", "published": "2026-10-30", "user_pick": True}
+    meta = {"episode_id": eid, "title": "A chosen conversation", "source": "Example Show", "published": "2026-10-30", "user_pick": True, "topics": ["methods"]}
     score = {"episode_id": eid, "score": 3, "reason": "Limited new evidence"}
     old = {"name": "older", "meta": {eid: meta}, "claims": [], "scored": [score], "rubric": 1}
-    new = {"name": "newer", "meta": {eid: {**meta, "user_pick": False}}, "claims": [], "scored": [score], "rubric": 1}
+    new = {"name": "newer", "meta": {eid: {**meta, "user_pick": False, "topics": []}}, "claims": [], "scored": [score], "rubric": 1}
     reg = site.build_episodes([new, old])
-    ent = entities.Entities()
+    ent = entities.Entities(topic_names={"methods": "Methods"}, show_topics={"example-show": ["methods"]})
     site.annotate(reg, ent)
     e = reg[eid]
     assert e["user_pick"] is True and e["score"] == 3 and e["page"]
+    assert site.episode_json(e)["topics"] == []
     assert site.feed_rows(reg) == []
     assert '/find/?picks=1' in site.top_html(reg)
     assert site.episode_json(e)["user_pick"] is True

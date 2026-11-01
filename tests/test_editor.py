@@ -3,10 +3,13 @@ import json
 
 import pytest
 
-from sigma import editor, published, site
+from sigma import editor, entities, published, site
 
 
-def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path):
+def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path, monkeypatch):
+    vocabulary = tmp_path / "entities.json"
+    vocabulary.write_text(json.dumps({"topic_names": {"methods": "Methods"}, "show_topics": {"example-show": ["methods"]}}))
+    monkeypatch.setattr(entities, "ENTITIES_FILE", vocabulary)
     run = tmp_path / "runs" / "2026-01-01"
     run.mkdir(parents=True)
     source = run / "episode.md"
@@ -28,6 +31,8 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path)
                               "start": 0, "end": 20, "companies": [], "inference": None}],
             "dense_summary": [{"title": "Process and demand", "text": "The guest links the process improvement to demand rising 30%.",
                                "start": 0, "end": 310}]}
+    edit["topics"] = []
+    edit["dense_summary"].append({"title": "Later discussion", "text": "A practical treatment of debugging workflows.", "start": 320, "end": 400})
     path = run / "editor.json"
     path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
     pub, _ = published.export(run, tmp_path / "published", resolver=lambda rows: {})
@@ -36,12 +41,22 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path)
     assert exported["show_image_url"] == row["show_image_url"]
     registry = site.build_episodes(site.load_runs(tmp_path / "published"))
     assert registry[row["episode_id"]]["show_image_url"] == row["show_image_url"]
+    site.build(tmp_path / "published", tmp_path / "site", entities_file=vocabulary)
+    index = json.loads((tmp_path / "site" / "find-index.json").read_text())["eps"][0]
+    assert index["o"] == []
+    assert all(word in index["x"] for word in ("correction", "hidden", "demand", "debugging", "workflows"))
     assert (pub / "ranked.json").read_bytes() == ranked_bytes and not (pub / "claims.jsonl").read_text()
     frozen = tmp_path / "frozen"
     published.freeze_publication_inputs(tmp_path, frozen)
     assert (frozen / "runs" / run.name / source.name).read_bytes() == source.read_bytes()
     assert (frozen / "runs" / run.name / "editor.json").read_bytes() == path.read_bytes()
     prior = (pub / "episodes.json").read_bytes()
+    edit["topics"] = ["unknown-topic"]
+    path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
+    with pytest.raises(ValueError, match="unknown topic"):
+        published.export(run, tmp_path / "published", resolver=lambda rows: {})
+    assert (pub / "episodes.json").read_bytes() == prior
+    edit["topics"] = []
     edit["dense_summary"][0]["text"] = "The guest says demand increased 90%."
     path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
     with pytest.raises(ValueError, match="number 90"):

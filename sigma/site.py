@@ -1333,6 +1333,8 @@ def build_episodes(runs: list[dict]) -> dict:
                     entry(eid)["user_pick"] = True
                     if r["name"] not in entry(eid)["runs"]:
                         entry(eid)["runs"].append(r["name"])
+                if "topics" in m and "topics" not in entry(eid):
+                    entry(eid)["topics"] = m["topics"]
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
@@ -1361,7 +1363,7 @@ def annotate(reg: dict, ent: ents.Entities) -> dict:
     info: dict[str, dict] = {}
     for e in reg.values():
         cl = e["claims"]
-        topics = ent.show_topics.get(person_slug(e["show"] or ""), [])
+        topics = e["topics"] if "topics" in e else ent.show_topics.get(person_slug(e["show"] or ""), [])
         count: Counter = Counter()
         by_co: dict[str, list[dict]] = {}
         guests: set[str] = set()
@@ -1674,8 +1676,7 @@ def redirect_page(to: str, label: str, md: str) -> str:
 
 
 def find_index(reg: dict, ent: ents.Entities, cos: dict) -> dict:
-    """What the Find page filters in the browser: one short row per episode with a page, newest first, plus name tables. A row is
-    about 1 KB and the browser downloads the whole file: split it by month once it passes about 1.5 MB gzipped."""
+    """The browser filters one row per episode, newest first, with complete editorial search words and name tables."""
     eps, people = [], {}
     for e in sorted(reg.values(), key=lambda e: (e["date"], e["id"]), reverse=True):
         if not e["page"]:
@@ -1684,7 +1685,11 @@ def find_index(reg: dict, ent: ents.Entities, cos: dict) -> dict:
             people[p["slug"]] = p["name"]
         eps.append({"i": e["page"], "t": e.get("title") or e["id"], "s": e.get("show") or "", "d": e["date"], "r": e.get("score"),
                     "user_pick": bool(e.get("user_pick")), "c": list(e["edges"]), "p": [p["slug"] for p in e["people"]], "o": e["topics"], "l": e["lenses"],
-                    "x": " ".join(c.get("text") or "" for c in e["claims"])[:800]})
+                    "x": " ".join(dict.fromkeys(" ".join(
+                        [c.get("text") or "" for c in e["claims"]] + [e.get("context") or "", e.get("overview") or ""] +
+                        [item.get(field) or "" for key in ("key_insights", "dense_summary")
+                         for item in e.get(key) or [] for field in ("title", "text", "why_it_matters", "inference")]
+                    ).lower().split()))})
     used = {c for x in eps for c in x["c"]}
     return {"picks_label": PICKS_LABEL, "topics": {t: n for t, n in ent.topic_names.items()},
             "lenses": {k: {"name": v.get("name") or k, "mark": v.get("mark") or k, "about": v.get("about") or ""} for k, v in ent.lenses.items()},
@@ -1740,8 +1745,8 @@ def notice_md() -> str:
 
 def find_page(ent: ents.Entities, updated: str = "") -> str:
     sel = lambda id, label, opts="": f'<select id="{id}" aria-label="{label}"><option value="">{opts or label}</option></select>'
-    body = ('<h1>Find</h1><h2>Episodes</h2><div class="facets"><input id="f-q" type="search" placeholder="Search titles, guests and claims" '
-            'aria-label="Search titles, guests and claims" autocomplete="off"></div>' + lens_bar(ent) +
+    body = ('<h1>Find</h1><h2>Episodes</h2><div class="facets"><input id="f-q" type="search" placeholder="Search titles, guests and summaries" '
+            'aria-label="Search titles, guests and summaries" autocomplete="off"></div>' + lens_bar(ent) +
             '<div class="facets">' + sel("f-topic", "Topic", "Any topic") + sel("f-company", "Company", "Any company")
             + sel("f-person", "Person", "Any person") + sel("f-show", "Show", "Any show")
             + f'<select id="f-picks" aria-label="Picks"><option value="">All episodes</option><option value="1">{esc(PICKS_LABEL)}</option></select>'
@@ -1761,8 +1766,7 @@ def find_md(ent: ents.Entities) -> str:
     return doc(["# Find", "", "A page that filters every episode in the browser by text, topic, company, person, show, time window, "
                 "rating and lens. It needs JavaScript; agents should read the data it filters instead.", "",
                 f"- [find-index.json]({absu('/find-index.json')}): one row per episode with a page, newest first. Keys: `i` page path, `t` title, "
-                "`s` show, `d` date, `r` rating out of 10 (or null), `user_pick` explicit user selection, `c` company ids, `p` person slugs, `o` topic ids, `l` lens ids, `x` the claim text "
-                "(first 800 characters). The tables `topics`, `lenses`, `companies` and `people` map ids to names.",
+                "`s` show, `d` date, `r` rating out of 10 (or null), `user_pick` explicit user selection, `c` company ids, `p` person slugs, `o` topic ids, `l` lens ids, `x` unique search words from complete claims, insights and chronological summaries. The tables `topics`, `lenses`, `companies` and `people` map ids to names.",
                 f"- [companies.json]({absu('/companies.json')}), [people.json]({absu('/people.json')}), [shows.json]({absu('/shows.json')}): the same ids with page links.",
                 f"- Lenses: {lenses or 'none'}."])
 
@@ -1775,7 +1779,7 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     kind = '<p class="meta">Rated as social commentary</p>' if e.get("influencer") else ""
     take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") and e["reason"] != title else ""
     chips = [f'<a class="chip" href="{esc(company_path(cid))}">{esc(cos[cid]["name"])}</a>' for cid in e.get("edges", {}) if cos and cid in cos]
-    chips += [f'<a class="chip" href="/shows/?topic={esc(tp)}#{esc(tp)}">{esc(ent.topic_names[tp])}</a>' for tp in e.get("topics", []) if ent]
+    chips += [f'<a class="chip" href="/find/?topic={quote(tp, safe="")}">{esc(ent.topic_names[tp])}</a>' for tp in e.get("topics", []) if ent]
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
     context = f'<p>{esc(e["context"])}</p>' if e.get("context") else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
