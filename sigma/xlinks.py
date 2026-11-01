@@ -96,6 +96,33 @@ def known_channels(sources_path: Path) -> tuple[set[str], set[str]]:
     return ids, names
 
 
+def lookup_candidate(kind: str, key: str, url: str, yt=None, apple=None) -> dict:
+    yt, apple = yt or youtube_meta, apple or apple_meta
+    c = {"episode_id": "", "title": "", "show": "", "published": "", "url": url, "audio_url": None,
+         "youtube_id": None, "feed_url": None, "description": "", "duration": None, "minutes": None, "people": [],
+         "queries": [], "via": [kind], "role": None, "transcribed": None,
+         "channel_id": None, "show_followed": False, "pickable": False, "why_not": ""}
+    if kind == "youtube":
+        m = yt(key)
+        if m:
+            ts = m.get("release_timestamp") or m.get("timestamp")
+            pub = datetime.fromtimestamp(ts, timezone.utc) if ts else (
+                datetime.strptime(m["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc) if m.get("upload_date") else None)
+            c.update(episode_id=f"yt:{key}", youtube_id=key, title=m.get("title", ""), show=m.get("channel") or m.get("uploader") or "",
+                     channel_id=m.get("channel_id"), published=pub.isoformat() if pub else "",
+                     description=(m.get("description") or "")[:2000], duration=m.get("duration"))
+    elif kind == "apple":
+        m = apple(key)
+        if m:
+            c.update(episode_id=f"apple:{key}", title=m.get("trackName", ""), show=m.get("collectionName", ""),
+                     published=m.get("releaseDate", ""), audio_url=m.get("episodeUrl"), feed_url=m.get("feedUrl"),
+                     description=(m.get("description") or "")[:2000],
+                     duration=round(m["trackTimeMillis"] / 1000) if m.get("trackTimeMillis") else None)
+    if c["duration"]:
+        c["minutes"] = round(c["duration"] / 60)
+    return c
+
+
 def candidates(d: str, sources_path: Path, runs: Path, yt=youtube_meta, apple=apple_meta, head=None) -> list[dict]:
     """The day's podcast links as `find --json` candidates, plus `found_via`, `show_followed` and `channel_id`.
     A link that cannot be looked up, or a video under MIN_MINUTES, is kept with `pickable: false` and the reason."""
@@ -104,28 +131,8 @@ def candidates(d: str, sources_path: Path, runs: Path, yt=youtube_meta, apple=ap
     ids, names = known_channels(sources_path)
     out = []
     for (kind, key), hit in found_links(d, head).items():
-        c = {"episode_id": "", "title": "", "show": "", "published": "", "url": hit["url"], "audio_url": None,
-             "youtube_id": None, "feed_url": None, "description": "", "duration": None, "minutes": None, "people": [],
-             "queries": [], "via": [f"x:{kind}"], "role": None, "transcribed": None, "found_via": hit["found_via"],
-             "channel_id": None, "show_followed": False, "pickable": False, "why_not": ""}
-        if kind == "youtube":
-            m = yt(key)
-            if m:
-                ts = m.get("release_timestamp") or m.get("timestamp")
-                pub = datetime.fromtimestamp(ts, timezone.utc) if ts else (
-                    datetime.strptime(m["upload_date"], "%Y%m%d").replace(tzinfo=timezone.utc) if m.get("upload_date") else None)
-                c.update(episode_id=f"yt:{key}", youtube_id=key, title=m.get("title", ""), show=m.get("channel") or m.get("uploader") or "",
-                         channel_id=m.get("channel_id"), published=pub.isoformat() if pub else "",
-                         description=(m.get("description") or "")[:2000], duration=m.get("duration"))
-        elif kind == "apple":
-            m = apple(key)
-            if m:
-                c.update(episode_id=f"apple:{key}", title=m.get("trackName", ""), show=m.get("collectionName", ""),
-                         published=m.get("releaseDate", ""), audio_url=m.get("episodeUrl"), feed_url=m.get("feedUrl"),
-                         description=(m.get("description") or "")[:2000],
-                         duration=round(m["trackTimeMillis"] / 1000) if m.get("trackTimeMillis") else None)
-        if c["duration"]:
-            c["minutes"] = round(c["duration"] / 60)
+        c = lookup_candidate(kind, key, hit["url"], yt, apple)
+        c.update(via=[f"x:{kind}"], found_via=hit["found_via"])
         c["show_followed"] = bool(c["channel_id"] and c["channel_id"] in ids) or c["show"].lower() in names
         c["why_not"] = ("spotify links cannot be looked up; find the episode on Apple or YouTube" if kind == "spotify"
                         else "lookup failed" if not c["title"]

@@ -29,6 +29,8 @@ def same_episode(a: dict, b: dict) -> bool:
     """Same id, or nearly the same title published within a couple of days (an episode and its YouTube copy)."""
     if a["episode_id"] == b["episode_id"]:
         return True
+    if a.get("youtube_id") and a.get("youtube_id") == b.get("youtube_id"):
+        return True
     if different_youtube_videos(a["episode_id"], b["episode_id"], a.get("youtube_id"), b.get("youtube_id")):
         return False
     da, db = parse_date(a["published"]), parse_date(b["published"])
@@ -126,12 +128,33 @@ def load_picks(path: str | Path) -> list[dict]:
     return picks
 
 
+def from_url(url: str, runs: Path | None = None) -> dict:
+    from . import xlinks
+
+    resolved = xlinks.resolve(url)
+    key = xlinks.classify(resolved)
+    if not key or key[0] == "spotify":
+        sys.exit("[custom-run] use a YouTube video or Apple podcast episode URL")
+    identity = ReuseIndex(runs).identity({"episode_id": f"{'yt' if key[0] == 'youtube' else key[0]}:{key[1]}"}) if runs else None
+    if identity:
+        pick = {**identity, "show": identity.get("source"), "via": ["user_pick"]}
+    else:
+        pick = xlinks.lookup_candidate(*key, resolved)
+    if not all(pick.get(k) for k in REQUIRED) or not parse_date(pick.get("published")):
+        sys.exit("[custom-run] URL lookup did not return a title, show and publication date")
+    if not (pick.get("youtube_id") or pick.get("audio_url")):
+        sys.exit("[custom-run] URL has no downloadable episode audio")
+    pick["user_pick"] = True
+    return pick
+
+
 def to_episode(pick: dict) -> Episode:
     tag = f"person:{pick['people'][0]}" if pick.get("people") else f"query:{pick['queries'][0]}" if pick.get("queries") else "custom"
-    return Episode(id=pick["episode_id"], source_id=tag, source_name=pick["show"], tier=2, title=pick["title"],
+    return Episode(id=pick["episode_id"], source_id=tag, source_name=pick["show"], tier=pick.get("tier") or 2, title=pick["title"],
                    url=pick.get("url") or "", published_at=parse_date(pick["published"]), youtube_id=pick.get("youtube_id"),
                    audio_url=pick.get("audio_url"), feed_url=pick.get("feed_url"), description=pick.get("description") or "",
-                   via="+".join(pick.get("via") or []) or "custom", duration=pick.get("duration"))
+                   via="+".join(pick.get("via") or []) or "custom", duration=pick.get("duration"),
+                   style=pick.get("style") or "interview")
 
 
 def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources: str | None = None,
@@ -154,7 +177,15 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
 
         tiers = load_sources(sources)[0]
     rows, skipped, reused = [], [], 0
+    marked = set()
     for pick in picks:
+        pick = dict(pick)
+        identity = reuse.identity({**pick, "source": pick["show"]})
+        if identity:
+            pick["episode_id"] = identity["episode_id"]
+        existing = next((h for h in have if same_episode(pick, h)), None)
+        if pick.get("user_pick"):
+            marked.add(existing["episode_id"] if existing else pick["episode_id"])
         if any(same_episode(pick, h) for h in have):
             skipped.append(pick["episode_id"])
             print(f"[custom-run] already in run: {pick['title'][:70]}")
@@ -170,6 +201,8 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
             print(f"[custom-run] reuse transcript from {hit[2]}")
         row = write_episode(run_dir, ep, segs, tsrc)
         # The agent chose it on purpose, so a "replay" in the title is not a reason to drop it.
+        if pick.get("user_pick"):
+            row["user_pick"] = True
         row.update(rerun=False, matched=(pick.get("people") or []) + (pick.get("queries") or []))
         if hit:
             row["reused_from"] = hit[2]
@@ -182,6 +215,9 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
     def apply(m):
         ids = {e["episode_id"] for e in m.setdefault("episodes", [])}
         m["episodes"] += [r for r in rows if r["episode_id"] not in ids]
+        for e in m["episodes"]:
+            if e["episode_id"] in marked:
+                e["user_pick"] = True
         m.setdefault("custom", []).append(entry)
         m["days"] = max(m.get("days") or 0, math.ceil((now - oldest).total_seconds() / 86400))
         if note:

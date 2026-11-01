@@ -31,6 +31,7 @@ X_LOGO = ('<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path f
 MAKER = ""
 BASE_URL = "https://example.invalid"
 SITE = "Sigma"
+PICKS_LABEL = "User picks"
 TOKENS = ROOT / "web" / "tokens.css"  # the shared visual base (see web/WEB_DESIGN.md); the build puts it in front of CSS in style.css
 ASSETS = ROOT / "site-assets"  # favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png: copied to the site root
 ICONS = ('<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48">'
@@ -862,6 +863,10 @@ def claims_fragment(e: dict) -> str:
     return content + f'<p class="meta"><a href="{esc(e["page"])}">Open the episode page</a></p>\n'
 
 
+def pick_badge(e: dict) -> str:
+    return f'<a class="chip" href="/find/?picks=1">{esc(PICKS_LABEL)}</a> ' if e.get("user_pick") else ""
+
+
 def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", expand: bool = False) -> str:
     """One episode row: lens marks, show, date, rating and the one-line take. `why` says how a company page found it;
     `also` is the same guest's other episodes folded under this row. `expand` makes the row open to the episode's timestamped
@@ -880,7 +885,7 @@ def top_entry(e: dict, newest_day: str = "", why: str = "", anchor: str = "", ex
     li = f'<li class="entry{" fold" if fold else ""}" data-d="{esc(e["date"])}" data-published="{published}" data-l="{esc(" ".join(e.get("lenses") or []))}" data-s="{score}"{fresh}{anchor_attr}>'
     panel_id = f'epb-{quote(str(e["id"]), safe="")}'
     toggle = f'<button type="button" class="epc-t" aria-label="Toggle details for {esc(title)}" aria-controls="{panel_id}" aria-expanded="false"></button>' if fold else ""
-    heading = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta}</div>'
+    heading = f'<h3>{t}{toggle}</h3><div class="meta">{rated}{e.get("_marks", "")}{meta} {pick_badge(e)}</div>'
     image = episode_image(e)
     identity = " show-identity"
     head = (f'<div class="episode-head{identity}">{image}<div>{heading}</div></div>' if image else heading) + ("" if fold else take + picks)
@@ -943,8 +948,9 @@ def feed_rows(reg: dict, ireg: dict | None = None) -> list[dict]:
 
 def top_html(reg: dict, runs: list[dict] | None = None, ent: ents.Entities | None = None, ireg: dict | None = None) -> str:
     rows = feed_rows(reg, ireg)
+    picks = f'<a class="chip" href="/find/?picks=1">{esc(PICKS_LABEL)}</a>' if any(e.get("user_pick") for e in [*reg.values(), *(ireg or {}).values()]) else ""
     if not rows:
-        return ""
+        return picks
     tabs = "".join(f'<button type="button" data-w="{w}" aria-pressed="false">{n}</button>' for w, n in WINDOWS)
     newest_day = max((e["date"][:10] for e in rows), default="")
     seen = set()
@@ -955,7 +961,7 @@ def top_html(reg: dict, runs: list[dict] | None = None, ent: ents.Entities | Non
         if day:
             seen.add(day)
         items.append(top_entry(episode, newest_day, anchor=anchor, expand=True))
-    return (f'<div class="top-head"><div class="top-title"><h2>{FEED_NAME}</h2></div><div class="windows" role="group" aria-label="Time window">{tabs}</div></div>'
+    return (f'<div class="top-head"><div class="top-title"><h2>{FEED_NAME}</h2>{picks}</div><div class="windows" role="group" aria-label="Time window">{tabs}</div></div>'
             f'{sort_bar("top", "newest", key="podcasts-youtube-v1")}<ol class="top" id="top">{"".join(items)}</ol>'
             f'<p class="meta" id="top-none" hidden>No items in this window.</p>{SORT_JS}{TOP_JS}{EPC_JS}')
 
@@ -1323,6 +1329,10 @@ def build_episodes(runs: list[dict]) -> dict:
             e["claims"].append(c)
         for eid, m in r["meta"].items():
             if eid:
+                if m.get("user_pick"):
+                    entry(eid)["user_pick"] = True
+                    if r["name"] not in entry(eid)["runs"]:
+                        entry(eid)["runs"].append(r["name"])
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
@@ -1339,7 +1349,7 @@ def build_episodes(runs: list[dict]) -> dict:
                 e["score"], e["reason"], e["rubric"] = x["score"], x.get("reason"), r["rubric"]
     for e in reg.values():
         e["claims"] = sorted(claimdedupe.dedupe(uniq_claims(e["claims"]))[0], key=claim_ts)  # two runs can word one moment differently
-        e["page"] = episode_path(e["id"]) if e["claims"] or e.get("key_insights") else ""
+        e["page"] = episode_path(e["id"]) if e["claims"] or e.get("key_insights") or e.get("user_pick") else ""
         e["date"] = board.publication_day(e["published"] or max([claim_date(c) for c in e["claims"]] or [""]))
     return reg
 
@@ -1673,10 +1683,10 @@ def find_index(reg: dict, ent: ents.Entities, cos: dict) -> dict:
         for p in e["people"]:
             people[p["slug"]] = p["name"]
         eps.append({"i": e["page"], "t": e.get("title") or e["id"], "s": e.get("show") or "", "d": e["date"], "r": e.get("score"),
-                    "c": list(e["edges"]), "p": [p["slug"] for p in e["people"]], "o": e["topics"], "l": e["lenses"],
+                    "user_pick": bool(e.get("user_pick")), "c": list(e["edges"]), "p": [p["slug"] for p in e["people"]], "o": e["topics"], "l": e["lenses"],
                     "x": " ".join(c.get("text") or "" for c in e["claims"])[:800]})
     used = {c for x in eps for c in x["c"]}
-    return {"topics": {t: n for t, n in ent.topic_names.items()},
+    return {"picks_label": PICKS_LABEL, "topics": {t: n for t, n in ent.topic_names.items()},
             "lenses": {k: {"name": v.get("name") or k, "mark": v.get("mark") or k, "about": v.get("about") or ""} for k, v in ent.lenses.items()},
             "companies": {k: cos[k]["name"] for k in used if k in cos}, "people": people, "eps": eps}
 
@@ -1688,12 +1698,13 @@ const MO=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec
 function fill(id,pairs){const s=$(id);pairs.forEach(([v,n])=>{const o=document.createElement('option');o.value=v;o.textContent=n;s.append(o)})}
 fill('f-topic',Object.entries(D.topics));fill('f-company',byName(D.companies));fill('f-person',byName(D.people));
 fill('f-show',[...new Set(E.map(e=>e.s).filter(Boolean))].sort((a,b)=>a.localeCompare(b)).map(s=>[s,s]));
-const F={q:'f-q',topic:'f-topic',company:'f-company',person:'f-person',show:'f-show',days:'f-days',min:'f-min'};
+const F={q:'f-q',topic:'f-topic',company:'f-company',person:'f-person',show:'f-show',days:'f-days',min:'f-min',picks:'f-picks'};
 for(const[k,id]of Object.entries(F))if(P.has(k))$(id).value=P.get(k);
 const STEP=50;let hits=[],n=0;
 function row(e){const li=document.createElement('li'),d=document.createElement('div'),h=document.createElement('h3'),a=document.createElement('a'),m=document.createElement('div');
 li.className='entry';a.href=e.i;a.textContent=e.t;h.append(a);m.className='meta';
 e.l.forEach(l=>{const k=document.createElement('span');k.className='mark '+l;k.textContent=(D.lenses[l]||{}).mark||l;const L=D.lenses[l]||{},t=(L.name||l)+': '+(L.about||'');k.dataset.tip=t;k.setAttribute('aria-label',t);k.setAttribute('role','img');k.tabIndex=0;m.append(k)});
+if(e.user_pick){const b=document.createElement('a');b.className='chip';b.href='/find/?picks=1';b.textContent=D.picks_label;m.append(b,' ')}
 m.append([e.s,e.d&&(MO[+e.d.slice(5,7)-1]+' '+(+e.d.slice(8))+', '+e.d.slice(0,4))].filter(Boolean).join(' \u00b7 '));
 if(e.r){const b=document.createElement('span');b.className='meter';b.style.setProperty('--n',e.r);b.setAttribute('role','img');const h='Rated '+e.r+' out of 10.';b.dataset.tip=h;b.tabIndex=0;b.setAttribute('aria-label',h);m.prepend(b)}
 d.append(h,m);
@@ -1703,7 +1714,7 @@ function more(){const out=$('f-out');hits.slice(n,n+STEP).forEach(e=>out.append(
 function run(){const v=k=>$(F[k]).value,q=v('q').trim().toLowerCase().split(/\\s+/).filter(Boolean),l=L(),
 cut=+v('days')?new Date(Date.now()-v('days')*864e5).toISOString().slice(0,10):'',min=+v('min');
 hits=E.filter(e=>(!v('topic')||e.o.includes(v('topic')))&&(!v('company')||e.c.includes(v('company')))&&(!v('person')||e.p.includes(v('person')))&&
-(!v('show')||e.s===v('show'))&&(!l||e.l.includes(l))&&e.d>=cut&&(e.r||0)>=min&&q.every(w=>e.h.includes(w)));
+(!v('picks')||e.user_pick)&&(!v('show')||e.s===v('show'))&&(!l||e.l.includes(l))&&e.d>=cut&&(e.r||0)>=min&&q.every(w=>e.h.includes(w)));
 n=0;$('f-out').textContent='';more();$('f-count').textContent=hits.length+(hits.length===1?' episode':' episodes');
 const u=new URL(location);u.search='';for(const k of Object.keys(F)){const x=v(k);if(x&&x!=='0')u.searchParams.set(k,x)}if(l)u.searchParams.set('lens',l);history.replaceState(null,'',u)}
 Object.values(F).forEach(id=>$(id).addEventListener('input',run));$('f-more').addEventListener('click',more);document.addEventListener('sigma-lens',run);run()})()</script>"""
@@ -1733,6 +1744,7 @@ def find_page(ent: ents.Entities, updated: str = "") -> str:
             'aria-label="Search titles, guests and claims" autocomplete="off"></div>' + lens_bar(ent) +
             '<div class="facets">' + sel("f-topic", "Topic", "Any topic") + sel("f-company", "Company", "Any company")
             + sel("f-person", "Person", "Any person") + sel("f-show", "Show", "Any show")
+            + f'<select id="f-picks" aria-label="Picks"><option value="">All episodes</option><option value="1">{esc(PICKS_LABEL)}</option></select>'
             + '<select id="f-days" aria-label="Time window"><option value="0">All time</option><option value="7">Past week</option>'
               '<option value="30">Past month</option><option value="90">Past 3 months</option></select>'
               f'<select id="f-min" aria-label="Rating"><option value="0">Any rating</option><option value="{MIN_SCORE}">Rated {MIN_SCORE}+</option>'
@@ -1749,7 +1761,7 @@ def find_md(ent: ents.Entities) -> str:
     return doc(["# Find", "", "A page that filters every episode in the browser by text, topic, company, person, show, time window, "
                 "rating and lens. It needs JavaScript; agents should read the data it filters instead.", "",
                 f"- [find-index.json]({absu('/find-index.json')}): one row per episode with a page, newest first. Keys: `i` page path, `t` title, "
-                "`s` show, `d` date, `r` rating out of 10 (or null), `c` company ids, `p` person slugs, `o` topic ids, `l` lens ids, `x` the claim text "
+                "`s` show, `d` date, `r` rating out of 10 (or null), `user_pick` explicit user selection, `c` company ids, `p` person slugs, `o` topic ids, `l` lens ids, `x` the claim text "
                 "(first 800 characters). The tables `topics`, `lenses`, `companies` and `people` map ids to names.",
                 f"- [companies.json]({absu('/companies.json')}), [people.json]({absu('/people.json')}), [shows.json]({absu('/shows.json')}): the same ids with page links.",
                 f"- Lenses: {lenses or 'none'}."])
@@ -1767,7 +1779,7 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
     context = f'<p>{esc(e["context"])}</p>' if e.get("context") else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta}</div>{kind}{take}{about}{context}{content}',
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{take}{about}{context}{content}',
                 "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
@@ -2174,7 +2186,7 @@ def episode_json(e: dict) -> dict:
     return {"episode_id": e["id"], "title": e["title"], "show": e["show"], "published": e["published"], "url": e["url"],
             "youtube_url": e["youtube_url"], "apple_url": e["apple_url"], "spotify_url": e["spotify_url"],
             "spotify_kind": e["spotify_kind"], "transcript_url": e["transcript_url"], "claims": len(e["claims"]), "issues": e["runs"],
-            "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
+            "user_pick": bool(e.get("user_pick")), "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
             "lenses": e.get("lenses", []), "image_url": e.get("image_url"), "show_image_url": e.get("show_image_url"),
             "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
             "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"), "editor_source": e.get("editor_source"),
@@ -2456,15 +2468,16 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL)
     identity = load_site_identity()
+    PICKS_LABEL = identity.picks_label
     BASE_URL, SITE, MAKER, X_PROFILE = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
