@@ -39,6 +39,11 @@ Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market
 
 Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily update skill](skills/daily-update/SKILL.md), which coordinates video ingest, the podcast issue, and the independent X scan. The existing [daily prompt](prompts/daily.md) and [X workflow](skills/x-daily/SKILL.md) remain their task instructions. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
 
+For a one-off episode, run `sigma custom-run <name> --url <episode-url>`, then follow the printed transcription
+and status commands. This records a user pick without adding a source or scheduling future episodes. Picks retain their
+independent rating; Find's picks filter includes episodes below the homepage rating floor. Set `picks_label` in private
+`site.json` to name that filter and its episode badges. `--picks` still accepts a candidate JSON list.
+
 Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
 
 The site is built locally from private data and uploaded prebuilt. Push source changes to `develop`, then review a

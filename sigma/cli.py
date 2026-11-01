@@ -452,13 +452,12 @@ def custom_run_cmd(args) -> None:
     from . import custom, status as st
 
     run_dir = Path(args.runs) / args.name
-    r = custom.build_run(run_dir, custom.load_picks(args.picks), args.note, args.sources)
+    picks = [custom.from_url(args.url, Path(args.runs))] if args.url else custom.load_picks(args.picks)
+    r = custom.build_run(run_dir, picks, args.note, args.sources)
     n = len(json.loads((run_dir / "manifest.json").read_text())["episodes"])
     print(f"[custom-run] {run_dir}: +{r['added']} new ({r['reused']} reused a transcript from another run, "
           f"{len(r['skipped'])} already there), {n} episodes in total")
-    arg = str(run_dir)
-    print(f"[custom-run] next: transcribe the rest (all picks, no triage), detached:\n  {st.restart_command(arg)}\n"
-          f"  then check progress with: sigma status {arg}")
+    print(st.render_text(st.inspect_run(run_dir)))
 
 
 def status_cmd(args) -> None:
@@ -676,9 +675,11 @@ def _main(argv=None):
     fd.add_argument("--json", action="store_true", help="a list of candidates that `custom-run --picks` reads as is")
     fd.add_argument("--people", default=str(people_file()))
     fd.add_argument("--runs", default=str(DATA / "runs"), help="run folders searched for transcripts already made")
-    cr = sub.add_parser("custom-run", help="build a run from a JSON list of chosen candidates (`find --json`); does not transcribe")
+    cr = sub.add_parser("custom-run", help="build a one-off run from an episode URL or chosen candidates; does not transcribe")
     cr.add_argument("name", help="run folder name under --runs")
-    cr.add_argument("--picks", required=True, help="JSON list of candidates, as `find --json` prints them (filtered by the agent)")
+    cr_input = cr.add_mutually_exclusive_group(required=True)
+    cr_input.add_argument("--url", help="one YouTube or Apple episode URL, recorded as a user pick")
+    cr_input.add_argument("--picks", help="JSON list of candidates, as `find --json` prints them (filtered by the agent)")
     cr.add_argument("--note", help="why this run exists; stored in the manifest")
     cr.add_argument("--runs", default=str(DATA / "runs"))
     cr.add_argument("--sources", default=str(DATA / "sources.yaml"), help="gives a pick the tier of its show (empty string: tier 2)")

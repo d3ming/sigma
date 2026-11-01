@@ -216,3 +216,34 @@ def test_transcribe_youtube_names_a_bot_check(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], 1, "", "ERROR: Video unavailable"))
     with pytest.raises(subprocess.CalledProcessError):
         whisper.transcribe_youtube("xyz", whisper.Budget(600))
+
+
+def test_url_pick_reuses_canonical_identity_score_and_is_repeatable(tmp_path):
+    """Stated owner rule: a URL pick reuses the real score and transcript, and a repeat adds no duplicate."""
+    from sigma import library, published, rank
+
+    runs = tmp_path / "runs"
+    video = "Abcdefgh123"
+    ep = itunes_ep(i="rss:canonical", youtube_id=video)
+    old = make_run(runs / "2026-10-01-daily", [ep], segs=[{"start": 0, "speaker": None, "text": "word " * 1500}])
+    score = {"episode_id": ep.id, "title": ep.title, "source": ep.source_name, "tier": ep.tier,
+             "published": ep.published_at.isoformat(), "url": ep.url, "score": 3, "reason": "Limited new evidence", "claims": []}
+    (old / "scores.json").write_text(json.dumps({"rubric": rank.rubric_version(), "episodes": [score]}))
+    db = tmp_path / "library.sqlite"
+    library.ingest_run(old, db=db)
+    url = f"https://youtu.be/{video}?t=15"
+    main(["custom-run", "picked", "--url", url, "--runs", str(runs), "--sources", ""])
+    run = runs / "picked"
+    row = manifest(run)["episodes"][0]
+    assert row["episode_id"] == "rss:canonical" and row["user_pick"] is True
+    assert row["has_transcript"] and row["source"] == ep.source_name
+    stats = rank.prep(run, db=db)
+    assert stats["stored"] == 1 and stats["to_score"] == 0
+    assert json.loads((run / "rank" / "stored.json").read_text())[0]["score"] == 3
+    before = (run / row["file"]).read_bytes()
+    main(["custom-run", "picked", "--url", url, "--runs", str(runs), "--sources", ""])
+    assert len(manifest(run)["episodes"]) == 1 and (run / row["file"]).read_bytes() == before
+    picks = tmp_path / "ordinary.json"
+    picks.write_text(json.dumps([{**custom.candidate(ep, "itunes"), "episode_id": ep.id}]))
+    main(["custom-run", "picked", "--picks", str(picks), "--runs", str(runs), "--sources", ""])
+    assert published.episodes(manifest(run))[0]["user_pick"] is True

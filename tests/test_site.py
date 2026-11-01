@@ -668,3 +668,24 @@ def test_research_only_publishes_explicit_slugs(tmp_path):
     (research_dir / "index.json").write_text(json.dumps({"posts": ["../unlisted"]}))
     with pytest.raises(ValueError, match="invalid or duplicate"):
         research.load(tmp_path)
+
+
+def test_user_pick_survives_newer_issue_without_changing_rating_floor():
+    """Stated owner rule: provenance survives other issues; low ratings stay real and picks remain discoverable."""
+    from sigma import entities
+
+    eid = "rss:owner-pick"
+    meta = {"episode_id": eid, "title": "A chosen conversation", "source": "Example Show", "published": "2026-10-30", "user_pick": True}
+    score = {"episode_id": eid, "score": 3, "reason": "Limited new evidence"}
+    old = {"name": "older", "meta": {eid: meta}, "claims": [], "scored": [score], "rubric": 1}
+    new = {"name": "newer", "meta": {eid: {**meta, "user_pick": False}}, "claims": [], "scored": [score], "rubric": 1}
+    reg = site.build_episodes([new, old])
+    ent = entities.Entities()
+    site.annotate(reg, ent)
+    e = reg[eid]
+    assert e["user_pick"] is True and e["score"] == 3 and e["page"]
+    assert site.feed_rows(reg) == []
+    assert '/find/?picks=1' in site.top_html(reg)
+    assert site.episode_json(e)["user_pick"] is True
+    assert site.find_index(reg, ent, {})["eps"][0]["user_pick"] is True
+    assert '/find/?picks=1' in site.episode_page(e)

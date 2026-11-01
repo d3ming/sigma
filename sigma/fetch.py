@@ -489,6 +489,7 @@ class ReuseIndex:
 
     def __init__(self, runs: Path, exclude: Path | None = None):
         self.by = {}
+        self.identities = {}
         for mp in sorted(runs.glob("*/manifest.json")):
             if exclude and mp.parent.resolve() == exclude.resolve():
                 continue
@@ -497,6 +498,8 @@ class ReuseIndex:
             except (OSError, ValueError):
                 continue
             for e in eps:
+                for k in self.keys(e):
+                    self.identities.setdefault(k, e)
                 if e.get("has_transcript"):
                     for k in self.keys(e):
                         self.by.setdefault(k, (mp.parent, e))
@@ -504,11 +507,21 @@ class ReuseIndex:
     @staticmethod
     def keys(e: dict) -> list[str]:
         ks = [f"id:{e['episode_id']}"]
+        if video := e.get("youtube_id") or (e["episode_id"][3:] if e["episode_id"].startswith("yt:") else None):
+            ks.append(f"youtube:{video}")
         if norm_audio(e.get("audio_url")):
             ks.append(f"audio:{norm_audio(e.get('audio_url'))}")
         if norm_title(e.get("title")):
             ks.append(f"title:{norm_title(e.get('source') or e.get('source_tag', '').split(',')[0])}|{norm_title(e['title'])}")
         return ks
+
+    def identity(self, e: dict):
+        for k in self.keys(e):
+            if k.startswith("title:"):
+                continue
+            if k in self.identities:
+                return self.identities[k]
+        return None
 
     def locate(self, e: dict):
         """(run folder, manifest row) of an earlier transcript of this episode whose markdown is still on disk, else None."""
