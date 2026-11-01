@@ -64,12 +64,13 @@ def seed(work):
                              'claims': [{'ticker': [], 'claim': 'The guest says agents need reproducible checks before automatic merging.',
                                          'speaker': 'guest', 'timestamp': 0, 'novelty': 1, 'verifiable': 2}]}]})
     save(run / 'editor.json', {'version': 1, 'prompt_version': 'verification-fixture', 'episodes': [{
-        'episode_id': EPISODE, 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+        'episode_id': EPISODE, 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(), 'topics': ['verification'],
         'key_insights': [{'title': 'Verify before automatic merging', 'text': 'The guest says agents need reproducible checks before automatic merging.',
                           'why_it_matters': 'Verification supplies observable evidence.', 'speaker': 'guest', 'start': 0, 'end': 29,
                           'companies': [], 'inference': None}],
         'dense_summary': [{'title': 'Reproducible checks', 'text': 'The guest links automatic merging to reproducible checks and observable evidence.', 'start': 0, 'end': 29},
                           {'title': 'Review the application', 'text': 'The guest says to review the resulting application as well as the code; passing checks alone do not establish a useful interface.', 'start': 30, 'end': 50}]}]})
+    save(work / 'data/entities.json', {'topic_names': {'verification': 'Verification'}, 'topic_groups': [{'id': 'verification', 'name': 'Verification', 'topics': ['verification']}]})
     save(work / 'data/site.json', {'site_name': 'Sigma verification', 'picks_label': 'User picks', 'base_url': 'http://localhost'})
     command(work, 'publish-fixture', [sys.executable, '-m', 'sigma.cli', 'publish', str(run / 'ranked.json')])
 
@@ -232,10 +233,15 @@ def drive(work, feature):
                         page.wait_for_function('document.querySelector("#f-count")?.textContent === "1 episode"')
                         action(f'{width}: homepage picks chip opens Find with one picked result')
                         assert page.get_by_label('Picks', exact=True).input_value() == '1'
-                        page.get_by_label('Search titles, guests and claims', exact=True).fill('no-such-verification-episode')
+                        page.get_by_label('Topic', exact=True).select_option('verification')
+                        page.wait_for_function('document.querySelector("#f-count")?.textContent === "1 episode"')
+                        page.get_by_label('Search titles, guests and summaries', exact=True).fill('interface')
+                        page.wait_for_function('document.querySelector("#f-count")?.textContent === "1 episode"')
+                        action(f'{width}: episode topic filter and summary-only search word find the episode')
+                        page.get_by_label('Search titles, guests and summaries', exact=True).fill('no-such-verification-episode')
                         page.wait_for_function('document.querySelector("#f-count")?.textContent === "0 episodes"')
                         action(f'{width}: unmatched query produces zero results')
-                        page.get_by_label('Search titles, guests and claims', exact=True).fill('Verification')
+                        page.get_by_label('Search titles, guests and summaries', exact=True).fill('Verification')
                         page.wait_for_function('document.querySelector("#f-count")?.textContent === "1 episode"')
                         with page.expect_navigation(wait_until='domcontentloaded'):
                             page.locator('#f-out h3').get_by_role('link', name=TITLE, exact=True).click()
@@ -253,6 +259,14 @@ def drive(work, feature):
                         assert page.locator('.dense-summary > section').count() == 2
                         action(f'{width}: direct episode entry also renders both sections')
                     else:
+                        with page.expect_navigation(wait_until='domcontentloaded'):
+                            page.locator('.chip').filter(has_text='Verification').click()
+                        page.locator('#f-count').wait_for()
+                        page.wait_for_function('document.querySelector("#f-count")?.textContent === "1 episode"')
+                        assert page.get_by_label('Topic', exact=True).input_value() == 'verification'
+                        action(f'{width}: episode topic chip opens filtered Find')
+                        with page.expect_navigation(wait_until='domcontentloaded'):
+                            page.locator('#f-out h3').get_by_role('link', name=TITLE, exact=True).click()
                         with page.expect_navigation(wait_until='domcontentloaded'):
                             page.locator('.meta').get_by_role('link', name='User picks', exact=True).first.click()
                         page.locator('#f-count').wait_for()

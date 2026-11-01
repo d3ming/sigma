@@ -8,6 +8,7 @@ Readers intersect search and filters, then open an episode. A user pick is prove
 - `find-query`: matching and empty queries update results without changing stored data.
 - `picks-direct`: direct Find supports selecting Picks.
 - `picks-detail`: a detail-page pick badge returns to filtered Find.
+- `topic-detail`: a detail-page topic chip opens Find for that episode topic.
 
 ## How to get to it (user POV)
 
@@ -21,9 +22,12 @@ Preconditions: launch and doctor passed; the fixture’s label is `User picks` a
 
 - Run `"$SIGMA_PYTHON" "$DRIVER" drive --work "$VERIFY_WORK" --feature picks`.
 - Choose `User picks` in `.top-head`. Require `/find/?picks=1`, select `Picks` value `1`, and `#f-count` of `1 episode`.
-- Fill `Search titles, guests and claims` with `no-such-verification-episode`: require zero results. Replace it
+- Select `Topic=verification` (label `Verification`) and search `interface`: require one result even though that
+  word appears only in the detailed editorial. This proves episode tagging and summary retrieval.
+- Fill `Search titles, guests and summaries` with `no-such-verification-episode`: require zero results. Replace it
   with `Verification`: require one result. Open its title in `#f-out h3` and require the full reading.
-- Choose the detail’s `User picks` badge and check the filter again. Open `/find/` directly and select `Picks=1`.
+- Choose the detail’s `Verification` topic chip; require Find’s Topic value `verification` and one result.
+  Reopen the episode, choose its `User picks` badge and check the filter again. Open `/find/` directly and select `Picks=1`.
 - Save every entry point’s actions, resulting count and URL, browser evidence and the unchanged-data result.
 
 ## Gotchas

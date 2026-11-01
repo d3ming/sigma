@@ -9,6 +9,13 @@ Write the run's optional `editor.json` against `schema/editor.schema.json`. Incl
 SHA-256 of its source transcript. Record `prompt_version` so later backfills can distinguish edits. Keep recording
 dates separate from publication dates in `context`.
 
+Include episode-level `topics` using IDs from the configured data root's `entities.json` → `topic_names`, using `topic_notes` definitions when present.
+Tag substantive source content, not the show’s usual subject or a passing mention. Prefer a few specific topics that
+help a reader retrieve this episode. An explicit empty list means reviewed with no matching topics; do not omit it
+just because the show has defaults. Never invent IDs. If the vocabulary is unavailable, report the missing input
+rather than guessing tags. A transferable technique does not establish that a named product implements it; assign
+product-specific topics only when the source substantively identifies and discusses that product.
+
 First map the whole conversation into topic beats. Then write two separate fields:
 
 - `key_insights`: importance ordered, with a useful title, a substantial paraphrase, why it matters, the speaker and

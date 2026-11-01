@@ -669,15 +669,16 @@ def test_user_pick_survives_newer_issue_without_changing_rating_floor():
     from sigma import entities
 
     eid = "rss:owner-pick"
-    meta = {"episode_id": eid, "title": "A chosen conversation", "source": "Example Show", "published": "2026-10-30", "user_pick": True}
+    meta = {"episode_id": eid, "title": "A chosen conversation", "source": "Example Show", "published": "2026-10-30", "user_pick": True, "topics": ["methods"]}
     score = {"episode_id": eid, "score": 3, "reason": "Limited new evidence"}
     old = {"name": "older", "meta": {eid: meta}, "claims": [], "scored": [score], "rubric": 1}
-    new = {"name": "newer", "meta": {eid: {**meta, "user_pick": False}}, "claims": [], "scored": [score], "rubric": 1}
+    new = {"name": "newer", "meta": {eid: {**meta, "user_pick": False, "topics": []}}, "claims": [], "scored": [score], "rubric": 1}
     reg = site.build_episodes([new, old])
-    ent = entities.Entities()
+    ent = entities.Entities(topic_names={"methods": "Methods"}, show_topics={"example-show": ["methods"]})
     site.annotate(reg, ent)
     e = reg[eid]
     assert e["user_pick"] is True and e["score"] == 3 and e["page"]
+    assert site.episode_json(e)["topics"] == []
     assert site.feed_rows(reg) == []
     assert '/find/?picks=1' in site.top_html(reg)
     assert site.episode_json(e)["user_pick"] is True

@@ -1,7 +1,7 @@
 # Sigma verification map
 
 Read the relevant feature before driving. These recipes describe the shipped UI and CLI; the driver’s fictional
-fixture supplies one recent picked episode, one key insight and two narrative sections. It has no X edition or
+fixture supplies one recent picked episode, one key insight, two narrative sections and an episode-level `Verification` topic. It has no X edition or
 directional sentiment. Unseeded paths remain unverified until their documented prerequisites are supplied.
 
 Use the isolated launch and doctor in [verify](../SKILL.md). Run from the source checkout with an absolute scratch

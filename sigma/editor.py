@@ -6,12 +6,12 @@ from pathlib import Path
 
 import jsonschema
 
-from . import report
+from . import entities, report
 from .fetch import segments_from_md
 from .ranked import private_hits
 
 FILE = "editor.json"
-FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source")
+FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source", "topics")
 
 
 def load(run_dir: str | Path) -> dict[str, dict]:
@@ -28,11 +28,14 @@ def load(run_dir: str | Path) -> dict[str, dict]:
         raise ValueError(f"editor.json looks private ({hits})")
     manifest = json.loads((run_dir / "manifest.json").read_text())
     rows = {row["episode_id"]: row for row in manifest.get("episodes", [])}
+    topic_names = entities.load().topic_names
     out = {}
     for episode in data["episodes"]:
         eid = episode["episode_id"]
         if eid in out or eid not in rows:
             raise ValueError(f"editor: duplicate or unknown episode {eid}")
+        if unknown := set(episode.get("topics", [])) - topic_names.keys():
+            raise ValueError(f"editor: {eid}: unknown topic ids {sorted(unknown)}")
         row = rows[eid]
         source = (run_dir / row.get("file", "")).resolve()
         if not source.is_file() or run_dir not in source.parents or not row.get("has_transcript"):
