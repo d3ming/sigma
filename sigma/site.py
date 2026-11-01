@@ -96,13 +96,13 @@ a:focus-visible,button:focus-visible{outline:var(--line-2) solid var(--accent);o
 .entry h3{font:600 var(--text-heading)/1.28 var(--font-sans);letter-spacing:-.02em;margin:0;text-wrap:balance}
 .entry h3 a{text-decoration:none}
 .meta{font:400 var(--text-detail) var(--font-mono);color:var(--text-muted);margin:.5em 0 0}
-.listen{display:inline-flex;gap:0;margin-left:6px;vertical-align:middle}
+.listen{display:inline-flex;flex-wrap:wrap;gap:0;margin-left:6px;vertical-align:middle}
 .lk{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;margin:-8px 0;color:var(--brand);border-radius:var(--radius-md);opacity:.85}
 .lk svg{width:20px;height:20px;fill:currentColor;display:block}
 .lk .cut{fill:none;stroke:var(--base);stroke-width:1.9;stroke-linecap:round}
 .lk .ln{fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round}
 .lk:hover,.lk:focus-visible{opacity:1;background:var(--surface-2)}
-.lk.tx{--brand:var(--text-muted)}.lk.yt{--brand:var(--yt)}.lk.ap{--brand:var(--ap)}.lk.sp{--brand:var(--sp)}
+.lk.tx{--brand:var(--text-muted);width:auto;gap:4px;padding:0 6px;white-space:nowrap}.lk.yt{--brand:var(--yt)}.lk.ap{--brand:var(--ap)}.lk.sp{--brand:var(--sp)}
 .take{color:var(--text-muted);margin:.8em 0 0;font-size:.98rem;max-width:62ch}
 .claims{list-style:none;padding:0;margin:1.1em 0 0}
 .claims li{padding:.6em 0 .6em 14px;border-left:var(--line-1) solid var(--border)}
@@ -561,9 +561,9 @@ def listen_icons(e: dict) -> str:
         out.append(f'<a class="lk {cls}" href="{esc(u)}" rel="noopener noreferrer" aria-label="{esc(label)}" title="{esc(label)}">{svg}</a>')
     tx = safe_url(e.get("transcript_url"))  # the publisher's own transcript; Sigma's full transcripts are not published
     if tx:
-        out.append(f'<a class="lk tx" href="{esc(tx)}" rel="noopener noreferrer" aria-label="Read the transcript" title="Read the transcript">'
+        out.append(f'<a class="lk tx" href="{esc(tx)}" rel="noopener noreferrer" aria-label="Open public transcript" title="Open public transcript">'
                    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="ln" d="M6 3h8l4 4v14H6z"/>'
-                   '<path class="ln" d="M9 11h6M9 14.5h6M9 18h4"/></svg></a>')
+                   '<path class="ln" d="M9 11h6M9 14.5h6M9 18h4"/></svg><span>Public transcript</span></a>')
     return f'<span class="listen">{"".join(out)}</span>' if out else ""
 
 
@@ -1327,6 +1327,7 @@ def build_episodes(runs: list[dict]) -> dict:
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
                      image_url=safe_url(m.get("image_url")), show_image_url=safe_url(m.get("show_image_url")),
+                     transcript_url=safe_url(m.get("transcript_url")),
                      transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
     for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
