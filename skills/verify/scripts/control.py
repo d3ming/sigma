@@ -207,6 +207,8 @@ def drive(work, feature):
                 context.tracing.start(screenshots=True, snapshots=True, sources=False)
                 errors = []
                 page = context.new_page()
+                page.set_default_timeout(5000)
+                page.set_default_navigation_timeout(10000)
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 context.route('**/*', lambda route: route.continue_() if route.request.url.startswith(state['url'] + '/') else route.abort())
                 try:

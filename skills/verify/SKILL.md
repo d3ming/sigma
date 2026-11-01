@@ -53,6 +53,13 @@ the source revision. Uncommitted changes require a rebuild too; record `git diff
 "$SIGMA_PYTHON" "$DRIVER" drive --work "$VERIFY_WORK" --feature picks
 ```
 
+Choose the command for the affected feature; do not run both for every change. Selector waits fail after five
+seconds and navigation after ten; retain the failed trace instead of retrying an unchanged check. This driver is outside pytest and
+pre-push. Its browser actions prove interactions that static output tests miss; it does not replace automatic checks
+for grounding, calculations, privacy, data integrity or source identity. Compare checks by the deliberate product
+breaks they catch, not by whether they use a browser. Consolidate overlapping automatic tests only after their distinct
+assertions survive in a retained check and break checks confirm that protection.
+
 Both commands drive the generated app in fresh desktop and mobile browser contexts. Reading expands insights,
 follows the episode link and checks the separate chronological narrative, including direct episode entry. Picks
 uses the homepage chip, Find controls, an empty search, the result link and the episode badge. Use the map for the
