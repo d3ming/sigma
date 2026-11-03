@@ -1,10 +1,12 @@
 # AGENTS.md
 
-Sigma finds evidence-backed signals for the US stock market and publishes research on methods and tooling. A stranger can clone it,
-supply their own follow lists, and run the pipeline and the site. The owner's instance runs on a Mac with private inputs.
+Sigma is open-source tooling for ingesting sources and making sense of them. Its site shows the tooling at work and the
+owner's view of how to use it. A stranger can clone it, supply their own follow lists, and run
+the pipeline and the site. The owner's instance runs on a Mac with private inputs. Most work is a one-off request
+([skills/ingest-request](skills/ingest-request/SKILL.md)); the daily and weekly editions continue.
 
 Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
-PR authorizes publication, including new public pages, without another owner approval. Use `make publish`; it validates
+PR authorizes publication, including new public pages, without another owner approval, except a post. Use `make publish`; it validates
 the frozen build, saves private data
 to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
 disabled. Private migration notes never enter this repository or its history.
@@ -18,7 +20,7 @@ This file holds only what a capable agent would get wrong here without being tol
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to propose a change and what stays out of the repo.
 - [REVIEW.md](REVIEW.md): how to review a change and the `develop`→`main` release PR.
 - [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
-- [deploy/mac/README.md](deploy/mac/README.md): the macOS setup, scheduled jobs and the release and publish flow.
+- [deploy/mac/README.md](deploy/mac/README.md): macOS setup, scheduled jobs and publishing.
 - [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
 - [skills/test-audit](skills/test-audit/SKILL.md): how to decide whether a test earns its place; apply it to every added or changed test.
 - [prompts/](prompts/): the prompts the scheduled agents follow word for word.
@@ -33,8 +35,8 @@ This file holds only what a capable agent would get wrong here without being tol
 - **Nothing private in the repo, ever.** Follow lists, published output, post drafts, scores, notes and the call ledger
   live in a separate private data repo and reach the code through `data/` or a setting. The owner's holdings and sizes never enter any repo; what a poster publicly shares about their own portfolio is ordinary attributed evidence.
   Anything committed may be read by anyone.
-- **Sigma knows nothing of the fund.** Research posts are about method and tooling, never about investments, fair
-  values or calls.
+- **Sigma does not duplicate the owner's private research.** The site may publish opinions and articles, but only ones
+  curated with the owner, never a copy of his private research or his own calls.
 - **Evidence is not permission.** Prepare the full proposal yourself; the owner authorizes what is his (below).
 
 ## What needs the owner's go
@@ -45,7 +47,8 @@ Bring a reviewed dry run, and wait for an explicit yes, for:
 - deleting data that has no saved copy;
 - a force-push or history rewrite outside `develop`;
 - a credential, permission, domain or hosting-account change;
-- anything sent or posted as the owner.
+- anything sent or posted as the owner;
+- publishing a post (an opinion or article): the owner curates each one.
 
 Everything else is yours to decide. Be bold with reversible work.
 
@@ -103,6 +106,3 @@ Browser driving is opt-in, outside pytest/pre-push; run affected journeys, then 
 - A removed feature gets an entry in `docs/REMOVED_FEATURES.md`: what it did, why it went, and where its last copy
   lives.
 - An accepted limitation is a `Known limit:` paragraph in the body of the commit that accepts it.
-- Reviewing a change: [REVIEW.md](REVIEW.md).
-
-For broader source discovery and reading, use `skills/signal-discovery` and `skills/source-reading`. Their private leads do not bypass the podcast and X publication checks.

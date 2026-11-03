@@ -1,6 +1,6 @@
 # Sigma
 
-Sigma finds evidence-backed signals for the US stock market. Its checked podcast and X pipeline publishes cited claims; source-reading skills extend discovery to issuer disclosures, filings, news and public communities. It also publishes research about methods and tooling. Code handles collection, validation and publishing; an agent follows the prompts to score and summarize.
+Sigma is open-source tooling for ingesting sources and making sense of them. Its checked podcast and X pipeline publishes cited claims; source-reading skills extend reading to issuer disclosures, filings, articles and public communities. Its site shows the tooling at work, with posts curated by the maintainer. Code handles collection, validation and publishing; an agent follows the prompts to score and summarize.
 
 ## Run your own
 
@@ -35,7 +35,7 @@ and people before ingesting. Neither setup nor a local build publishes a site or
 
 ## Operate the desk
 
-Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market sweep and [source-reading](skills/source-reading/SKILL.md) to read the underlying evidence across source types. [The source comparison](docs/source-research.md) explains the design choices.
+For a request to ingest named sources and report on a topic, follow [ingest-request](skills/ingest-request/SKILL.md). Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market sweep and [source-reading](skills/source-reading/SKILL.md) to read the underlying evidence across source types. [The source comparison](docs/source-research.md) explains the design choices.
 
 Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily update skill](skills/daily-update/SKILL.md), which coordinates video ingest, the podcast issue, and the independent X scan. The existing [daily prompt](prompts/daily.md) and [X workflow](skills/x-daily/SKILL.md) remain their task instructions. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
 
@@ -44,10 +44,10 @@ and status commands. This records a user pick without adding a source or schedul
 independent rating; Find's picks filter includes episodes below the homepage rating floor. Set `picks_label` in private
 `site.json` to name that filter and its episode badges. `--picks` still accepts a candidate JSON list.
 
-Research posts are explicitly allowed in the data root and checked before the site build. A refused post stops the build. Nothing is published just because it exists in the data folder.
+Posts (opinions and articles curated with the maintainer) are explicitly allowed in the data root and checked before the site build. A post joins `research/index.json` only after the maintainer's yes to that draft. A refused post stops the build. Nothing is published just because it exists in the data folder.
 
 The site is built locally from private data and uploaded prebuilt. Push source changes to `develop`, then review a
-release PR into `main`. A passing release PR authorizes `make publish`: it checks the frozen build, saves private data
+release PR into `main`. A passing release PR authorizes `make publish` (a post still needs the maintainer's yes): it checks the frozen build, saves private data
 to its repository's `main`, tags the version and uploads. Merging does not deploy. `scripts/release.sh --help` owns the
 commands, including a plan-only dry run.
 
