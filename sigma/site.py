@@ -32,6 +32,7 @@ MAKER = ""
 BASE_URL = "https://example.invalid"
 SITE = "Sigma"
 PICKS_LABEL = "User picks"
+OPERATOR = ""
 TOKENS = ROOT / "web" / "tokens.css"  # the shared visual base (see web/WEB_DESIGN.md); the build puts it in front of CSS in style.css
 ASSETS = ROOT / "site-assets"  # favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png: copied to the site root
 ICONS = ('<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48">'
@@ -379,6 +380,7 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
         d += f'<link rel="alternate" type="text/markdown" href="{esc(md)}">'
     maker = f'<a class="maker" href="{esc(X_PROFILE)}" rel="me noopener noreferrer">{X_LOGO}{esc(MAKER)}</a>' if MAKER and X_PROFILE else ""
     x_link = f'<a href="{esc(X_PROFILE)}" rel="me noopener noreferrer">X profile</a> · ' if X_PROFILE else ""
+    operated = f'Operated by {esc(OPERATOR)} · ' if OPERATOR else ""
     return (f'<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(shown)}</title>{d}<link rel="alternate" type="application/json" href="/runs.json">'
@@ -388,7 +390,7 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
             f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{MODE_BUTTON}</div></div></header>'
             f'<main><div class="wrap">{body}</div></main>'
             f'<footer><div class="wrap">{upd}'
-            f'<span>{x_link}<a href="{NOTICE_PATH}">Notice</a> · <a href="/llms.txt">llms.txt</a></span></div></footer></body></html>\n')
+            f'<span>{operated}{x_link}<a href="{NOTICE_PATH}">Notice</a> · <a href="/llms.txt">llms.txt</a></span></div></footer></body></html>\n')
 
 
 # ---------------------------------------------------------------- loading
@@ -1726,20 +1728,24 @@ Object.values(F).forEach(id=>$(id).addEventListener('input',run));$('f-more').ad
 
 NOTICE_PATH = "/notice/"
 NOTICE = [  # the site's legal notice, one paragraph each; linked from every footer
-    "Sigma summarizes public material and publishes research on methods and tools. It does not provide personalized advice.",
+    "Sigma summarizes public material and publishes opinions and articles. It does not provide personalized advice.",
     "Summaries and calculations can be wrong. Check the linked source before relying on them.",
     "Sources retain rights to their work. Sigma links to source material and displays only the excerpts needed to identify a claim.",
     "This site may use privacy-preserving page-view analytics when enabled by its operator.",
 ]
 
 
+def notice() -> list[str]:
+    return ([f"Sigma is operated by {OPERATOR}."] if OPERATOR else []) + NOTICE
+
+
 def notice_page() -> str:
-    body = "<h1>Notice</h1>" + "".join(f"<p>{esc(t)}</p>" for t in NOTICE)
+    body = "<h1>Notice</h1>" + "".join(f"<p>{esc(t)}</p>" for t in notice())
     return page(f"Notice · {SITE}", body, "", "Opinions, not investment advice.", md=md_of(NOTICE_PATH))
 
 
 def notice_md() -> str:
-    return doc(["# Notice", "", *(x for t in NOTICE for x in (t, ""))])
+    return doc(["# Notice", "", *(x for t in notice() for x in (t, ""))])
 
 
 
@@ -2454,7 +2460,7 @@ def research_index_page(posts: list[dict]) -> tuple[str, str]:
                        f'<p class="lede">{esc(p["summary"])}</p></li>' for p in posts)
         body = f'<h1>Research</h1><ul class="archive">{rows}</ul>'
         md = doc(["# Research", "", *[f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in posts]])
-    return page(f"Research · {SITE}", body, "research", "Research on methods and tools.", md=md_of("/research/")), md
+    return page(f"Research · {SITE}", body, "research", "Opinions and articles.", md=md_of("/research/")), md
 
 
 def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]) -> None:
@@ -2472,16 +2478,16 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR)
     identity = load_site_identity()
-    PICKS_LABEL = identity.picks_label
+    PICKS_LABEL, OPERATOR = identity.picks_label, identity.operator
     BASE_URL, SITE, MAKER, X_PROFILE = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
