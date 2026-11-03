@@ -3,6 +3,7 @@ salted hashes, matches are whole words, a hit never prints the word, and a missi
 import contextlib
 import importlib.util
 import io
+import re
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -73,14 +74,14 @@ def test_a_hit_names_the_file_and_line_and_never_the_word(tmp_path):
 
 def test_matches_whole_words_and_phrases_only(tmp_path):
     root = repo(tmp_path, words=("zed", "ada lovelace"))
-    stage(root, "a.txt", "zeds zedx azed\n")  # parts of longer words are not the word
-    assert run(root).returncode == 0
-    for text in ("@zed on a profile", "https://zed.example/page", "Ada  Lovelace wrote it", "ZED_"):
-        stage(root, "a.txt", text + "\n")
-        assert (run(root).returncode == 1) == (text != "ZED_"), text  # an underscore joins words: ZED_ is one token
-    stage(root, "a.txt", "Ada\nLovelace wrote it\n")
+    lines = ["zeds zedx azed",  # parts of longer words are not the word
+             "@zed on a profile", "https://zed.example/page", "Ada  Lovelace wrote it",
+             "ZED_",  # an underscore joins words: ZED_ is one token
+             "Ada", "Lovelace wrote it"]
+    stage(root, "a.txt", "\n".join(lines) + "\n")
     r = run(root)
-    assert r.returncode == 1 and "a.txt:1" in r.stderr and "Ada" not in r.stderr
+    assert r.returncode == 1 and "Ada" not in r.stderr
+    assert {int(n) for n in re.findall(r"a\.txt:(\d+)", r.stderr)} == {2, 3, 4, 6}
 
 
 def test_a_file_name_is_checked_too(tmp_path):

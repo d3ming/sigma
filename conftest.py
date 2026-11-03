@@ -11,12 +11,17 @@ os.environ["SIGMA_DATA_ROOT"] = tempfile.mkdtemp(prefix="sigma-tests-")
 TEST_SECONDS = 1.0
 SUITE_TARGET_SECONDS = 5.0
 SUITE_FAILURE_SECONDS = 10.0
+GIT_QUIET = {"maintenance.auto": "false", "gc.auto": "0", "receive.autogc": "false", "core.fsync": "none"}
 
 
 @pytest.fixture(autouse=True)
 def _whisper_env(monkeypatch, tmp_path):
     for k in [k for k in os.environ if k.startswith("GIT_")]:
         monkeypatch.delenv(k)  # a git hook sets GIT_DIR to the real repo: a test's own `git` call would act on it
+    for i, (key, value) in enumerate(GIT_QUIET.items()):
+        monkeypatch.setenv(f"GIT_CONFIG_KEY_{i}", key)
+        monkeypatch.setenv(f"GIT_CONFIG_VALUE_{i}", value)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", str(len(GIT_QUIET)))
     monkeypatch.setenv("SIGMA_WHISPER_BACKEND", "faster")
     monkeypatch.delenv("SIGMA_WHISPER_MODEL", raising=False)
     monkeypatch.delenv("SIGMA_WHISPER_THREADS", raising=False)
