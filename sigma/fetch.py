@@ -303,7 +303,10 @@ def transcribe_run(args) -> Path:
     from .timing import apply as timing_apply
 
     top = 0 if custom else getattr(args, "top", 0) or 0
+    prior_timing: dict = {}
+
     def start(m):
+        prior_timing.update(json.loads(json.dumps(m.get("timing") or {})))
         timing_apply(refresh_flags(m, run_dir, min_chars), "transcribe", "start")
         if top and ("triage" not in m or getattr(args, "retriage", False)):
             from .triage import triage
@@ -414,7 +417,10 @@ def transcribe_run(args) -> Path:
         lock.unlink(missing_ok=True)
 
         def finish(m):
-            timing_apply(m, "transcribe", "end")
+            if done_ok + done_fail == 0 and prior_timing.get("transcribe", {}).get("end"):
+                m["timing"] = prior_timing
+            else:
+                timing_apply(m, "transcribe", "end")
             yt_left = {e["episode_id"] for e in m["episodes"] if yt_blocked is not None and not e.get("audio_url")}
             for row in m["episodes"]:
                 why = skip_reason(row, top=top, skip_news=skip_news, reruns=reruns, retry=retry, tried=tried, yt_left=yt_left, budget=budget)
