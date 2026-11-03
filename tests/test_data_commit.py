@@ -7,7 +7,8 @@ import pytest
 
 SCRIPT = Path(__file__).parent.parent / "deploy" / "mac" / "data-commit.sh"
 CODE = Path(__file__).parent.parent
-OWNED_CHANGES = {"site.json": '{"version":2}\n', "published/signals.json": '{"signals":1}\n'}
+OWNED_CHANGES = {"site.json": '{"version":2}\n', "published/signals.json": '{"signals":1}\n',
+                 "runs/baseline-transcript.md": "changed transcript lands\n", "runs/episode-01.md": "changed episode transcript lands\n"}
 pytestmark = [pytest.mark.slow, pytest.mark.skipif(shutil.which("zsh") is None, reason="data-commit.sh is a zsh script")]
 
 
@@ -90,11 +91,12 @@ def invoke(source, data, code, *args):
 
 
 def edit_branch_delta(source, data):
-    """A branch that committed a new site.json, with the files the landing must never take edited, untracked or beside it."""
+    """A branch that committed a new site.json and edited tracked transcripts, with the files the landing must never take
+    edited, untracked or beside it."""
     (data / "site.json").write_text(OWNED_CHANGES["site.json"])
     git("add", "sigma/site.json", cwd=source)
-    (data / "runs" / "baseline-transcript.md").write_text("changed transcript stays local\n")
-    (data / "runs" / "episode-01.md").write_text("changed generic transcript stays local\n")
+    (data / "runs" / "baseline-transcript.md").write_text(OWNED_CHANGES["runs/baseline-transcript.md"])
+    (data / "runs" / "episode-01.md").write_text(OWNED_CHANGES["runs/episode-01.md"])
     (data / "runs" / "feed-cache.json").write_text("changed feed cache stays local\n")
     (data / "library.sqlite").write_bytes(b"changed sqlite")
     (data / ".env.local").write_text("token=changed-local\n")
