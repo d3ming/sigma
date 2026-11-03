@@ -1736,7 +1736,7 @@ NOTICE = [  # the site's legal notice, one paragraph each; linked from every foo
 
 
 def notice() -> list[str]:
-    return ([f"Sigma is operated by {OPERATOR}."] if OPERATOR else []) + NOTICE
+    return ([f"Sigma is operated by {OPERATOR.rstrip('.')}."] if OPERATOR else []) + NOTICE
 
 
 def notice_page() -> str:
