@@ -446,7 +446,7 @@ def llms_section(days: dict) -> list[str]:
             "- The same day file carries `tickers[]` (and `markets[]`): the day's X signals added up per ticker, one vote per speaker, with `label` "
             "(Strongly bearish, Bearish, Neutral, Bullish, Strongly bullish, or Mixed), `net`, `bull`/`bear`/`neutral` speaker counts, `agreement`, "
             "`dispersion`, `confidence` and a one-line `reason`. The Sentiment page shows it as its X column",
-            f"- [Research]({absu(site.md_of(RESEARCH_PATH))}): methods and tooling research; posts are listed at {absu('/research/index.json')}", ""]
+            f"- [Research]({absu(site.md_of(RESEARCH_PATH))}): opinions and articles; posts are listed at {absu('/research/index.json')}", ""]
 
 
 def lead(days: dict, date: str) -> tuple[str, str]:

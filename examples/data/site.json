@@ -1,6 +1,7 @@
 {
   "base_url": "http://localhost:8787",
   "maker": "",
+  "operator": "",
   "x_profile": "",
   "site_name": "Sigma"
 }

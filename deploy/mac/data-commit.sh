@@ -71,8 +71,7 @@ while IFS= read -r -d '' owned_path; do
   lower="${owned_path:l}"
   if [[ "$base" == .env* || "$base" == .private-words || "$lower" == *secret* || "$lower" == *credential* ||
         "$lower" == *.sqlite || "$lower" == *.sqlite-* || "$lower" == *.sqlite3 || "$lower" == *.sqlite3-* || "$lower" == *.db || "$lower" == *.db-* || "$lower" == *.pem || "$lower" == *.key || "$lower" == *.p12 ||
-        "$lower" == *feedcache* || "$lower" == *feed-cache* || "$lower" == *feed_cache* || "$lower" == */.cache/* || "$lower" == */cache/* || "$lower" == */caches/* ||
-        "$lower" == *transcript* || (("$lower" == runs/* || "$lower" == */runs/*) && "$lower" == *.md) ]]; then
+        "$lower" == *feedcache* || "$lower" == *feed-cache* || "$lower" == *feed_cache* || "$lower" == */.cache/* || "$lower" == */cache/* || "$lower" == */caches/* ]]; then
     tgit reset -q "$BASE" -- "$owned_path" 2>/dev/null || true
   fi
 done < <(tgit diff --cached --name-only -z "$BASE" -- "$REL")

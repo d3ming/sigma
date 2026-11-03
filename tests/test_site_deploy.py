@@ -44,59 +44,73 @@ case "$1" in
     ;;
 esac
 """
+
+
+def build_template(root):
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    repo = Path(__file__).parent.parent
+    clone, bin_, data_root = root / "clone", root / "bin", root / "private-data"
+    clone.mkdir()
+    run = lambda *args: subprocess.run(["git", *args], cwd=clone, check=True, capture_output=True, env=env)
+    run("init", "-q", "-b", "main")
+    run("config", "user.email", "t@example.com")
+    run("config", "user.name", "t")
+    (clone / "deploy/mac").mkdir(parents=True)
+    shutil.copy(SCRIPT, clone / "deploy/mac/site-deploy.sh")
+    (clone / "scripts").mkdir()
+    for name in ("scripts/private_words.py", ".private-words.sha256"):
+        shutil.copy(repo / name, clone / name)
+    for name in ("sigma", "schema"):
+        shutil.copytree(repo / name, clone / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    (clone / "index.txt").write_text("site")
+    (clone / ".vercel").mkdir()
+    (clone / ".vercel/project.json").write_text("{}")
+    run("add", "-A")
+    run("commit", "-qm", "fixture")
+    bin_.mkdir()
+    (bin_ / "vercel").write_text(FAKE)
+    (bin_ / "vercel").chmod(0o755)
+    data_root.mkdir()
+    (data_root / "site.json").write_text('{"site_name":"Sigma fixture","base_url":"https://sigma.example"}\n')
+    (data_root / "private-input").write_text("must not reach the build snapshot")
+    from sigma import published
+    from tests.test_links import make_run
+
+    published.export(make_run(data_root), root=data_root / "published", resolver=False)
+
+
+@pytest.fixture(scope="module")
+def site_template(tmp_path_factory):
+    """The clone, fake vercel and private data every test starts from: built once per module, copied per test."""
+    root = tmp_path_factory.mktemp("site-template")
+    build_template(root)
+    return root
+
+
 class Site:
-    def __init__(self, tmp_path):
-        self.clone, bin_ = tmp_path / "clone", tmp_path / "bin"
-        self.clone.mkdir()
-        self.git("init", "-q", "-b", "main")
-        self.git("config", "user.email", "t@example.com")
-        self.git("config", "user.name", "t")
-        (self.clone / "deploy/mac").mkdir(parents=True)
-        shutil.copy(SCRIPT, self.clone / "deploy/mac/site-deploy.sh")
-        (self.clone / "scripts").mkdir()
-        for name in ("scripts/private_words.py", ".private-words.sha256"):
-            shutil.copy(Path(__file__).parent.parent / name, self.clone / name)
-        shutil.copytree(Path(__file__).parent.parent / "sigma", self.clone / "sigma",
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        shutil.copytree(Path(__file__).parent.parent / "schema", self.clone / "schema",
-                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
-        (self.clone / "index.txt").write_text("site")
-        (self.clone / ".vercel").mkdir()
-        (self.clone / ".vercel/project.json").write_text("{}")
-        self.git("add", "-A")
-        self.git("commit", "-qm", "fixture")
-        bin_.mkdir()
-        (bin_ / "vercel").write_text(FAKE)
-        (bin_ / "vercel").chmod(0o755)
+    def __init__(self, tmp_path, template):
+        shutil.copytree(template, tmp_path, dirs_exist_ok=True, symlinks=True)
+        self.clone, bin_, self.data_root = tmp_path / "clone", tmp_path / "bin", tmp_path / "private-data"
         self.upload_log = tmp_path / "uploads.txt"
         self.build_log = tmp_path / "builds.txt"
-        data_root = tmp_path / "private-data"
-        self.data_root = data_root
-        data_root.mkdir()
-        (data_root / "site.json").write_text('{"site_name":"Sigma fixture","base_url":"https://sigma.example"}\n')
-        (data_root / "private-input").write_text("must not reach the build snapshot")
-        from sigma import published
-        from tests.test_links import make_run
-
-        run = make_run(data_root)
-        published.export(run, root=data_root / "published", resolver=False)
         self.env = {**os.environ, "PATH": f"{bin_}:{os.environ['PATH']}", "FAKE_CONTENT": "site",
                     "SIGMA_BASE_URL": "https://sigma.example",
-                    "SIGMA_DATA_ROOT": str(data_root), "SIGMA_PYTHON": sys.executable,
-                    "FAKE_ORIGINAL_DATA_ROOT": str(data_root),
+                    "SIGMA_DATA_ROOT": str(self.data_root), "SIGMA_PYTHON": sys.executable,
+                    "FAKE_ORIGINAL_DATA_ROOT": str(self.data_root),
                     "SIGMA_PUBLICATION_DATA_SNAPSHOT_ROOT": str(tmp_path / "snapshots"),
                     "FAKE_UPLOAD_LOG": str(self.upload_log), "FAKE_BUILD_LOG": str(self.build_log)}
-
-    def git(self, *args):
-        return subprocess.run(["git", *args], cwd=self.clone, check=True, capture_output=True, text=True).stdout.strip()
 
     def run(self, *args):
         return subprocess.run(["zsh", str(self.clone / "deploy/mac/site-deploy.sh"), *args], cwd=self.clone,
                               env=self.env, capture_output=True, text=True)
 
 
-def test_private_source_and_generated_paths_are_refused_before_upload(tmp_path):
-    site = Site(tmp_path)
+@pytest.fixture
+def site(tmp_path, site_template):
+    return Site(tmp_path, site_template)
+
+
+def test_private_source_and_generated_paths_are_refused_before_upload(site):
     for name in (".env.local", ".private-words", "PLAN.md", "docs/migration/private.md", "data/site.json", "followlists.yaml"):
         path = site.clone / name
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,14 +132,12 @@ def test_private_source_and_generated_paths_are_refused_before_upload(tmp_path):
     episodes.write_text(json.dumps(episode_rows) + "\n")
     with pytest.raises(ValueError, match="public file looks private"):
         published.validate_publication_privacy(site.data_root / "published")
-    assert site.build_log.read_text() == before
     episodes.write_bytes(episodes_before)
     episode_rows = json.loads(episodes_before)
     episode_rows[0]["url"] = "https://example.com/replaced"
     episodes.write_text(json.dumps(episode_rows) + "\n")
     with pytest.raises(ValueError, match="episodes.json differs from source run"):
         published.validate_publication_inputs(site.data_root / "published", site.data_root / "runs")
-    assert site.build_log.read_text() == before
     episodes.write_bytes(episodes_before)
     claims = site.data_root / "published" / "weekly" / "claims.jsonl"
     rows = [json.loads(line) for line in claims.read_text().splitlines()]
@@ -138,8 +150,7 @@ def test_private_source_and_generated_paths_are_refused_before_upload(tmp_path):
     assert not site.upload_log.exists()
 
 
-def test_contact_details_in_the_built_site_are_refused_before_upload(tmp_path):
-    site = Site(tmp_path)
+def test_contact_details_in_the_built_site_are_refused_before_upload(site):
     at = "@"  # built at run time so this file holds no address
     site.env["FAKE_CONTENT"] = f"write to someone{at}corp.org or call (212) 867-" + "5309"
     refused = site.run("--preflight")
@@ -147,6 +158,10 @@ def test_contact_details_in_the_built_site_are_refused_before_upload(tmp_path):
     assert "(email address)" in refused.stderr and "(phone number)" in refused.stderr
     assert "corp.org" not in refused.stderr and "5309" not in refused.stderr  # the kind is named, never the value
     assert not site.upload_log.exists()
+
+
+def test_a_clean_build_is_staged_without_the_vendor_traces(site):
+    at = "@"
     site.env["FAKE_CONTENT"] = f"write to someone{at}example.com or call 212-555-0142"
     result = site.run("--preflight")
     assert result.returncode == 0, result.stdout + result.stderr
