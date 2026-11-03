@@ -20,8 +20,13 @@ budget the job will use. Add one line per source as it lands
 | Source | How | State |
 |---|---|---|
 | Podcast episode or YouTube video | `sigma custom-run <slug> --url <url>`, then the transcribe and status commands it prints | Checked; claims cite seconds |
-| X post or thread | The configured scan (`skills/x-scan`) or an X reader this host has | Depends on the host's X access; report a failure, do not guess text |
+| X post or thread | [Bird](https://github.com/steipete/bird) (`bird read`, `bird thread`), read-only, signed in through the operator's browser | Fails when the browser session is unreadable or expired; then recover below or record it unreadable |
 | Article, PDF, filing, release | [source-reading](../source-reading/SKILL.md): read the original, keep the canonical URL and a section or paragraph locator | Private notes only; no publish check yet |
+
+When an X read fails, look for a public copy instead of working around the login: search the post's numeric ID in
+quotes, then the handle with a distinctive phrase, and prefer a copy the author controls. A mirror or archive is a
+third-party copy: match the handle, ID and date, check for a missing ending or thread gaps, and record the copy's URL
+and that it is not the original. If nothing reliable turns up, ask the requester for the text or screenshots.
 
 Prefer the original over a summary of it: the issuer's filing over coverage of it, the episode over a clip. A paywalled or
 login-only source is read only through access the owner already has; otherwise record it as unreadable.
