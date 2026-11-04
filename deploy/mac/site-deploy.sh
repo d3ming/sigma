@@ -49,7 +49,7 @@ PY
 }
 
 TODAY=$(TZ=America/Los_Angeles date +%F)
-MAX=${SIGMA_DEPLOYS_PER_DAY:-2}
+MAX=${SIGMA_DEPLOYS_PER_DAY:-10}
 USED=$(grep -c "^$TODAY " "$LOG" 2>/dev/null || true); USED=${USED:-0}
 MODE=${1:-}
 if [[ $MODE == --help || $MODE == -h ]]; then
