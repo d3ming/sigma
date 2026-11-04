@@ -18,6 +18,8 @@ PEOPLE_DEFAULTS = {"preferred_source": "itunes", "fallback": [], "transcripts": 
 CLIP = re.compile(r"#shorts|\bclips?\b|\breacts?\b|\breaction\b|\bhighlights?\b|\bexplained\b|\bAI voice\b", re.I)
 OFF_GENRES = {"sports", "fiction", "kids & family", "religion & spirituality", "comedy", "leisure", "true crime",
               "tv & film", "music", "fantasy sports", "football", "basketball", "baseball", "hockey", "soccer"}
+EN_WORDS = set("the and of to is that with for this on are was it you we they he his her their from by be have has not but "
+               "what how why who about at as an or will can our your its into more one".split())
 OFF_TOPIC = re.compile(r"\b(sports?|radio show|football|basketball|baseball|hockey|soccer|nfl|nba|mlb|nhl|ncaa|fcs|playoffs?|"
                        r"quarterback|touchdown|tip-?off|recruiting|fantasy|vs\.? [A-Z]{2,4}\b)", re.I)
 WINDOW = [(1, "EgQIAhAB"), (7, "EgQIAxAB"), (31, "EgQIBBAB"), (366, "EgQIBRAB")]
@@ -72,9 +74,16 @@ def genres(r: dict) -> set[str]:
     return {n.lower() for n in names if n}
 
 
+def english(*texts: str) -> bool:
+    """Too few English function words to be an English episode (a dub or foreign show). Short text is not judged."""
+    words = re.findall(r"[^\W\d_]+", " ".join(t or "" for t in texts).lower())
+    return len(words) < 20 or sum(w in EN_WORDS for w in words) / len(words) >= 0.03
+
+
 def on_topic(person: Person, title: str, description: str, show: str, genre_names: set[str] = frozenset()) -> bool:
-    """Reject same-name hits from sports, fiction, etc. and, when `context` is set, hits that never mention it."""
-    if genre_names & OFF_GENRES or OFF_TOPIC.search(f"{title} {show}"):
+    """Reject same-name hits from sports, fiction, etc., non-English episodes and, when `context` is set, hits that never
+    mention it."""
+    if genre_names & OFF_GENRES or OFF_TOPIC.search(f"{title} {show}") or not english(title, description):
         return False
     if person.context:
         norm = lambda s: re.sub(r"[^a-z0-9]+", " ", (s or "").lower())

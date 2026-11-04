@@ -45,7 +45,9 @@ def _seconds(stamp: str) -> int:
 
 def condense(md: str, step: int = ANCHOR_SECONDS) -> str:
     """Keep the front matter and description; join the transcript into paragraphs that start with a [timestamp] every `step`
-    seconds. Cuts reader input roughly in half without losing the timestamps claims must cite."""
+    seconds or at each labeled speaker. Cuts reader input roughly in half without losing the timestamps claims must cite."""
+    from .report import _explicit_speaker
+
     out, buf, last, in_body = [], [], -10**9, False
     for line in md.splitlines():
         m = re.match(r"\[(\d+:\d+(?::\d+)?)\]\s?(.*)", line.strip())
@@ -55,7 +57,7 @@ def condense(md: str, step: int = ANCHOR_SECONDS) -> str:
             continue
         in_body = True
         t = _seconds(m.group(1))
-        if t - last >= step:
+        if t - last >= step or (buf and _explicit_speaker(m.group(2))):
             if buf:
                 out.append(" ".join(buf))
                 buf = []

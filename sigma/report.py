@@ -303,7 +303,7 @@ _PERCENT_WORDS = {"percent", "percentage", "%"}
 _NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+|%")
 _CITE_NUMBER = re.compile(
     r"(?<![A-Za-z\d.,])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)"
-    r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?"
+    r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?(?:[\s-]plus\b)?"
     r"(?P<unit>\s+(?:thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
 
 
@@ -377,7 +377,8 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             continue
         if w[0].isdigit():
             value = Decimal(w.replace(",", ""))
-            unit = words[i + 1][0] if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else None
+            nxt = i + 2 if i + 2 < n and words[i + 1][0] == "plus" and words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
+            unit = words[nxt][0] if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else None
             if unit is None and i + 3 < n and words[i + 1][0] in {"to", "through", "or"} and \
                     words[i + 2][0][:1].isdigit() and words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
                 unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
@@ -389,7 +390,7 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                     words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS:
                 unit = _shared_range_unit(value, words[i + 1][0], words[i + 2][0])
             out.append((ts, _num_key(value, unit)))
-            i += 2 if i + 1 < n and words[i + 1][0] in _MAGNITUDES | _PERCENT_WORDS else 1
+            i = nxt + 1 if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             continue
         if w in _UNITS or w in _TENS or w == "hundred" or (w == "a" and i + 1 < n and words[i + 1][0] in _MAGNITUDES):
             cur, j = 0, i
@@ -450,10 +451,19 @@ def _clock(sec: float) -> str:
     return f"{sec // 3600}:{sec % 3600 // 60:02d}:{sec % 60:02d}"
 
 
+def _whisper_digits(text: str) -> str:
+    """Rejoin numbers Whisper splits: "$ 100, 000" or "70 000" -> 100,000; "$ 10, 950" -> 10,950; "$ 1. 1 trillion" -> 1.1 trillion."""
+    for _ in range(3):
+        text = re.sub(r"(?<![\d.])(\d{1,3}(?:,\d{3})*)(?:, | )(000)(?!\d)", r"\1,\2", text)
+    text = re.sub(r"(\$ ?\d{1,3}), (\d{3})(?!\d)", r"\1,\2", text)
+    return re.sub(r"(?<![\d.])(\d+)\. (\d+)(?=\s+(?:thousand|million|billion|trillion|percent)\b|%)", r"\1.\2", text, flags=re.I)
+
+
 def _stream(segs: list[dict]) -> list[tuple[str, float]]:
     """(word, segment start) for every word of the segments; speaker prefixes and hyphens removed."""
     return [(w, s["start"]) for s in segs
-            for w in _NUM_TOKEN.findall(re.sub(r"^(?:speaker\s*\d+:)\s*", "", s["text"], flags=re.I).lower().replace("-", " "))]
+            for w in _NUM_TOKEN.findall(_whisper_digits(re.sub(r"^(?:speaker\s*\d+:)\s*", "", s["text"], flags=re.I))
+                                        .lower().replace("-", " "))]
 
 
 def _number_index(run_dir: Path, row: dict) -> list[tuple[float, str]]:

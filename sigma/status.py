@@ -306,11 +306,11 @@ def _score(run, arg, out, finish, target, eval_n=0):
     try:
         data = ranked.load(str(target_p))
         ranked.validate(data, ranking=target == "ranked.json")
-        errors, _ = report.ranked_verify(data, run)
+        errors = [m for part in report.ranked_verify(data, run) for m in part]
         if inf_wanted:
             idata = json.loads(inf_p.read_text())
             ranked.validate(idata, ranking=False)
-            errors += report.ranked_verify(idata, run)[0]
+            errors += [m for part in report.ranked_verify(idata, run) for m in part]
     except (ranked.RankedError, OSError, ValueError, KeyError) as exc:
         errors = [str(exc)]
     if errors:
