@@ -1,8 +1,8 @@
 """Research article bodies: a small, closed markup rendered to escaped HTML.
 
-Paragraphs are separated by blank lines. Block forms: `## heading`, `- ` list items, `> ` quote lines whose last line
+Paragraphs are separated by blank lines. Block forms: `## heading`, `### subheading`, `- ` list items, `> ` quote lines whose last line
 starts with `— ` (the attribution), `| a | b |` tables (first row is the header), `::video <youtube id> <start seconds>
-<caption>`, a `::: timeline` block closed by `:::` with one `date | text` row per line. Inline: `[text](https://…)`
+<caption>`, a `::: timeline` block closed by `:::` with one `date | text` row per line, a `::: verdict` block with one `label | answer | note | warn-or-ok` row per card. A paragraph that is only a link renders as a button. Inline: `[text](https://…)`
 links and `**bold**`. Anything else is text and is escaped.
 """
 from __future__ import annotations
@@ -46,6 +46,8 @@ def video(vid: str, start: int, caption: str) -> str:
 
 def block(lines: list[str]) -> str:
     first = lines[0]
+    if first.startswith("### "):
+        return f'<h3 class="ah3">{inline(first[4:])}</h3>'
     if first.startswith("## "):
         return f'<h2 class="ah">{inline(first[3:])}</h2>'
     if VIDEO.match(first):
@@ -56,6 +58,11 @@ def block(lines: list[str]) -> str:
         if kind == "timeline":
             items = "".join(f'<li><span class="tl-d">{inline(r[0])}</span><div>{inline(" | ".join(r[1:]))}</div></li>' for r in rows)
             return f'<ol class="timeline">{items}</ol>'
+        if kind == "verdict":
+            if any(len(r) != 4 or r[3] not in ("warn", "ok") for r in rows):
+                raise ValueError("article verdict rows need label | answer | note | warn-or-ok")
+            cards = "".join(f'<div class="vc {r[3]}"><span class="vk">{inline(r[0])}</span><span class="vv">{inline(r[1])}</span><p>{inline(r[2])}</p></div>' for r in rows)
+            return f'<div class="verdict">{cards}</div>'
         raise ValueError(f"unknown article block ::: {kind}")
     if first.startswith("> "):
         body = [l[2:] for l in lines if l.startswith("> ")]
@@ -69,11 +76,14 @@ def block(lines: list[str]) -> str:
         return f'<div class="tw"><table class="grid"><thead><tr>{th}</tr></thead><tbody>{tr}</tbody></table></div>'
     if first.startswith("- "):
         return "<ul class=\"al\">" + "".join(f"<li>{inline(l[2:])}</li>" for l in lines if l.startswith("- ")) + "</ul>"
-    return f"<p>{inline(' '.join(l.strip() for l in lines))}</p>"
+    text = " ".join(l.strip() for l in lines)
+    if LINK.fullmatch(text):
+        return f'<p class="cta">{inline(text)}</p>'
+    return f"<p>{inline(text)}</p>"
 
 
 def kind(line: str) -> str:
-    for prefix, k in (("## ", "h"), ("::video", "v"), ("- ", "li"), ("> ", "q"), ("|", "t")):
+    for prefix, k in (("## ", "h"), ("### ", "h"), ("::video", "v"), ("- ", "li"), ("> ", "q"), ("|", "t")):
         if line.startswith(prefix):
             return k
     return "p"
@@ -121,12 +131,20 @@ CSS = """
 .article>p{max-width:68ch}
 .article a{text-decoration-color:var(--accent);text-decoration-thickness:1px}
 .article h2.ah{display:block;font:600 var(--text-heading)/1.3 var(--font-sans);letter-spacing:-.015em;text-transform:none;color:var(--text);margin:2.4em 0 .5em;padding-top:var(--space-4);border-top:var(--line-1) solid var(--border)}
+.article h3.ah3{font:600 var(--text-section)/1.35 var(--font-sans);color:var(--text);margin:1.8em 0 .4em}
 .article h2.ah::before,.article h2.ah::after{display:none}
 .article ul.al{padding-left:1.1em;margin:.6em 0}.article ul.al li{margin:.35em 0;max-width:66ch}
 .pull{margin:1.6em 0;padding:0 0 0 var(--space-5);border-left:var(--line-2) solid var(--accent)}
 .pull blockquote{margin:0;font:500 1.32rem/1.4 var(--font-sans);letter-spacing:-.01em;color:var(--text);text-wrap:balance}
 .pull blockquote::before{content:"\\201C"}.pull blockquote::after{content:"\\201D"}
 .pull figcaption{margin-top:var(--space-2);font:400 var(--text-detail) var(--font-mono);color:var(--text-muted)}
+.verdict{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);margin:1.2em 0}
+.vc{border-radius:var(--radius-lg);padding:var(--space-4);display:flex;flex-direction:column;gap:var(--space-1);min-width:0;border-top:3px solid var(--warn-c);background:var(--surface-2);border-left:var(--line-1) solid var(--border);border-right:var(--line-1) solid var(--border);border-bottom:var(--line-1) solid var(--border)}
+.vc{--warn-c:var(--warning)}.vc.ok{--warn-c:var(--positive)}
+.vk{font:500 var(--text-micro) var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
+.vv{font:600 var(--text-heading)/1.2 var(--font-sans);color:var(--warn-c)}
+.vc p{margin:0;font-size:var(--text-row);line-height:1.5}
+.article p.cta{margin:1em 0 .4em}.article p.cta a{display:inline-block;padding:.55em 1em;border:var(--line-1) solid var(--accent);border-radius:var(--radius-lg);text-decoration:none;font-weight:600}
 .yt-embed{margin:1.6em 0}
 .yt-lite,.yt-embed iframe{position:relative;display:block;width:100%;aspect-ratio:16/9;border:0;border-radius:var(--radius-lg);background:#000 center/cover no-repeat}
 .yt-play{position:absolute;inset:0;margin:auto;width:68px;height:48px;border-radius:12px;background:var(--yt);opacity:.92}
@@ -143,6 +161,6 @@ table.grid td:first-child{white-space:nowrap;font-weight:500}
 .timeline li{position:relative;padding:0 0 var(--space-5)}
 .timeline li::before{content:"";position:absolute;left:calc(-1 * var(--space-5) - 5px);top:.45em;width:9px;height:9px;border-radius:50%;background:var(--accent)}
 .tl-d{display:block;font:500 var(--text-caption) var(--font-mono);letter-spacing:.06em;color:var(--accent)}
-@media (max-width:600px){table.grid thead{display:none}table.grid,table.grid tbody,table.grid tr,table.grid td{display:block}table.grid tr{padding:var(--space-3) 0;border-bottom:var(--line-1) solid var(--border)}table.grid td{padding:2px 0;border:0}table.grid td:first-child{font-size:var(--text-section)}table.grid td:not(:first-child)::before{content:attr(data-label);display:block;font:500 var(--text-micro) var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:var(--space-2)}}
+@media (max-width:600px){.verdict{grid-template-columns:1fr}table.grid thead{display:none}table.grid,table.grid tbody,table.grid tr,table.grid td{display:block}table.grid tr{padding:var(--space-3) 0;border-bottom:var(--line-1) solid var(--border)}table.grid td{padding:2px 0;border:0}table.grid td:first-child{font-size:var(--text-section)}table.grid td:not(:first-child)::before{content:attr(data-label);display:block;font:500 var(--text-micro) var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin-top:var(--space-2)}}
 @media (max-width:480px){.pull blockquote{font-size:1.16rem}.article{font-size:1rem}}
 """

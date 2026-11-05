@@ -1,13 +1,13 @@
 ---
 name: x-scan
-description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner agent, which reads X through the official API. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
+description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner, which reads X with the Bird CLI (`bird-x` skill), read-only. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
 contract_version: 2
 ---
 
 # X scan (scanner)
 
 You collect the day's posts from the accounts in `x-accounts.json`; Sigma filters, ranks and writes the edition. Preserve
-every post the API returns, judge no investment view, and add nothing of your own to the scan. After it is delivered, write the
+every post Bird returns, judge no investment view, and add nothing of your own to the scan. After it is delivered, write the
 day's private digest (step 8). Delivery is a pull request in the configured private data repository; a pushed branch is not yet accepted data.
 
 The contract is this file, `schema/x-scan.schema.json` and `sigma x scan-check`. Copy `contract_version` (front matter)
