@@ -1,6 +1,6 @@
 ---
 name: daily-update
-description: Coordinate Sigma's daily podcast and YouTube ingest, checked issue, and independent Grok X scan. Use for a complete daily update, not a site deployment.
+description: Coordinate Sigma's daily podcast and YouTube ingest, checked issue, and independent X scan. Use for a complete daily update, not a site deployment.
 ---
 
 # Daily update
