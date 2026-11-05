@@ -95,10 +95,14 @@ def render(body: str) -> str:
             if cur:
                 blocks.append(cur); cur = []
             continue
+        if line.startswith("::video") and not VIDEO.match(line):
+            raise ValueError(f"malformed article video line: {line[:60]}")
         k = kind(line)
         if cur and (k != kind(cur[0]) or k in ("h", "v")):
             blocks.append(cur); cur = []
         cur.append(line)
+    if fence:
+        raise ValueError("article ::: block is never closed")
     if cur:
         blocks.append(cur)
     html_out = "".join(block(b) for b in blocks)
