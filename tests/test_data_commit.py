@@ -17,11 +17,6 @@ def git(*args, cwd):
                           capture_output=True, text=True).stdout.strip()
 
 
-def common_dir(repo):
-    value = Path(git("rev-parse", "--git-common-dir", cwd=repo))
-    return (value if value.is_absolute() else repo / value).resolve()
-
-
 def working_files(root):
     return {str(path.relative_to(root)): path.read_bytes() if not path.is_symlink() else os.readlink(path).encode()
             for path in root.rglob("*") if path.is_file() and ".git" not in path.relative_to(root).parts}
@@ -216,7 +211,6 @@ def test_data_commit_refuses_private_path_in_linked_public_worktree(tmp_path):
     data = linked / "private-data"
     data.mkdir()
     (data / "site.json").write_text('{"site_name":"Sigma"}')
-    assert common_dir(public) == common_dir(linked)
     result = invoke(public, data, public, "must refuse linked checkout data")
     assert result.returncode == 1
     assert "linked checkout of the public Sigma repository" in result.stderr

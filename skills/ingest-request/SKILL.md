@@ -20,7 +20,7 @@ budget the job will use. Add one line per source as it lands
 | Source | How | State |
 |---|---|---|
 | Podcast episode or YouTube video | `sigma custom-run <slug> --url <url>`, then the transcribe and status commands it prints | Checked; claims cite seconds |
-| X post or thread | [Bird](https://github.com/steipete/bird) (`bird read`, `bird thread`), read-only, signed in through the operator's browser | Fails when the browser session is unreadable or expired; then recover below or record it unreadable |
+| X post or thread | [Bird](https://github.com/steipete/bird), read-only, signed in through the operator's browser. Run `bird thread <id> --all --json` and keep the tweets whose `authorId` is the root's: that is the whole multi-tweet thread plus the author's own replies, which often hold the links the post leaves out | Fails when the browser session is unreadable or expired; then recover below or record it unreadable |
 | Article, PDF, filing, release | [source-reading](../source-reading/SKILL.md): read the original, keep the canonical URL and a section or paragraph locator | Private notes only; no publish check yet |
 
 When an X read fails, look for a public copy instead of working around the login: search the post's numeric ID in

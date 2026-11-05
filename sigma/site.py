@@ -19,6 +19,7 @@ from .creators import norm_show
 from .tickers import normalize as norm_ticker
 from . import signals_sentiment
 from .publication_policy import MIN_SCORE
+from . import article
 from . import research as public_research
 from .paths import data_root
 from .site_config import load as load_site_identity
@@ -329,7 +330,7 @@ SENTIMENT_NAME, SENTIMENT_PATH = "Sentiment", "/sentiment/"  # the ticker board
 TICKERS_NAME = "Tickers"  # the list of every ticker with a page, a section of the Tags page; each ticker keeps /tickers/<SYM>.html
 TAGS_NAME, TAGS_PATH = "Tags", "/tags/"
 OLD_BOARD_PATHS = ("/board/", "/tickers/")  # the board's earlier routes: now redirects (noindex) to SENTIMENT_PATH
-NAV_PRIMARY = (("/", "Podcasts & video", "podcasts"), ("/x/", X_NAME, "social"), (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"))
+NAV_PRIMARY = (("/", "Podcasts & video", "podcasts"), ("/x/", X_NAME, "social"), (SENTIMENT_PATH, SENTIMENT_NAME, "sentiment"), ("/research/", "Research", "research"))
 
 DAILY_RUNS: set[str] = set()  # names of the daily issues, set by build(): a claim never links one as an issue page (see run_redirect)
 SITE_YEAR = 0  # the year of the newest data; set by build(). A date in that year is shown without it.
@@ -2458,7 +2459,7 @@ def research_index_page(posts: list[dict]) -> tuple[str, str]:
     else:
         rows = "".join(f'<li><span class="d">{esc(p["date"])}</span><a href="{public_research.post_path(p["slug"])}">{esc(p["title"])}</a>'
                        f'<p class="lede">{esc(p["summary"])}</p></li>' for p in posts)
-        body = f'<h1>Research</h1><ul class="archive">{rows}</ul>'
+        body = f'<h1>Research</h1><ul class="archive articles">{rows}</ul>'
         md = doc(["# Research", "", *[f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in posts]])
     return page(f"Research · {SITE}", body, "research", "Opinions and articles.", md=md_of("/research/")), md
 
@@ -2467,8 +2468,7 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
     public = []
     for post in posts:
         path = public_research.post_path(post["slug"])
-        paragraphs = "".join(f"<p>{esc(block)}</p>" for block in re.split(r"\n\s*\n", post["body"].strip()) if block.strip())
-        body = f'<p class="date">{esc(post["date"])}</p><h1>{esc(post["title"])}</h1><p class="lede">{esc(post["summary"])}</p>{paragraphs}'
+        body = f'<p class="date">{esc(post["date"])}</p><h1>{esc(post["title"])}</h1><p class="lede">{esc(post["summary"])}</p>{article.render(post["body"])}'
         markdown = doc([f"# {post['title']}", "", post["date"], "", post["summary"], "", *post["body"].strip().splitlines()])
         emit(path, page(f"{post['title']} · {SITE}", body, "research", post["summary"], md=md_of(path), updated=post["date"]), markdown, post["date"])
         public.append({**post, "path": absu(path), "markdown": absu(md_of(path))})
@@ -2580,7 +2580,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         write(out / file_of(md_of(path)), md_s)
         sm.extend([(path, last or newest), (md_of(path), last or newest)])
 
-    write(out / "style.css", TOKENS.read_text(encoding="utf-8") + CSS.replace("__MARK__", "/logo.svg") + BOARD_CSS + (signals_site.CSS if signals else ""))
+    write(out / "style.css", TOKENS.read_text(encoding="utf-8") + CSS.replace("__MARK__", "/logo.svg") + BOARD_CSS + article.CSS + (signals_site.CSS if signals else ""))
     if ASSETS.is_dir():
         for f in ASSETS.iterdir():
             shutil.copy(f, out / f.name)

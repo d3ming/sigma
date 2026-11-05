@@ -67,7 +67,11 @@ The default for a change is no new test. Stop at the first step that holds:
 4. The wrong outcome is consequential, nothing above catches it, and the
    expected value has a source from the list: write one test, at the cheapest
    boundary that still runs the real code path. If the repository has no test
-   runner, do not add one unasked; use step 3 and say the gap exists.
+   runner, do not add one unasked; use step 3 and say the gap exists. If that
+   boundary is a slow end-to-end run only because the rule lives in glue (a
+   shell script, a template, a request handler), say so and propose moving the
+   rule where a unit test can call it; that is a design change, not part of the
+   test.
 
 A regression that reached the main branch and showed up in real use always
 gets one test. Check it out at the commit before the fix, run the test there,
@@ -97,7 +101,12 @@ fix.
   UTC dates.
 - A unit test takes about a second or less; a slower one shrinks its input to
   the fewest rows that still cross the boundary, or lowers the threshold that
-  forces the size. End-to-end and browser tests have no such budget.
+  forces the size.
+- End-to-end and browser runs cost the most, so keep few: one success path
+  per command or journey, plus a negative case only for a distinct harm
+  above. Shrink their fixtures the same way; one that takes more than a few
+  seconds needs a reason. A new one replaces an existing one or shows that no
+  cheaper test reaches the rule.
 
 ## Verdict on an existing test
 

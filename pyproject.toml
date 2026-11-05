@@ -16,7 +16,7 @@ Documentation = "https://github.com/d3ming/sigma/blob/develop/docs/architecture.
 [project.optional-dependencies]
 whisper = ["faster-whisper>=1.2", "av<16"]
 mac = ["mlx-whisper"]
-dev = ["pytest"]
+dev = ["pytest", "pytest-xdist"]
 verify = ["playwright>=1.49"]
 
 [project.scripts]
@@ -26,5 +26,6 @@ sigma = "sigma.cli:main"
 packages = ["sigma"]
 
 [tool.pytest.ini_options]
+addopts = "-n 4"
 filterwarnings = ["ignore::DeprecationWarning:feedparser"]
 markers = ["slow: the heaviest modules; `make test-fast` skips them"]

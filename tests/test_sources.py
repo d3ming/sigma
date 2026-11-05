@@ -136,6 +136,9 @@ def test_person_search_backs_off_on_429_keeps_person_order_and_skips_namesakes(m
     assert [e.title for e in parse_itunes(es, rows, datetime(2026, 10, 22, 12, tzinfo=timezone.utc), 2)] == ["Eric Schmidt on AI and China"]
     assert not on_topic(es, "Eric Schmidt talks gardening", "", "Garden Hour")
     assert on_topic(Person("Jane Doe", "", "watch"), "Jane Doe on chips", "", "Chip Pod")
+    italian = ("In questa puntata raccontiamo la storia di Jensen Huang, il fondatore di Nvidia, dalla sua infanzia "
+               "fino alla nascita della azienda che oggi domina il mercato dei chip per la intelligenza artificiale.")
+    assert not on_topic(Person("Jensen Huang", "", "core"), "02. Jensen Huang, il Custode", italian, "I profeti del codice")
 
 
 def test_source_add_says_a_show_is_already_listed_when_its_channel_sits_in_show_links(monkeypatch, tmp_path):

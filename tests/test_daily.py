@@ -166,6 +166,11 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     assert report_mod._number_warnings(coefficient_amount, spoken_amount) == []
     assert len(report_mod._number_warnings(wrong_amount, spoken_amount)) == 1
     assert len(report_mod._number_warnings(outside_window, spoken_amount)) == 1
+    whisper = [{"start": 0, "text": t} for t in ("maybe $ 100, 000 to $ 200, 000 a year", "retest the 70 000 level",
+                                                  "forecast to be $ 1. 1 trillion", "it will be 80 plus percent")]
+    assert [k for _, k in report_mod.spoken_numbers(report_mod._stream(whisper))] == [
+        "100000", "200000", "70000", "1100000000000", "percent:80"]
+    assert report_mod.cite_numbers("be 80-plus percent an insurance company") == [("percent:80", "80")]
     spoken_trillion = report_mod.spoken_numbers([(w, 284) for w in "a trillion dollars".split()])
     trillion_claim = {"episode_id": "synthetic", "signal": [{"text": "Market is worth $1t", "timestamp": 284}], "sections": []}
     assert report_mod._number_warnings(trillion_claim, spoken_trillion) == []
