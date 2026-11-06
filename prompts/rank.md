@@ -47,7 +47,7 @@ Ask these in order. The first two set the band; the rest move within it.
    companies, then hosts and commentators.
 2. **Materiality.** Could what is said change estimates for a large company or for the AI buildout as a whole
    (capacity, demand, capex, pricing, unit economics, supply limits, timelines, strategy)? A new number that moves a
-   very large company outweighs an equally new number about a niche or a small private startup. Anthropic and OpenAI are not small startups: they sit at the centre of the AI trade, so judge what is said about them like a listed megacap, with `private:Name` as the ticker.
+   very large company outweighs an equally new number about a niche or a private startup.
 3. **Novelty.** Not already in a press release, filing or the week's headlines. A principal repeating the last
    earnings call is worth less than one adding to it.
 4. **Evidence.** Specific numbers, mechanisms and names that can be checked, not vibes.
