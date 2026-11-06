@@ -2522,7 +2522,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     people = enrich(runs)
     reg = build_episodes(runs)
     style = show_styles()
-    moved = {k: reg.pop(k) for k in [k for k, e in reg.items() if style.get(norm_show(e.get("show"))) == "influencer"]}  # a show now marked Social leaves Deep everywhere, back to its first episode; its Social score lists it
+    moved = {k: reg.pop(k) for k in [k for k, e in reg.items() if style.get(norm_show(e.get("show"))) == "influencer" and not e.get("user_pick")]}  # a show now marked Social leaves Deep everywhere, back to its first episode; its Social score lists it. An episode the owner sent stays in Deep
     pub = collect_tickers(runs)[0]
     shows = collect_shows(reg)
     ent = ents.load(entities_file)
