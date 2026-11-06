@@ -24,7 +24,8 @@ budget the job will use. Add one line per source as it lands
 | Article, PDF, filing, release | [source-reading](../source-reading/SKILL.md): read the original, keep the canonical URL and a section or paragraph locator | Private notes only; no publish check yet |
 
 An episode the owner sends gets this full run even when a weekly run already holds it: `custom-run` reuses that
-transcript, so nothing is transcribed twice, and the weekly score (a thinner pass) is not the answer.
+transcript, so nothing is transcribed twice. Run `rank-prep --rescore` on the new run: without it the weekly run's stored
+score is reused.
 
 When an X read fails, look for a public copy instead of working around the login: search the post's numeric ID in
 quotes, then the handle with a distinctive phrase, and prefer a copy the author controls. A mirror or archive is a
