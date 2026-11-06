@@ -29,7 +29,7 @@ treat a paid promotional claim as an independent investment view. Keep relevant 
 editorial discussion of advertising or sponsorship economics is not itself an ad. Keep the original audio and
 transcript timeline intact: omit ads from the output without trimming or retiming the source or its citations.
 
-- `ticker`: the tickers it is about. Every claim here names at least one.
+- `ticker`: the tickers it is about. Every claim here names at least one: a listed ticker, or `private:Name` for Anthropic or OpenAI, which sit at the centre of the AI trade. A view on their IPO or funding is a pick.
 - `claim`: one falsifiable sentence in your words that says what the creator called: the direction (long, short,
   avoid, wait), the level (entry, stop, target, support, resistance), the estimate (revenue, margin, fair value) or the
   catalyst (a date, a print, a filing). Attribute it ("calls for", "sees", "says"); write nothing that reads as our own

@@ -23,6 +23,9 @@ budget the job will use. Add one line per source as it lands
 | X post or thread | [Bird](https://github.com/steipete/bird), read-only, signed in through the operator's browser. Run `bird thread <id> --all --json` and keep the tweets whose `authorId` is the root's: that is the whole multi-tweet thread plus the author's own replies, which often hold the links the post leaves out | Fails when the browser session is unreadable or expired; then recover below or record it unreadable |
 | Article, PDF, filing, release | [source-reading](../source-reading/SKILL.md): read the original, keep the canonical URL and a section or paragraph locator | Private notes only; no publish check yet |
 
+An episode the owner sends gets this full run even when a weekly run already holds it: `custom-run` reuses that
+transcript, so nothing is transcribed twice, and the weekly score (a thinner pass) is not the answer.
+
 When an X read fails, look for a public copy instead of working around the login: search the post's numeric ID in
 quotes, then the handle with a distinctive phrase, and prefer a copy the author controls. A mirror or archive is a
 third-party copy: match the handle, ID and date, check for a missing ending or thread gaps, and record the copy's URL
