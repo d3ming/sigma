@@ -1,43 +1,49 @@
-# Operators: one codebase, more than one machine
+# Operators: the publisher and contributors
 
-Sigma can be run by more than one operator environment at once, for example the owner's Mac agents and a cloud
-agent computer. Each environment is an operator. They share code and data only through git; they never share a
-working tree.
+The owner's Sigma instance is run by more than one agent environment. Each environment is an operator, and every
+operator works in one of two modes. The mode, not the machine, decides what an operator may do. Operators share code
+and data only through git; they never share a working tree.
 
-| | Mac operator | Cloud operator |
+| | Publisher | Contributor |
 |---|---|---|
-| Checkout and data | Clones on the Mac; `runtime` paths point there | Its own clones; `runtime` paths point there |
-| `video.backend` | `mlx` | `faster-whisper` |
-| `x.reader` | `bird` (browser session) | `official` (official X tools) |
-| Scheduling and publish | `launchd` and [deploy/mac](../deploy/mac/README.md) | None; proposes pull requests |
+| Who | Exactly one operator; today the owner's Mac agents | Any number; today cloud agents |
+| Code | Pushes to `develop` (AGENTS.md) | A branch and a pull request into `develop` |
+| Private data | Lands on the data repo's `main` with [`deploy/mac/data-commit.sh`](../deploy/mac/README.md) or `make publish` | A fresh branch and a pull request against the data repo's configured branch; never a direct push |
+| Jobs | Owns every job not handed to a contributor: the daily and weekly editions, [x-daily](../skills/x-daily/SKILL.md), `make publish`, scheduling | Only the jobs it is handed: a one-off [ingest request](../skills/ingest-request/SKILL.md), the [X scan](../skills/x-scan/SKILL.md) when it is the configured scanner, code changes, reviews |
+| `operator.json` | Its settings are the committed copy | Keeps its own settings in its clone; never commits the file |
+| Typical `video.backend` / `x.reader` | `mlx` / `bird` | `faster-whisper` / `official` |
 
-## Rules
+## Rules for every operator
 
-- **Separate clones.** Each operator clones Sigma and the private data repo itself. Never commit from, or write
-  into, another operator's working tree.
-- **Bind locally.** After cloning, run `SIGMA_DATA_ROOT=/path/to/data make setup`. It rewrites only the private
-  `operator.json` `runtime` paths and keeps scanner, video and X settings. Set `video.backend` and `x.reader` for
-  this machine in the same file.
-- **Never commit machine settings.** `runtime`, `video` and `x` in `operator.json` describe one machine. Leave them
-  out of every commit to the shared data repo; the shared copy keeps the settings of the operator that owns
-  publishing.
-- **Deliver through pull requests.** Code changes go to a branch and a pull request into `develop`. Data (scans,
-  digests, ingest notes) goes to a fresh branch in the data repo and a pull request against its configured branch,
-  never a direct push to that branch.
-- **One writer per workflow.** Each scheduled job, publish and data path has one owning operator at a time. The other
-  operator may propose pull requests and review, but does not run the same job beside it.
+- **Separate clones.** Clone Sigma and the private data repo yourself. Never commit from, or write into, another
+  operator's working tree.
+- **Bind locally.** After cloning, run `SIGMA_DATA_ROOT=/path/to/data make setup`. It rewrites only the `runtime`
+  paths in `operator.json` and keeps scanner, video and X settings. Set `video.backend` and `x.reader` for this
+  machine in the same file.
+- **One writer per job.** A job has one operator at a time. The publisher owns it unless the owner hands it to a named
+  contributor, as `daily_update.scanner` does for the X scan. Never run a job another operator owns; propose a pull
+  request or review instead.
+
+## Rules for contributors
+
+- **Stage only what your job names.** Commit the exact paths your skill delivers (for example `scan/D/` and
+  `heartbeat/scan.json`); never `git add -A` in the data repo. This keeps your `operator.json` out of every commit.
+- **Deliver by pull request.** Code goes to a pull request into `develop`; data goes to a pull request against the
+  data repo's configured branch. Do not merge your own pull request; the publisher accepts it (for a scan, through
+  daily-update's **Accept the scan PR**) or the owner merges it.
+- **No publisher commands.** Never run `make publish`, `deploy/mac/*`, or a daily or weekly edition.
 
 ## X reader
 
 `x.reader` in `operator.json` picks how this operator reads X. There is one reader per operator and no fallback
 between them: when the configured reader fails, follow the failing skill's recovery steps, not the other reader.
 
-- **Absent, null or `bird`:** the Bird CLI, read-only, signed in through the operator's browser. This is the
-  existing Mac path and is unchanged.
-- **`official`:** the official X tools of the agent platform, read-only. One call at a time, about 10 seconds apart;
-  wait 3 minutes after a rate-limit (429) response. Request full long-post text (`note_tweet`) and articles, view
-  attached images and charts, and page the author's thread and self-replies. Never guess cut-off text, scrape X in a
-  browser or reuse browser cookies.
+- **Absent, null or `bird`:** the Bird CLI, read-only, signed in through the operator's browser.
+- **`official`:** the agent platform's official X tools, read-only. One call at a time, about 10 seconds apart;
+  wait 3 minutes after a rate-limit (429) response. A 429 you waited out is not a failed call. Request full long-post
+  text (`note_tweet`) and articles, view attached images and charts, and page the author's thread and self-replies.
+  Never guess cut-off text, scrape X in a browser or reuse browser cookies.
+- **Any other value:** a configuration error. Stop and report it; do not pick a reader.
 
 Either reader produces the same files: the scan format in [skills/x-scan](../skills/x-scan/SKILL.md) and the notes
 in [skills/ingest-request](../skills/ingest-request/SKILL.md). The reader is transport; the files are the product.

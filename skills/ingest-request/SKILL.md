@@ -20,7 +20,7 @@ budget the job will use. Add one line per source as it lands
 | Source | How | State |
 |---|---|---|
 | Podcast episode or YouTube video | `sigma custom-run <slug> --url <url>`, then the transcribe and status commands it prints | Checked; claims cite seconds |
-| X post or thread | The reader `x.reader` in `$SIGMA_DATA_ROOT/operator.json` names ([rules](../../docs/operators.md#x-reader)), read-only. Absent or `bird`: [Bird](https://github.com/steipete/bird) signed in through the operator's browser; run `bird thread <id> --all --json` and keep the tweets whose `authorId` is the root's. `official`: the official X tools; fetch the post with full text and articles, then page the conversation and keep the root author's tweets. Either way that is the whole multi-tweet thread plus the author's own replies, which often hold the links the post leaves out | Fails when the reader cannot read the post (expired session, rate limit you cannot wait out); then recover below or record it unreadable |
+| X post or thread | The reader `x.reader` in `$SIGMA_DATA_ROOT/operator.json` names ([rules](../../docs/operators.md#x-reader)), read-only. Absent, null or `bird`: [Bird](https://github.com/steipete/bird) signed in through the operator's browser; run `bird thread <id> --all --json` and keep the tweets whose `authorId` is the root's. `official`: the official X tools; fetch the post with full text and articles, then page the conversation and keep the root author's tweets. Either way that is the whole multi-tweet thread plus the author's own replies, which often hold the links the post leaves out | Fails when the reader cannot read the post (expired session, rate limit you cannot wait out); then recover below or record it unreadable |
 | Article, PDF, filing, release | [source-reading](../source-reading/SKILL.md): read the original, keep the canonical URL and a section or paragraph locator | Private notes only; no publish check yet |
 
 An episode the owner sends gets this full run even when a weekly run already holds it: `custom-run` reuses that
@@ -39,7 +39,7 @@ login-only source is read only through access the owner already has; otherwise r
 
 Follow [source-reading](../source-reading/SKILL.md) for each source: speaker or author, publication time, retrieval time,
 URL, locator, what the source says, what corroborates it, and your inference, kept apart. Save them in the data root's
-private notes beside the request.
+private notes beside the request; a contributor delivers them by data pull request ([operators](../../docs/operators.md)).
 
 ## 4. Report or post
 

@@ -20,9 +20,9 @@ Missing accounts, an uncovered window, failed paging or other systemic collectio
   points to the private data repo, which contains `x-accounts.json`.
 - `SIGMA_X_DIR`: the folder scans go in, inside a private data repo you can push to. Post text is the authors' and never
   goes in this repo or anywhere public.
-- Read X with the reader `x.reader` in `$SIGMA_DATA_ROOT/operator.json` names: absent or `bird` is the Bird CLI (`bird-x`
-  skill); `official` is the official X tools. Follow its rules in [docs/operators.md](../../docs/operators.md#x-reader). Do not
-  switch readers mid-run; a failing reader follows the rules below.
+- Read X with the reader `x.reader` in `$SIGMA_DATA_ROOT/operator.json` names: absent, null or `bird` is the Bird CLI
+  (`bird-x` skill); `official` is the official X tools; any other value is an error to report. Follow its rules in
+  [docs/operators.md](../../docs/operators.md#x-reader). Do not switch readers mid-run; a failing reader follows the rules below.
 - Use clones of your own, not working trees another job commits from. Refresh the Sigma checkout and the configured private data base branch before a run, then create a date-specific delivery branch. Reuse its open pull request when extending that day; never push scan data directly to the base branch.
 
 ## Each run, for date D (today, Pacific time)
@@ -49,5 +49,5 @@ Missing accounts, an uncovered window, failed paging or other systemic collectio
 - Read-only on X: never post, like, reply, follow, bookmark or message.
 - To change this skill, `skills/x-digest` or a prompt you need, open a pull request on this repo. Never edit another
   agent's working tree.
-- Two failed calls in a row, or a rate limit you cannot wait out before the edition runs: stop, deliver what you have
+- Two failed calls in a row (a rate limit you waited out is not one), or a rate limit you cannot wait out before the edition runs: stop, deliver what you have
   with `complete: false`. There is no fallback scanner.
