@@ -10,7 +10,7 @@ ffmpeg and Git hooks. macOS requires Homebrew; other systems require uv and ffmp
 An existing .venv is reused when its Python is supported.
 
 With SIGMA_DATA_ROOT, require an existing private data directory and update only
-operator.json runtime paths. Existing scanner and video settings are retained.
+operator.json runtime paths. Existing scanner, video and X settings are retained.
 Without it, install tools only; no example data or operator configuration is created.
 HELP
     exit 0 ;;

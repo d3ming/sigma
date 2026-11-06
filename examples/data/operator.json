@@ -6,6 +6,9 @@
   "video": {
     "backend": null
   },
+  "x": {
+    "reader": null
+  },
   "daily_update": {
     "scanner": {
       "enabled": false,

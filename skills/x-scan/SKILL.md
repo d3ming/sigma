@@ -1,13 +1,13 @@
 ---
 name: x-scan
-description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner, which reads X with the Bird CLI (`bird-x` skill), read-only. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
+description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner, which reads X read-only with the reader `operator.json` configures. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
 contract_version: 2
 ---
 
 # X scan (scanner)
 
 You collect the day's posts from the accounts in `x-accounts.json`; Sigma filters, ranks and writes the edition. Preserve
-every post Bird returns, judge no investment view, and add nothing of your own to the scan. After it is delivered, write the
+every post the reader returns, judge no investment view, and add nothing of your own to the scan. After it is delivered, write the
 day's private digest (step 8). Delivery is a pull request in the configured private data repository; a pushed branch is not yet accepted data.
 
 The contract is this file, `schema/x-scan.schema.json` and `sigma x scan-check`. Copy `contract_version` (front matter)
@@ -20,6 +20,9 @@ Missing accounts, an uncovered window, failed paging or other systemic collectio
   points to the private data repo, which contains `x-accounts.json`.
 - `SIGMA_X_DIR`: the folder scans go in, inside a private data repo you can push to. Post text is the authors' and never
   goes in this repo or anywhere public.
+- Read X with the reader `x.reader` in `$SIGMA_DATA_ROOT/operator.json` names: absent or `bird` is the Bird CLI (`bird-x`
+  skill); `official` is the official X tools. Follow its rules in [docs/operators.md](../../docs/operators.md#x-reader). Do not
+  switch readers mid-run; a failing reader follows the rules below.
 - Use clones of your own, not working trees another job commits from. Refresh the Sigma checkout and the configured private data base branch before a run, then create a date-specific delivery branch. Reuse its open pull request when extending that day; never push scan data directly to the base branch.
 
 ## Each run, for date D (today, Pacific time)

@@ -1,5 +1,7 @@
 # Mac setup
 
+Other machines running beside this one follow [docs/operators.md](../../docs/operators.md); nothing here changes for them.
+
 On macOS, launchd can fetch and transcribe source material before a scheduled agent prepares the daily and weekly
 editions. The site is built separately from the configured private data root.
 
