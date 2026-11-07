@@ -16,7 +16,7 @@ make setup
 .venv/bin/python -m sigma.cli doctor
 ```
 
-Setup updates only the private `operator.json` runtime paths, preserving scanner settings. Keep `SIGMA_DATA_ROOT`
+Setup updates only the private `operator.json` runtime paths, preserving scanner and video settings. Keep `SIGMA_DATA_ROOT`
 exported when running Sigma. `sh scripts/bootstrap.sh --help` describes installation and configuration behavior.
 
 For a separate empty demo, copy the examples explicitly before setup:
@@ -37,7 +37,7 @@ and people before ingesting. Neither setup nor a local build publishes a site or
 
 For a request to ingest named sources and report on a topic, follow [ingest-request](skills/ingest-request/SKILL.md). Use [signal-discovery](skills/signal-discovery/SKILL.md) for a bounded US-market sweep and [source-reading](skills/source-reading/SKILL.md) to read the underlying evidence across source types. [The source comparison](docs/source-research.md) explains the design choices.
 
-Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily update skill](skills/daily-update/SKILL.md), which coordinates video ingest, the podcast issue, and the independent X scan. The existing [daily prompt](prompts/daily.md) and [X workflow](skills/x-daily/SKILL.md) remain their task instructions. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
+Start with `sigma --help` and `sigma doctor`. For a complete day, use the [daily update skill](skills/daily-update/SKILL.md), which coordinates video ingest, the podcast issue, and the independent X scan. The existing [daily prompt](prompts/daily.md) and [X workflow](skills/x-daily/SKILL.md) remain their task instructions. Agents sharing one instance follow [docs/operators.md](docs/operators.md): one publisher, any number of contributors. Every claim needs a source, speaker and timestamp. Fix a failed grounding check before publishing.
 
 For a one-off episode, run `sigma custom-run <name> --url <episode-url>`, then follow the printed transcription
 and status commands. This records a user pick without adding a source or scheduling future episodes. Picks retain their

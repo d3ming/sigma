@@ -34,6 +34,7 @@ BASE_URL = "https://example.invalid"
 SITE = "Sigma"
 PICKS_LABEL = "User picks"
 OPERATOR = ""
+ANALYTICS_ON = False
 TOKENS = ROOT / "web" / "tokens.css"  # the shared visual base (see web/WEB_DESIGN.md); the build puts it in front of CSS in style.css
 ASSETS = ROOT / "site-assets"  # favicon.svg, favicon.ico, apple-touch-icon.png, icon-192.png: copied to the site root
 ICONS = ('<link rel="icon" href="/favicon.svg" type="image/svg+xml"><link rel="icon" href="/favicon.ico" sizes="48x48">'
@@ -361,7 +362,7 @@ def newest_of(*dates) -> str:
 
 # Vercel Web Analytics: page views only (the Hobby plan has no custom events, so a search is not recorded: its results load without a
 # navigation). The queue stub and the script Vercel serves at this path; no cookies, no package. In the HTML pages only, never in
-# Markdown, llms.txt or JSON. Web Analytics must also be enabled for the project in the Vercel dashboard; the Notice page says so.
+# Markdown, llms.txt or JSON. Emitted only when site.json sets analytics: true, which needs Web Analytics enabled for the project in the Vercel dashboard: without it the script request is a 404.
 ANALYTICS = ('<script>window.va=window.va||function(){(window.vaq=window.vaq||[]).push(arguments)}</script>'
              '<script defer src="/_vercel/insights/script.js"></script>')
 
@@ -382,12 +383,13 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
     maker = f'<a class="maker" href="{esc(X_PROFILE)}" rel="me noopener noreferrer">{X_LOGO}{esc(MAKER)}</a>' if MAKER and X_PROFILE else ""
     x_link = f'<a href="{esc(X_PROFILE)}" rel="me noopener noreferrer">X profile</a> · ' if X_PROFILE else ""
     operated = f'Operated by {esc(OPERATOR)} · ' if OPERATOR else ""
+    analytics = ANALYTICS if ANALYTICS_ON else ""
     return (f'<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(shown)}</title>{d}<link rel="alternate" type="application/json" href="/runs.json">'
             f'<link rel="preconnect" href="https://fonts.googleapis.com">'
             f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-            f'{ICONS}<script>{THEME_BOOT}</script>{ANALYTICS}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
+            f'{ICONS}<script>{THEME_BOOT}</script>{analytics}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
             f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{MODE_BUTTON}</div></div></header>'
             f'<main><div class="wrap">{body}</div></main>'
             f'<footer><div class="wrap">{upd}'
@@ -2478,16 +2480,16 @@ def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]
 
 
 def build(published: Path, out: Path, base_url: str | None = None, entities_file: Path | None = None) -> dict:
-    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR
-    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR)
+    global BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR, ANALYTICS_ON
+    old = (BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR, ANALYTICS_ON)
     identity = load_site_identity()
-    PICKS_LABEL, OPERATOR = identity.picks_label, identity.operator
+    PICKS_LABEL, OPERATOR, ANALYTICS_ON = identity.picks_label, identity.operator, identity.analytics
     BASE_URL, SITE, MAKER, X_PROFILE = (base_url or identity.base_url).rstrip("/"), identity.name, identity.maker, identity.x_profile
     try:
         research_posts = public_research.load()
         return _build(published, out, entities_file or ENTITIES_FILE, research_posts)
     finally:
-        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR = old
+        BASE_URL, SITE, MAKER, X_PROFILE, SITE_YEAR, DAILY_RUNS, PICKS_LABEL, OPERATOR, ANALYTICS_ON = old
 
 
 def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:

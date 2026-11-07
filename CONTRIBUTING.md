@@ -1,6 +1,6 @@
 # Contributing
 
-Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Source changes go directly to `develop`; releases are reviewed from `develop` into `main`.
+Issues and pull requests are welcome. Follow the [Code of Conduct](CODE_OF_CONDUCT.md). Source changes go to `develop` (agents on the owner's instance: [docs/operators.md](docs/operators.md)); releases are reviewed from `develop` into `main`.
 
 ## Set up
 

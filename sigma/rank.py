@@ -69,6 +69,24 @@ def condense(md: str, step: int = ANCHOR_SECONDS) -> str:
     return "\n".join(out)
 
 
+def _write_in(out: Path, name: str, items: list[dict]) -> None:
+    """Write a reader input. A reader output made for different input is deleted: the merge would otherwise take it as
+    complete and leave out the episodes added since (theta#37)."""
+    text = json.dumps(items, indent=1, ensure_ascii=False) + "\n"
+    target = out / f"{name}-in.json"
+    if not target.exists() or target.read_text() != text:
+        (out / f"{name}-out.json").unlink(missing_ok=True)
+    target.write_text(text)
+
+
+def _drop_unused(out: Path, prefix: str, used: int) -> None:
+    for f in out.glob(f"{prefix}-*-in.json"):
+        k = f.name[len(prefix) + 1:-len("-in.json")]
+        if k.isdigit() and int(k) > used:
+            f.unlink()
+            (out / f"{prefix}-{k}-out.json").unlink(missing_ok=True)
+
+
 def _item(run_dir: Path, out: Path, e: dict) -> dict | None:
     if not (run_dir / e["file"]).exists():
         print(f"[rank-prep] skip {e['episode_id']}: {e['file']} is missing")
@@ -116,7 +134,8 @@ def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0
     groups = _deal(todo, batches)
     for k, group in enumerate(groups, 1):
         items = [it for e in group if (it := _item(run_dir, out, e))]
-        (out / f"batch-{k}-in.json").write_text(json.dumps(items, indent=1, ensure_ascii=False) + "\n")
+        _write_in(out, f"batch-{k}", items)
+    _drop_unused(out, "batch", len(groups))
     istored = {} if rescore else library.stored_scores([e["episode_id"] for e in irows], db,
                                                        rubric=rubric_version(INFLUENCER_RUBRIC), style="influencer")
     ireuse = _reuse(irows, istored)
@@ -126,7 +145,8 @@ def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0
         (out / "influencer-stored.json").write_text(json.dumps(ireuse, indent=1, ensure_ascii=False) + "\n")
     for k, group in enumerate(igroups, 1):
         items = [it for e in group if (it := _item(run_dir, out, e))]
-        (out / f"influencer-{k}-in.json").write_text(json.dumps(items, indent=1, ensure_ascii=False) + "\n")
+        _write_in(out, f"influencer-{k}", items)
+    _drop_unused(out, "influencer", len(igroups))
     sample = []
     if eval_n and reuse:
         by_id = {e["episode_id"]: e for e in rows}
@@ -178,6 +198,14 @@ def merge(run_dir: Path, ranked_by: str, week_of: str | None = None, ranking: bo
     stored_p = run_dir / RANK_DIR / ("influencer-stored.json" if influencer else "stored.json")
     if stored_p.exists():
         files.append(stored_p)
+    prefix = "influencer" if influencer else "batch"
+    for f_in in sorted((run_dir / RANK_DIR).glob(f"{prefix}-*-in.json")):
+        want = {e["episode_id"] for e in json.loads(f_in.read_text())}
+        f_out = f_in.with_name(f_in.name.replace("-in.json", "-out.json"))
+        got = {r["episode_id"] for r in json.loads(f_out.read_text())} if f_out.exists() else set()
+        if want - got:
+            raise ValueError(f"{f_out.name} {'is missing' if not f_out.exists() else 'does not cover'} "
+                             f"{', '.join(sorted(want - got)[:5])}: run rank-prep again and have a reader score {f_in.name}")
     for f in files:
         for r in json.loads(f.read_text()):
             (rows if r["episode_id"] in by_id else unknown).append(r)

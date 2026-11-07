@@ -289,7 +289,7 @@ def _score(run, arg, out, finish, target, eval_n=0):
     inf_todo = [p for p in todo if p.name.startswith("influencer-")]
     inf_p = run / "scores-influencer.json"
     inf_wanted = bool(iins) or (rank / "influencer-stored.json").exists()
-    if todo and (not target_p.exists() or inf_todo):
+    if todo and (not target_p.exists() or inf_todo or any(p.name.startswith("batch-") for p in todo)):
         names = ", ".join(p.name for p in todo)
         extra = (" eval-in.json is a blind re-score of already-scored episodes: score it the same way and save "
                  "rank/eval-out.json; it measures drift and never changes a stored score." if any(p.name == "eval-in.json" for p in todo) else "")

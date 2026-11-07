@@ -45,6 +45,30 @@ case "$DATA" in
 esac
 
 cd "$REPO"
+
+level_checkout() {
+  git fetch -q origin main 2>/dev/null || { echo "[data] checkout left as is: could not fetch origin/main"; return 0; }
+  [[ "$(git symbolic-ref -q --short HEAD)" == main ]] || { echo "[data] checkout is not on main; left as is"; return 0; }
+  git merge-base --is-ancestor HEAD origin/main || { echo "[data] checkout has commits origin/main lacks; left as is"; return 0; }
+  local untracked=() edited=() owned
+  while IFS= read -r -d "" owned; do
+    git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned" && untracked+=("$owned")
+  done < <(git ls-files -o --exclude-standard -z -- "$REL")
+  while IFS= read -r -d "" owned; do
+    git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned" && edited+=("$owned")
+  done < <(git diff --name-only -z -- "$REL")
+  for owned in "${untracked[@]}"; do command rm -f -- "$owned"; done
+  for owned in "${edited[@]}"; do git checkout -q -- "$owned" || true; done
+  if git merge -q --ff-only origin/main 2>/dev/null; then
+    echo "[data] checkout level with origin/main ($((${#untracked[@]} + ${#edited[@]})) files identical to the save dropped)"
+  else
+    for owned in "${untracked[@]}" "${edited[@]}"; do
+      mkdir -p "$(dirname "$owned")"
+      git show "origin/main:$owned" > "$owned"
+    done
+    echo "[data] checkout left as is: fast-forward failed; files put back; pull by hand"
+  fi
+}
 git diff --cached --quiet || { echo "[data] refusing to save with pre-existing staged files" >&2; exit 1; }
 git remote get-url origin >/dev/null 2>&1 || { echo "[data] private data checkout needs an origin remote" >&2; exit 1; }
 git fetch -q origin main || { echo "[data] could not fetch private origin/main" >&2; exit 1; }
@@ -80,12 +104,14 @@ DELETED=$(git diff --name-only --diff-filter=D "$BASE" "$SNAPSHOT" -- "$REL")
 [[ -z "$DELETED" ]] || { echo "[data] refusing to delete private data without a saved copy" >&2; exit 1; }
 git -c core.quotepath=false diff --binary --full-index "$BASE" "$SNAPSHOT" -- "$REL" > "$PATCH"
 
+[[ ! -s "$PATCH" ]] || echo "[data] to save: $(git diff --name-only "$BASE" "$SNAPSHOT" -- "$REL" | sed "s|^$REL/||" | cut -d/ -f1-2 | sort -u | paste -sd, -)"
 if [[ ! -s "$PATCH" ]]; then
   if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$(git rev-parse "$MAIN:$REL")" ]]; then
     echo "[data] candidate data tree does not match the approved tree" >&2
     exit 1
   fi
   [[ $PLAN_ONLY == 1 ]] || echo "[data] private main already has the current owned data"
+  [[ $PLAN_ONLY == 1 ]] || level_checkout
   echo "[data] main: $MAIN"
   echo "[data] owned tree: $(git rev-parse "$MAIN:$REL")"
   exit 0
@@ -117,6 +143,7 @@ while IFS= read -r -d '' owned_path; do
 done < <(git -C "$WORK" diff --cached --name-only -z)
 git -C "$WORK" diff --cached --quiet && {
   echo "[data] private main already has the current owned data"
+  level_checkout
   echo "[data] main: $MAIN"
   echo "[data] owned tree: $(git -C "$WORK" rev-parse "HEAD:$REL")"
   exit 0
@@ -126,3 +153,4 @@ git -C "$WORK" push -q origin HEAD:refs/heads/main || { echo "[data] private mai
 MAIN=$(git -C "$WORK" rev-parse HEAD)
 echo "[data] main: $MAIN"
 echo "[data] owned tree: $OWNED_TREE"
+level_checkout

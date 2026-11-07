@@ -197,7 +197,7 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
     edit(first / "manifest.json", lambda m: m["episodes"].append(row))
     main(["rank-prep", str(first)])
     read_batches(first)
-    for f in first.glob("rank/batch-*-out.json"):  # the first run's readers scored only b (8) and d (6)
+    for f in [*first.glob("rank/batch-*-out.json"), *first.glob("rank/batch-*-in.json")]:  # the first run read only b (8) and d (6)
         edit(f, lambda rows: rows.__setitem__(slice(None), [r for r in rows if r["episode_id"] in ("rss:b", "rss:d")]))
     assert not any("rss:k" in f.read_text() for f in first.glob("rank/batch-*-in.json"))
     influencer_in = first / "rank" / "influencer-1-in.json"
@@ -245,6 +245,37 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
     assert "scored_in" not in rows["rss:a"]
     kept = library.stored_scores(["rss:b", "rss:d"])  # the library still holds the first run's scores, not the eval's
     assert (kept["rss:b"]["score"], kept["rss:d"]["score"]) == (8, 6)
+
+
+def test_a_reader_output_made_for_older_input_is_not_merged(week, monkeypatch):
+    """theta#37, reproduced on Sigma 89aee5b: prepare a batch with A, read it, add B, prepare again, merge the old output.
+    The input holds A and B, the merge used to keep only A. Now the old output is deleted and the merge refuses a missing one."""
+    run = week / "runs" / RUN
+    main(["rank-prep", str(run), "--batches", "1"])
+    read_batches(run)
+    ids = {e["episode_id"] for e in json.loads((run / "rank" / "batch-1-in.json").read_text())}
+    m = Episode(id="rss:m", source_id="show-m", source_name="Show M", tier=2, title="Episode m", url=url("m"),
+                published_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
+    row = write_episode(run, m, spoken({300: "the chip maker said orders doubled this quarter"}, filler="mike", every=10), "podcast:transcript")
+    edit(run / "manifest.json", lambda d: d["episodes"].append(row))
+    main(["rank-prep", str(run), "--batches", "1"])
+    assert not (run / "rank" / "batch-1-out.json").exists()
+    assert {e["episode_id"] for e in json.loads((run / "rank" / "batch-1-in.json").read_text())} == ids | {"rss:m"}
+    with pytest.raises(SystemExit):
+        main(["rank-merge", str(run)])
+    main(["rank-prep", str(run), "--batches", "1"])
+    monkeypatch.setitem(EPISODES, "m", ("Show M", 2, 5, "2026-10-18", "mike", []))
+    read_batches(run)
+    kept = (run / "rank" / "batch-1-out.json").read_text()
+    main(["rank-prep", str(run), "--batches", "1"])
+    assert (run / "rank" / "batch-1-out.json").read_text() == kept
+    main(["rank-merge", str(run)])
+    n = Episode(id="rss:n", source_id="show-n", source_name="Show N", tier=2, title="Episode n", url=url("n"),
+                published_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
+    row = write_episode(run, n, spoken({300: "the memory maker raised its price outlook"}, filler="nora", every=10), "podcast:transcript")
+    edit(run / "manifest.json", lambda d: d["episodes"].append(row))
+    main(["rank-prep", str(run), "--batches", "1"])
+    assert status(run)["stage"] == "readers"
 
 
 def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch):
