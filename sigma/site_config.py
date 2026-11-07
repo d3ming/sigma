@@ -19,6 +19,7 @@ class SiteIdentity:
     x_profile: str = ""
     picks_label: str = "User picks"
     operator: str = ""
+    analytics: bool = False
 
 
 def load(path: Path | None = None) -> SiteIdentity:
@@ -27,7 +28,7 @@ def load(path: Path | None = None) -> SiteIdentity:
         values = json.loads(config_path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         values = {}
-    if not isinstance(values, dict) or set(values) - {"site_name", "base_url", "maker", "x_profile", "picks_label", "operator"}:
+    if not isinstance(values, dict) or set(values) - {"site_name", "base_url", "maker", "x_profile", "picks_label", "operator", "analytics"}:
         raise ValueError(f"invalid site identity config: {config_path}")
     base_url = str(os.environ.get("SIGMA_BASE_URL") or values.get("base_url") or DEFAULT_BASE_URL).rstrip("/")
     if not base_url.startswith(("https://", "http://localhost")):
@@ -39,7 +40,7 @@ def load(path: Path | None = None) -> SiteIdentity:
         name=str(values.get("site_name") or DEFAULT_SITE), base_url=base_url,
         maker=str(values.get("maker") or ""), x_profile=x_profile,
         picks_label=str(values.get("picks_label") or "User picks"),
-        operator=str(values.get("operator") or ""),
+        operator=str(values.get("operator") or ""), analytics=values.get("analytics") is True,
     )
 
 

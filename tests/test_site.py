@@ -557,6 +557,18 @@ def test_every_run_the_site_builds_passes_verify_and_no_issue_address_dangles(tm
         main(["verify", "https://w.test/", "--run", "2026-01-13-weekly"])
 
 
+def test_the_analytics_script_is_requested_only_when_site_config_turns_it_on(tmp_path, monkeypatch):
+    """theta#43: the live site requested /_vercel/insights/script.js and got a 404 because Web Analytics was never enabled."""
+    pub = tmp_path / "published"
+    make_published(pub)
+    cfg = tmp_path / "site.json"
+    monkeypatch.setenv("SIGMA_SITE_CONFIG", str(cfg))
+    for body, wanted in (("{}", False), ('{"analytics": true}', True)):
+        cfg.write_text(body)
+        site.build(pub, tmp_path / f"dist{wanted}")
+        assert ("/_vercel/insights/script.js" in (tmp_path / f"dist{wanted}" / "index.html").read_text()) is wanted
+
+
 def test_signals_sits_beside_the_podcast_home_with_at_least_three_picks_and_agent_files(tmp_path):
     """The home page carries a collapsible Signals panel beside the combined podcast and YouTube feed; /signals/
     shows at least three picks (the weak ones labelled lower confidence), and agents get stable JSON, a schema, llms.txt and a
