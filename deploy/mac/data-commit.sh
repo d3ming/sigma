@@ -49,23 +49,24 @@ cd "$REPO"
 level_checkout() {
   git fetch -q origin main 2>/dev/null || { echo "[data] checkout left as is: could not fetch origin/main"; return 0; }
   [[ "$(git symbolic-ref -q --short HEAD)" == main ]] || { echo "[data] checkout is not on main; left as is"; return 0; }
-  local removed=0 owned
+  git merge-base --is-ancestor HEAD origin/main || { echo "[data] checkout has commits origin/main lacks; left as is"; return 0; }
+  local untracked=() edited=() owned
   while IFS= read -r -d "" owned; do
-    if git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned"; then
-      command rm -f -- "$owned"
-      removed=$((removed + 1))
-    fi
+    git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned" && untracked+=("$owned")
   done < <(git ls-files -o --exclude-standard -z -- "$REL")
   while IFS= read -r -d "" owned; do
-    if git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned"; then
-      git checkout -q -- "$owned"
-      removed=$((removed + 1))
-    fi
+    git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned" && edited+=("$owned")
   done < <(git diff --name-only -z -- "$REL")
+  for owned in "${untracked[@]}"; do command rm -f -- "$owned"; done
+  for owned in "${edited[@]}"; do git checkout -q -- "$owned" || true; done
   if git merge -q --ff-only origin/main 2>/dev/null; then
-    echo "[data] checkout level with origin/main ($removed identical untracked files removed)"
+    echo "[data] checkout level with origin/main ($((${#untracked[@]} + ${#edited[@]})) files identical to the save dropped)"
   else
-    echo "[data] checkout left as is: fast-forward failed ($removed identical untracked files removed); pull by hand"
+    for owned in "${untracked[@]}" "${edited[@]}"; do
+      mkdir -p "$(dirname "$owned")"
+      git show "origin/main:$owned" > "$owned"
+    done
+    echo "[data] checkout left as is: fast-forward failed; files put back; pull by hand"
   fi
 }
 git diff --cached --quiet || { echo "[data] refusing to save with pre-existing staged files" >&2; exit 1; }

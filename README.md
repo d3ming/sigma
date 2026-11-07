@@ -16,7 +16,7 @@ make setup
 .venv/bin/python -m sigma.cli doctor
 ```
 
-Setup updates only the private `operator.json` runtime paths, preserving scanner, video and X settings. Keep `SIGMA_DATA_ROOT`
+Setup updates only the private `operator.json` runtime paths, preserving scanner and video settings. Keep `SIGMA_DATA_ROOT`
 exported when running Sigma. `sh scripts/bootstrap.sh --help` describes installation and configuration behavior.
 
 For a separate empty demo, copy the examples explicitly before setup:

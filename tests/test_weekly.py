@@ -269,6 +269,13 @@ def test_a_reader_output_made_for_older_input_is_not_merged(week, monkeypatch):
     kept = (run / "rank" / "batch-1-out.json").read_text()
     main(["rank-prep", str(run), "--batches", "1"])
     assert (run / "rank" / "batch-1-out.json").read_text() == kept
+    main(["rank-merge", str(run)])
+    n = Episode(id="rss:n", source_id="show-n", source_name="Show N", tier=2, title="Episode n", url=url("n"),
+                published_at=datetime(2026, 10, 18, tzinfo=timezone.utc))
+    row = write_episode(run, n, spoken({300: "the memory maker raised its price outlook"}, filler="nora", every=10), "podcast:transcript")
+    edit(run / "manifest.json", lambda d: d["episodes"].append(row))
+    main(["rank-prep", str(run), "--batches", "1"])
+    assert status(run)["stage"] == "readers"
 
 
 def test_publish_refuses_ungrounded_rankings(ranked_week, tmp_path, monkeypatch):
