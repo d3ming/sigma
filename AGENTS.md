@@ -2,10 +2,10 @@
 
 Sigma is open-source tooling for ingesting sources and making sense of them. Its site shows the tooling at work and the
 owner's view of how to use it. A stranger can clone it, supply their own follow lists, and run
-the pipeline and the site. The owner's instance runs on a Mac with private inputs. Most work is a one-off request
+the pipeline and the site. Owner's instance: a Mac publisher, cloud contributors ([docs/operators.md](docs/operators.md)). Most work is a one-off request
 ([skills/ingest-request](skills/ingest-request/SKILL.md)); the daily and weekly editions continue.
 
-Push changes directly to `develop`. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
+The publisher pushes to `develop`; contributors open PRs. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
 PR authorizes publication, including new public pages, without another owner approval, except a post. Use `make publish`; it validates
 the frozen build, saves private data
 to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
@@ -20,11 +20,11 @@ This file holds only what a capable agent would get wrong here without being tol
 - [CONTRIBUTING.md](CONTRIBUTING.md): how to propose a change and what stays out of the repo.
 - [REVIEW.md](REVIEW.md): how to review a change and the `develop`→`main` release PR.
 - [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
-- [deploy/mac/README.md](deploy/mac/README.md): macOS setup, scheduled jobs and publishing.
+- [deploy/mac/README.md](deploy/mac/README.md): the publisher's macOS setup.
 - [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
-- [skills/test-audit](skills/test-audit/SKILL.md): how to decide whether a test earns its place; apply it to every added or changed test.
+- [skills/test-audit](skills/test-audit/SKILL.md): whether a test earns its place; apply it to every added or changed test.
 - [prompts/](prompts/): the prompts the scheduled agents follow word for word.
-- [schema/](schema/): the JSON schemas that validate the agent's output files.
+- [schema/](schema/): schemas for agents' output files.
 
 ## Tenets
 

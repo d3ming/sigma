@@ -1,5 +1,7 @@
 # Mac setup
 
+This Mac is the publisher in [docs/operators.md](../../docs/operators.md). Contributors on other machines do not use these scripts.
+
 On macOS, launchd can fetch and transcribe source material before a scheduled agent prepares the daily and weekly
 editions. The site is built separately from the configured private data root.
 
