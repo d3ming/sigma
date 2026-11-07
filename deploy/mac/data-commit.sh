@@ -56,6 +56,12 @@ level_checkout() {
       removed=$((removed + 1))
     fi
   done < <(git ls-files -o --exclude-standard -z -- "$REL")
+  while IFS= read -r -d "" owned; do
+    if git cat-file -e "origin/main:$owned" 2>/dev/null && git show "origin/main:$owned" | cmp -s - "$owned"; then
+      git checkout -q -- "$owned"
+      removed=$((removed + 1))
+    fi
+  done < <(git diff --name-only -z -- "$REL")
   if git merge -q --ff-only origin/main 2>/dev/null; then
     echo "[data] checkout level with origin/main ($removed identical untracked files removed)"
   else
