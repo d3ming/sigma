@@ -383,12 +383,13 @@ def page(title: str, body: str, depth_nav: str = "", desc: str = "", md: str = "
     maker = f'<a class="maker" href="{esc(X_PROFILE)}" rel="me noopener noreferrer">{X_LOGO}{esc(MAKER)}</a>' if MAKER and X_PROFILE else ""
     x_link = f'<a href="{esc(X_PROFILE)}" rel="me noopener noreferrer">X profile</a> · ' if X_PROFILE else ""
     operated = f'Operated by {esc(OPERATOR)} · ' if OPERATOR else ""
+    analytics = ANALYTICS if ANALYTICS_ON else ""
     return (f'<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<title>{esc(shown)}</title>{d}<link rel="alternate" type="application/json" href="/runs.json">'
             f'<link rel="preconnect" href="https://fonts.googleapis.com">'
             f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-            f'{ICONS}<script>{THEME_BOOT}</script>{ANALYTICS if ANALYTICS_ON else ''}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
+            f'{ICONS}<script>{THEME_BOOT}</script>{analytics}<link rel="stylesheet" href="{FONTS}"><link rel="stylesheet" href="/style.css"></head><body>'
             f'<header class="site"><div class="wrap"><div class="id"><a class="brand" href="/">{esc(SITE)}</a>{maker}</div><div class="bar"><nav aria-label="Main">{links}</nav>{MODE_BUTTON}</div></div></header>'
             f'<main><div class="wrap">{body}</div></main>'
             f'<footer><div class="wrap">{upd}'
