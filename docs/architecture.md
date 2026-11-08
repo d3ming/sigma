@@ -1,6 +1,6 @@
 # Architecture
 
-An agent makes editorial judgments. Deterministic code collects sources, transcribes, validates the agent's files, stores evidence and builds the site. There are no model calls in the pipeline: prompts and schemas make each handoff inspectable.
+An agent makes editorial judgments. Deterministic code collects sources, transcribes, validates the agent's files, stores evidence and builds the site. The pipeline makes no model calls except `sigma edit`, which starts the configured editor agent once per episode: prompts and schemas make each handoff inspectable.
 
 The data root is the only owner of deployment-specific inputs and output. Code resources stay with the package; private follows, runs, caches, transcripts and publication records stay with the operator. This prevents a clone from silently reading another checkout's state.
 
@@ -25,7 +25,9 @@ incomplete YouTube coverage. Video identity does not establish timestamp alignme
 ## Episode editing
 
 Investment scores and their claims remain owned by ranking. A run may separately contain `editor.json`, written with
-`prompts/edit.md` and checked by `python -m sigma.editor <run>`. Each edit names an existing episode and the SHA-256
+`prompts/edit.md` and checked by `python -m sigma.editor <run>`; `sigma edit <run>` drafts each missing edit with the
+`podcast_editor` role's model and effort, checks it alone and merges it, and the weekly status requires it for every
+ranked episode scoring 7 or more. Each edit names an existing episode and the SHA-256
 of its complete timestamped source transcript. `key_insights` is importance ordered and has no ticker requirement;
 `dense_summary` is chronological. The publication exporter validates source identity, intervals, explicit speaker
 labels, figures in each cited interval and extended copied text before replacing output. Editorial inference remains

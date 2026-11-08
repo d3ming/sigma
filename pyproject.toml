@@ -1,13 +1,13 @@
 [project]
 name = "sigma-signals"
-version = "0.3.16"
+version = "0.3.17"
 description = "Cited podcast and X signals checked against their sources"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.15"
 keywords = ["signals", "podcasts", "transcription", "whisper", "investing", "llm-agents"]
-dependencies = ["feedparser>=6", "youtube-transcript-api>=1.0", "yt-dlp", "pyyaml", "requests", "jsonschema"]
+dependencies = ["feedparser>=6", "youtube-transcript-api>=1.0", "yt-dlp", "pyyaml", "requests", "jsonschema", "tomli; python_version < '3.11'"]
 
 [project.urls]
 Homepage = "https://github.com/d3ming/sigma"

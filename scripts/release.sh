@@ -230,6 +230,17 @@ def prepare():
     artifact = state / "publication" / artifact_hash / ".vercel" / "output"
     if not artifact.is_dir() or publication_hash(artifact) != artifact_hash:
         refuse("frozen publication is missing or changed")
+    base = subprocess.run([sys.executable, "-m", "sigma.site_config"], cwd=root, text=True, capture_output=True)
+    if base.returncode:
+        refuse("could not resolve the configured base URL")
+    deployed = state / "deployed-hash"
+    previous = ["--previous", str(state / "publication" / deployed.read_text().strip() / ".vercel" / "output" / "static")] if deployed.is_file() else []
+    first = ["--first-publication"] if os.environ.get("FIRST_PUBLICATION") == "1" else []
+    covered = subprocess.run([sys.executable, "-m", "sigma.coverage", "--build", str(artifact / "static"),
+                              "--base-url", base.stdout.strip(), *previous, *first], cwd=root, text=True, capture_output=True)
+    sys.stdout.write(covered.stdout + covered.stderr)
+    if covered.returncode:
+        refuse("this publication would drop data")
     data_after = private_data_state("--plan")
     if data_before["tree"] != data_after["tree"]:
         refuse("private data changed during the production build; prepare a new publication")
@@ -372,6 +383,7 @@ def help_text():
     print("By default, make publish prepares, validates, saves private data, tags, and deploys the exact frozen production build.")
     print("Use make publish PREPARE_ONLY=1 to inspect a plan without saving private data or pushing a tag/site.")
     print("Use make publish APPROVE=<full-plan-id> to apply a previously inspected plan and its exact frozen build.")
+    print("Use FIRST_PUBLICATION=1 only when no deployment is recorded and the live site has no episodes.json or does not answer.")
 
 
 if args in (["--help"], ["-h"]):
@@ -381,6 +393,8 @@ elif not args:
     prepare_only = os.environ.get("PREPARE_ONLY", "")
     if prepare_only not in ("", "1"):
         refuse("PREPARE_ONLY must be 1 when set")
+    if os.environ.get("FIRST_PUBLICATION", "") not in ("", "1"):
+        refuse("FIRST_PUBLICATION must be 1 when set")
     if approval and prepare_only:
         refuse("APPROVE and PREPARE_ONLY cannot be used together")
     if approval:

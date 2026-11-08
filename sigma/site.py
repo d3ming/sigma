@@ -16,6 +16,7 @@ from urllib.parse import quote, unquote
 from . import board, claimdedupe, creators, stance
 from . import entities as ents
 from .creators import norm_show
+from .links import yt_id
 from .tickers import normalize as norm_ticker
 from . import signals_sentiment
 from .publication_policy import MIN_SCORE
@@ -439,6 +440,17 @@ def load_themes(d: Path) -> dict | None:
     return {**t, "themes": items} if items else None
 
 
+def scored_here(e: dict, run: str) -> bool:
+    """A score this run made, not one it reused (scored_in names another run): a reused score is shown with the run that made it."""
+    return e.get("scored_in") in (None, run)
+
+
+def run_date(name: str, ranked: dict | None, report: dict | None) -> str:
+    """The date a run is filed and ordered under: a weekly or special issue's week_of, else the report's date, else the name's."""
+    listed = (ranked or {}).get("title") or (ranked or {}).get("episodes")
+    return ((ranked or {}).get("week_of") if listed else None) or (report or {}).get("date") or (re.match(r"\d{4}-\d{2}-\d{2}", name) or [""])[0]
+
+
 def load_run(d: Path) -> dict | None:
     name = d.name
     ranked = read_json(d / "ranked.json")
@@ -462,7 +474,7 @@ def load_run(d: Path) -> dict | None:
     title = (ranked or {}).get("title")  # a one-off issue: a chosen set of episodes, titled instead of dated
     weekly = bool((ranked or {}).get("episodes"))
     kind = "special" if title else "weekly" if weekly else "daily"
-    date_ = ((ranked or {}).get("week_of") if title or weekly else None) or (report or {}).get("date") or (re.match(r"\d{4}-\d{2}-\d{2}", name) or [""])[0]
+    date_ = run_date(name, ranked, report)
     by_ep: dict[str, list[dict]] = {}
     for c in claims:
         by_ep.setdefault(c.get("episode_id", ""), []).append(c)
@@ -494,8 +506,8 @@ def load_run(d: Path) -> dict | None:
                         "url": first.get("url") or rep.get("url") or m.get("url"), "claims": cl, **link_fields(m, cl),
                         "transcript_url": first.get("transcript_url") or rep.get("transcript_url")})
     scored = [e for e in ((ranked or (scores if isinstance(scores, dict) else None) or {}).get("episodes") or [])
-              if isinstance(e, dict) and isinstance(e.get("score"), int) and e.get("scored_in") in (None, name)]
-    own = [e for e in iep if e.get("scored_in") in (None, name)]  # a reused score is shown with the run that made it
+              if isinstance(e, dict) and isinstance(e.get("score"), int) and scored_here(e, name)]
+    own = [e for e in iep if scored_here(e, name)]
     influencer = {"name": name, "meta": imeta, "rubric": iscores.get("rubric") or 1 if isinstance(iscores, dict) else 1,
                   "scored": [e for e in own if isinstance(e.get("score"), int)],
                   "claims": [{"episode_id": e["episode_id"], "title": e.get("title"), "show": e.get("source"), "published": e.get("published"),
@@ -1302,6 +1314,116 @@ def enrich(runs: list[dict]) -> dict:
     return people
 
 
+EDITOR_FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source")
+CLAIM_IDENTITY = ("title", "show", "published", "url", "youtube_url", "transcript_url")
+
+
+def one_release(a: dict, b: dict) -> bool:
+    """Two episode records ({show, published}) can be one release: the same show, published within a day of each other. The five
+    feed/YouTube pairs seen live (2026-11-07) were minutes apart; one show's next part comes days later."""
+    try:
+        apart = abs(date.fromisoformat(str(a.get("published"))[:10]) - date.fromisoformat(str(b.get("published"))[:10])).days
+    except ValueError:
+        return False
+    return bool(norm_show(a.get("show"))) and norm_show(a.get("show")) == norm_show(b.get("show")) and apart <= 1
+
+
+def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
+    """{merged-away id: kept id}; every run is rewritten to the kept id, so nothing downstream sees the other one.
+    An episode is ingested twice when its podcast feed entry (rss:...) and its YouTube upload (yt:...) both arrive. They are one
+    episode when the feed copy's youtube_url (its meta's, or a claim's) is the yt: copy's video and one_release agrees. Pairs do not
+    chain: an id that would pair with two others pairs with neither.
+    The kept copy has the most claims, then the larger editor write-up, then the feed id. It takes the other's links and issues;
+    a field the kept copy has (title, url, claims, score, write-up) is never taken from the other, which fills only what is missing.
+    The other's claims still reach the people and ticker pages, but the episode lists only the kept copy's (_restated): the two
+    copies word the same moments differently, and a write-up's timestamps belong to one transcript."""
+    info: dict[str, dict] = {}
+
+    def row(eid):
+        return info.setdefault(eid, {"videos": set(), "claims": [], "insights": 0, "scored": False, "fields": set(), "release": {}})
+
+    def release(eid, show, published):
+        rel = row(eid)["release"]
+        for k, v in (("show", show), ("published", published)):
+            if v and not rel.get(k):
+                rel[k] = v
+
+    for r in runs:
+        for c in r["claims"]:
+            if eid := c.get("episode_id"):
+                row(eid)["claims"].append(c)
+                row(eid)["videos"].add(yt_id(c.get("youtube_url")))
+                row(eid)["fields"] |= {k for k in CLAIM_IDENTITY if c.get(k)} | ({"published"} if c.get("date") else set())
+        for eid, m in r["meta"].items():
+            if eid:
+                release(eid, m.get("show") or m.get("source"), m.get("published"))
+                row(eid)["videos"].add(yt_id(m.get("youtube_url")))
+                row(eid)["insights"] = max(row(eid)["insights"], len(m.get("key_insights") or []))
+                row(eid)["fields"] |= {k for k, v in m.items() if v}
+        for x in r["scored"]:
+            row(x["episode_id"])["scored"] = True
+            release(x["episode_id"], x.get("source") or x.get("show"), x.get("published"))
+    for r in runs:
+        for c in r["claims"]:
+            if eid := c.get("episode_id"):
+                release(eid, c.get("show"), c.get("published") or c.get("date"))
+    pairs, refused = [], []
+    for eid, x in info.items():
+        for v in sorted(x["videos"] - {None}) if not eid.startswith("yt:") else ():
+            if (mirror := f"yt:{v}") in info:
+                (pairs if one_release(x["release"], info[mirror]["release"]) else refused).append((eid, mirror))
+    count = Counter(i for pair in pairs for i in pair)
+    refused += [p for p in pairs if count[p[0]] > 1 or count[p[1]] > 1]
+    if refused:
+        print(f"[site] warning: {len(refused)} episode pairs name one video but are not merged (different show or date, or more "
+              "than one candidate): " + "; ".join(f"{a} / {b}" for a, b in refused[:5]))
+    alias: dict[str, str] = {}
+    for g in [set(p) for p in pairs if count[p[0]] == 1 and count[p[1]] == 1]:
+        keep = max(sorted(g), key=lambda i: (len(uniq_claims(info[i]["claims"])), info[i]["insights"], not i.startswith("yt:")))
+        alias.update({i: keep for i in g if i != keep})
+    for r in runs:
+        for c in r["claims"]:
+            if keep := alias.get(c.get("episode_id")):
+                c["_restated"] = bool(info[keep]["claims"])
+                c["episode_id"] = keep
+        for eid in [k for k in r["meta"] if k in alias]:
+            m, keep = r["meta"].pop(eid), alias[eid]
+            own = info[keep]["fields"] | (set(EDITOR_FIELDS) if info[keep]["insights"] else set())
+            m = {k: v for k, v in m.items() if k not in own and not (k == "source" and "show" in own)}
+            dest = r["meta"].setdefault(keep, {})
+            for k, v in {**m, "episode_id": keep}.items():
+                if v and not dest.get(k):
+                    dest[k] = v
+        r["scored"] = [{**x, "episode_id": alias[x["episode_id"]]} if x["episode_id"] in alias else x for x in r["scored"]
+                       if x["episode_id"] not in alias or not info[alias[x["episode_id"]]]["scored"]]
+        eps: dict[str, dict] = {}
+        for e in r["episodes"]:
+            own = e["id"] not in alias
+            e["id"] = alias.get(e["id"], e["id"])
+            if kept := eps.get(e["id"]):
+                if own and e["claims"] or not kept["claims"]:
+                    kept["claims"] = e["claims"]
+                kept.update({k: e[k] for k in LINK_FIELDS if e.get(k) and not kept.get(k)})
+            else:
+                eps[e["id"]] = e
+        r["episodes"] = list(eps.values())
+        for t in (r["themes"] or {}).get("themes", []):
+            for ev in evidence_of(t):
+                ev["episode_id"] = alias.get(ev.get("episode_id"), ev.get("episode_id"))
+    return alias
+
+
+def episode_scores(runs: list[dict]) -> dict[str, tuple[dict, int]]:
+    """{episode id: (the scored record the site shows, its rubric)} from runs newest first, as load_runs orders them: the first
+    score under the newest rubric. sigma.coverage expects the Social list from this same choice."""
+    kept: dict[str, tuple[dict, int]] = {}
+    for r in reversed(runs):
+        for x in r["scored"]:
+            if r["rubric"] > kept.get(x["episode_id"], ({}, 0))[1]:
+                kept[x["episode_id"]] = (x, r["rubric"])
+    return kept
+
+
 def build_episodes(runs: list[dict]) -> dict:
     """episode_id -> info merged across issues (newest issue wins), including episodes with no claims."""
     reg: dict[str, dict] = {}
@@ -1323,14 +1445,16 @@ def build_episodes(runs: list[dict]) -> dict:
             if not eid:
                 continue
             e = entry(eid)
+            if r["name"] not in e["runs"]:
+                e["runs"].append(r["name"])
+            if c.get("_restated"):
+                continue
             claim_published = c.get("published") or c.get("date")
             manifest_published = (r["meta"].get(eid) or {}).get("published")
             if manifest_published and len(str(manifest_published)) > 10 and str(manifest_published)[:10] == str(claim_published or "")[:10]:
                 claim_published = manifest_published
             fill(e, title=c.get("title"), show=c.get("show"), published=claim_published, url=safe_url(c.get("url")),
                  youtube_url=safe_url(c.get("youtube_url")), transcript_url=safe_url(c.get("transcript_url")))
-            if r["name"] not in e["runs"]:
-                e["runs"].append(r["name"])
             e["claims"].append(c)
         for eid, m in r["meta"].items():
             if eid:
@@ -1347,13 +1471,12 @@ def build_episodes(runs: list[dict]) -> dict:
                      transcript_url=safe_url(m.get("transcript_url")),
                      transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
-    for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
+    for r in reversed(runs):
         for x in r["scored"]:
-            e = entry(x["episode_id"])
-            fill(e, title=x.get("title"), show=x.get("source"), published=x.get("published"), url=safe_url(x.get("url")),
-                 tier=x.get("tier"))
-            if r["rubric"] > e["rubric"]:
-                e["score"], e["reason"], e["rubric"] = x["score"], x.get("reason"), r["rubric"]
+            fill(entry(x["episode_id"]), title=x.get("title"), show=x.get("source"), published=x.get("published"),
+                 url=safe_url(x.get("url")), tier=x.get("tier"))
+    for eid, (x, rubric) in episode_scores(runs).items():
+        entry(eid).update(score=x["score"], reason=x.get("reason"), rubric=rubric)
     for e in reg.values():
         e["claims"] = sorted(claimdedupe.dedupe(uniq_claims(e["claims"]))[0], key=claim_ts)  # two runs can word one moment differently
         e["page"] = episode_path(e["id"]) if e["claims"] or e.get("key_insights") or e.get("user_pick") else ""
@@ -2517,6 +2640,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     global SITE_YEAR
     from . import signals_site  # imports this module, so not at the top
     runs = load_runs(published)
+    merged = merge_same_episodes(runs)
     research_posts = research_posts or []
     if out.exists():
         shutil.rmtree(out)
@@ -2694,11 +2818,16 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         if e["page"] and (e["claims"] or e.get("key_insights")):
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))
     write(out / "episodes.md", episodes_md(reg))
+    for old, keep in merged.items():  # the merged-away copy's pages stay where outsiders may hold them
+        if target := allreg.get(keep, {}).get("page"):
+            label = allreg[keep]["title"] or keep
+            write(out / file_of(episode_path(old)), redirect_page(target, label, md_of(episode_path(old))))
+            write(out / file_of(md_of(episode_path(old))), doc([f"# {mt(label)}", "", f"Moved to {mlink(label, absu(md_of(target)))}."]))
     sm.append(("/episodes.md", newest))
     ej = [episode_json(e) for e in sorted(reg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)]
     write(out / "tickers.json", dump({"base_url": BASE_URL, "tickers": tj}))
     write(out / "people.json", dump({"base_url": BASE_URL, "people": pj}))
-    write(out / "episodes.json", dump({"base_url": BASE_URL, "episodes": ej}))
+    write(out / "episodes.json", dump({"base_url": BASE_URL, "episodes": ej, "merged": merged}))
     social_json = [{**episode_json(e), "style": "influencer"}
                    for e in sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)
                    if e["score"] >= MIN_SCORE and e["page"]]

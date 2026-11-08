@@ -696,3 +696,26 @@ def test_user_pick_survives_newer_issue_without_changing_rating_floor():
     assert site.episode_json(e)["user_pick"] is True
     assert site.find_index(reg, ent, {})["eps"][0]["user_pick"] is True
     assert '/find/?picks=1' in site.episode_page(e)
+
+
+def test_one_episode_that_arrived_by_feed_and_by_youtube_is_one_card():
+    """failure-seen (sigma.dming.si 2026-11-07, Rating sort, Week filter): the feed copy's youtube_url names the video that the
+    yt: copy is, and both were listed. The copy with more claims is kept with the other's links; a different video stays."""
+    def claim(eid, n, **kw):
+        return {"episode_id": eid, "title": "Deep Dive", "show": "Latent Space", "published": "2026-11-06", "speaker": "Jamin Ball",
+                "timestamp": n, "text": f"{eid} claim {n}", "tickers": [], **kw}
+
+    video = "https://www.youtube.com/watch?v=P735f1xlpL0"
+    feed = {"name": "2026-11-07-weekly", "claims": [claim("rss:f66c", 1, youtube_url=video), claim("rss:f66c", 2, youtube_url=video)],
+            "meta": {"rss:f66c": {"episode_id": "rss:f66c", "youtube_url": video, "apple_url": "https://podcasts.apple.com/x"}},
+            "scored": [{"episode_id": "rss:f66c", "score": 8}], "episodes": [], "themes": None, "rubric": 1}
+    mirror = {"name": "2026-11-07-P735f1xlpL0", "claims": [claim("yt:P735f1xlpL0", n) for n in (1, 2, 3)] + [claim("yt:other", 9)],
+              "meta": {"yt:P735f1xlpL0": {"episode_id": "yt:P735f1xlpL0", "key_insights": [{"title": "t"}]}},
+              "scored": [{"episode_id": "yt:P735f1xlpL0", "score": 7}], "episodes": [], "themes": None, "rubric": 1}
+    runs = [feed, mirror]
+    assert site.merge_same_episodes(runs) == {"rss:f66c": "yt:P735f1xlpL0"}
+    reg = site.build_episodes(runs)
+    assert sorted(reg) == ["yt:P735f1xlpL0", "yt:other"]
+    e = reg["yt:P735f1xlpL0"]
+    assert len(e["claims"]) == 3 and e["score"] == 7 and e["apple_url"] == "https://podcasts.apple.com/x" and e["youtube_url"] == video
+    assert e["runs"] == ["2026-11-07-weekly", "2026-11-07-P735f1xlpL0"]

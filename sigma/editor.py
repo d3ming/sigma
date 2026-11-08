@@ -11,6 +11,8 @@ from .fetch import segments_from_md
 from .ranked import private_hits
 
 FILE = "editor.json"
+MIN_SCORE = 7
+PROMPT_VERSION = "edit-2026-11-02"
 FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source", "topics")
 
 
@@ -21,7 +23,12 @@ def load(run_dir: str | Path) -> dict[str, dict]:
         return {}
     if path.is_symlink():
         raise ValueError("editor.json must be a regular source file")
-    data = json.loads(path.read_text())
+    return validate(run_dir, json.loads(path.read_text()))
+
+
+def validate(run_dir: Path, data: dict) -> dict[str, dict]:
+    """Check an editor.json body, or one episode's draft wrapped as {"version": 1, "episodes": [entry]}, against its sources."""
+    run_dir = Path(run_dir).resolve()
     schema = json.loads((Path(__file__).resolve().parent.parent / "schema" / "editor.schema.json").read_text())
     jsonschema.validate(data, schema)
     if hits := private_hits(data):
@@ -74,6 +81,18 @@ def load(run_dir: str | Path) -> dict[str, dict]:
         out[eid] = {field: episode[field] for field in FIELDS if field in episode}
         out[eid]["editor_source"] = row.get("transcript_source") or ""
     return out
+
+
+def unedited(run_dir: str | Path, ranked: dict, min_score: int = MIN_SCORE) -> list[dict]:
+    """Transcribed ranked episodes scoring at least min_score that editor.json has no entry for, best score first.
+    Raises ValueError when the existing editor.json fails its check."""
+    run_dir = Path(run_dir)
+    have = load(run_dir)
+    transcribed = {row["episode_id"] for row in json.loads((run_dir / "manifest.json").read_text()).get("episodes", [])
+                   if row.get("has_transcript")}
+    rows = [e for e in ranked["episodes"] if (e.get("score") or 0) >= min_score and e["episode_id"] in transcribed
+            and e["episode_id"] not in have]
+    return sorted(rows, key=lambda e: -e["score"])
 
 
 if __name__ == "__main__":

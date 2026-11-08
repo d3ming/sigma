@@ -65,7 +65,9 @@ Set `SIGMA_DATA_ROOT` to a private data directory before running the jobs. The a
 
 Promote source to `main` through a reviewed release PR. A passing release PR authorizes `make publish`; its frozen
 build and private-data checks must pass before tagging or upload. Private data lands on its own repository's `main`
-without changing the ingest checkout or unrelated dirty folders. A conflict stops publication. The command details
+without changing the ingest checkout or unrelated dirty folders. A conflict stops publication. So does a build that
+lacks an episode the live site or the last deployment serves, or a scored episode; one left out on purpose is named with a
+reason in the data root's `withheld.json` (`python -m sigma.coverage --help`). The command details
 belong to `scripts/release.sh --help`. Keep automatic Git deployments disabled: a cloud build cannot read the private
 data root.
 

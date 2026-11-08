@@ -1,6 +1,6 @@
 #!/bin/bash
 # One-time: install the launchd agents for the weekday and Sunday runs (times: StartCalendarInterval in each plist). Does not use sudo.
-# Usage: install.sh [daily] [weekly]   (default: both). SIGMA_HEAVY_LOCK, when set, is passed to the jobs.
+# Usage: install.sh [daily] [weekly]   (default: both). SIGMA_HEAVY_LOCK, when set, overrides the jobs' heavy-job lock path.
 set -euo pipefail
 REPO="${SIGMA_REPO:-$(cd "$(dirname "$0")/../.." && pwd)}"
 DATA_ROOT="${SIGMA_DATA_ROOT:-$REPO/data}"

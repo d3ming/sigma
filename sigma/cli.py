@@ -334,8 +334,7 @@ def rank_merge(args) -> None:
     if prev.get("title") and "title" not in data:
         data = {**data, "title": prev["title"], **({} if args.week_of else {"week_of": prev.get("week_of") or data["week_of"]})}
     out.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n")
-    print(f"[rank-merge] {out} ({len(data['episodes'])} episodes)."
-          + (f" Next: sigma publish {out} --top 15" if target == "ranked.json" else " Next: sigma status " + args.run))
+    print(f"[rank-merge] {out} ({len(data['episodes'])} episodes). Next: sigma status {args.run}")
     events.note(scored=len(data["episodes"]))
     rank_dir = run / "rank"
     if any(rank_dir.glob("influencer-*-in.json")) or (rank_dir / "influencer-stored.json").exists():
@@ -530,6 +529,12 @@ def calls_cmd(args) -> None:
     from . import calls
 
     calls.calls_cmd(args)
+
+
+def edit_cmd(args) -> None:
+    from . import edit
+
+    edit.edit_cmd(args)
 
 
 def entities_cmd(args) -> None:
@@ -812,7 +817,14 @@ def _main(argv=None):
     stp.add_argument("--json", action="store_true", help="machine-readable output (schema/status.schema.json)")
     stp.add_argument("--weekly", action="store_true", help="force the weekly (rank) flow instead of auto-detecting")
     stp.add_argument("--record", action="store_true", help="also stamp select/report start/end timing the code can observe (the only write)")
-    tdp = sub.add_parser("today", help="start today's daily run if it does not exist, else show its status and next action")
+    ed = sub.add_parser("edit", help="write the full editor.json entry (prompts/edit.md) for each ranked episode scoring --min-score or more that has none: one Codex run each, checked alone, then merged",
+                        description="Model and effort come from .codex/agents/podcast-editor.toml. Each draft is saved in <run>/edits/ and merged into editor.json only after `python -m sigma.editor` checks it against its transcript; a failed check is fed back to Codex up to --fixes times.")
+    ed.add_argument("run")
+    ed.add_argument("--min-score", type=int, help="lowest score to write (default: 7, sigma.editor.MIN_SCORE)")
+    ed.add_argument("--limit", type=int, help="write at most this many episodes, best score first")
+    ed.add_argument("--jobs", type=int, default=3, help="episodes written at the same time")
+    ed.add_argument("--fixes", type=int, default=3, help="rewrites of a draft that fails the check, before giving up on it")
+    tdp = sub.add_parser("today",help="start today's daily run if it does not exist, else show its status and next action")
     tdp.add_argument("--hours", type=float, default=48)
     tdp.add_argument("--run-name", help="override the run name (default: today's local date)")
     tdp.add_argument("--runs", default=str(DATA / "runs"))
@@ -912,7 +924,7 @@ def _main(argv=None):
     events.command(args)
     if getattr(args, "backend", None):
         os.environ["SIGMA_WHISPER_BACKEND"] = args.backend  # the queued transcribe child inherits it
-    own ={"status": status_cmd, "find": find_cmd, "custom-run": custom_run_cmd, "today": today_cmd, "doctor": doctor_cmd,
+    own ={"status": status_cmd, "edit": edit_cmd,"find": find_cmd, "custom-run": custom_run_cmd, "today": today_cmd, "doctor": doctor_cmd,
            "entities": entities_cmd,
            "calls": calls_cmd,
            "source": source_cmd,
@@ -930,6 +942,10 @@ def _main(argv=None):
         from . import site
 
         return site.main(["--out", args.out, "--published", args.published] + (["--base-url", args.base_url] if args.base_url else []))
+    if args.cmd in ("fetch", "daily"):
+        from . import heavy
+
+        args.heavy = heavy.take(f"sigma {args.cmd}")
     {"fetch": fetch, "daily": daily, "transcribe": transcribe_run, "publish": publish, "check": check,
      "report": render_report, "links": links, "show-links": show_links, "rank-prep": rank_prep, "rank-merge": rank_merge, "stance-prep": stance_cmd, "stance-merge": stance_cmd, "tickers-refresh": tickers_refresh_cmd, "score-eval": score_eval_cmd, "themes-check": themes_check, "transcript-links": transcript_links_cmd, "export-published": export_published, "dedupe-published": dedupe_published, "check-claims": check_claims, "mark": mark, "stats": stats, "library": library_cmd}[args.cmd](args)
 

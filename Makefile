@@ -20,6 +20,6 @@ preview-logs:
 	@scripts/preview.sh logs
 
 .PHONY: publish
-export APPROVE PREPARE_ONLY
+export APPROVE PREPARE_ONLY FIRST_PUBLICATION
 publish:
 	@sh scripts/release.sh
