@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import sys
 import urllib.error
 import urllib.request
@@ -16,7 +17,7 @@ from pathlib import Path
 from .links import yt_id
 from .paths import data_root
 from .publication_policy import MIN_SCORE
-from .site import one_release
+from .site import episode_scores, one_release, run_date, scored_here
 
 WITHHELD = "withheld.json"
 LISTS = ("episodes.json", "social/episodes.json")
@@ -86,56 +87,74 @@ def thinned(before: dict, after: dict) -> bool:
     return bool(before.get("page")) and not after.get("page") or bool(before.get("claims")) and not after.get("claims")
 
 
+def richer(a: dict, b: dict) -> dict:
+    """One episode's baseline from two records of it: a page if either has one, the larger claim count."""
+    return {**b, **a, "page": a.get("page") or b.get("page"), "claims": max(a.get("claims") or 0, b.get("claims") or 0)}
+
+
 def baseline(base_url: str, previous: Path | None, first: bool) -> tuple[dict, list[str], list[str]]:
-    """({id: record} readers have, notes, problems). Fails closed: some baseline must be read, unless first is set, and first is
-    refused once any baseline exists."""
+    """({id: record} readers have, notes, problems). Fails closed: some baseline must be read. FIRST_PUBLICATION applies only
+    when nothing is published: no deployment recorded, and the live site has no episodes.json (404) or does not answer."""
     have, notes = {}, []
+    live, absent, failure = None, "", ""
     try:
         live = live_lists(base_url)
+    except urllib.error.HTTPError as exc:
+        failure = f"the live site at {base_url} answered, but not with its episode lists ({exc})"
+    except urllib.error.URLError as exc:
+        if isinstance(exc.reason, (socket.gaierror, ConnectionRefusedError)):
+            absent = f"nothing answers at {base_url} ({exc.reason})"
+        else:
+            failure = f"could not read the live episode lists at {base_url} ({exc.reason})"
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        live, unreadable = None, f"could not read the live episode lists at {base_url} ({exc})"
-    else:
-        unreadable = ""
-    if live:
-        have.update(live["episodes"])
+        failure = f"could not read the live episode lists at {base_url} ({type(exc).__name__}: {exc})"
+    if live is None and not (absent or failure):
+        absent = f"{base_url} serves no episodes.json"
+    have.update((live or {}).get("episodes", {}))
     if previous:
         try:
-            have.update(folder_lists(previous)["episodes"])
+            for eid, rec in folder_lists(previous)["episodes"].items():
+                have[eid] = richer(have[eid], rec) if eid in have else rec
         except (OSError, ValueError, KeyError, TypeError) as exc:
             return {}, notes, [f"could not read the last deployed publication's episode lists in {previous} ({exc})"]
-    if unreadable and not previous and not first:
-        return {}, notes, [f"{unreadable}, and no deployed publication is recorded; nothing proves this build keeps them. "
-                           "If this is the site's first publication, say so with FIRST_PUBLICATION=1"]
-    if unreadable and not previous:
-        notes.append(f"first publication: {unreadable}, and no deployed publication is recorded")
-        return have, notes, []
-    if unreadable:
-        notes.append(f"{unreadable}; compared against the last deployed publication only")
-    if live is None and previous and not unreadable:
-        notes.append(f"{base_url} serves no episodes.json; compared against the last deployed publication only")
-    if live is None and not previous and not unreadable:
-        if not first:
-            return {}, notes, [f"{base_url} serves no episodes.json and no deployed publication is recorded; "
-                               "if this is the site's first publication, say so with FIRST_PUBLICATION=1"]
-        notes.append("first publication: no baseline to compare against")
-    elif first:
+    if first and (live is not None or previous):
         return {}, notes, ["FIRST_PUBLICATION=1, but the site already serves episodes"]
+    if failure and not previous:
+        return {}, notes, [f"{failure}, and no deployed publication is recorded; nothing proves this build keeps them "
+                           "(FIRST_PUBLICATION=1 applies only when the live site has no episodes.json or does not answer)"]
+    if (failure or absent) and previous:
+        notes.append(f"{failure or absent}; compared against the last deployed publication only")
+    if absent and not previous:
+        if not first:
+            return {}, notes, [f"{absent} and no deployed publication is recorded; "
+                               "if this is the site's first publication, say so with FIRST_PUBLICATION=1"]
+        notes.append(f"first publication: {absent}")
     return have, notes, []
 
 
-def listed_by_site(e, social: bool) -> bool:
-    """A scored record the site must list: every interview score; a Social score at the site's floor (MIN_SCORE) with claims,
-    since the Social list shows only episodes with a page and claims always give one."""
-    return isinstance(e, dict) and isinstance(e.get("score"), int) and (not social or e["score"] >= MIN_SCORE and bool(e.get("claims")))
-
-
 def scored_runs(root: Path) -> dict[str, dict]:
-    """{run name: {episode id: scored record}} for every run in runs/ with a ranking or scores."""
-    out = {}
-    for d in sorted((root / "runs").iterdir()) if (root / "runs").is_dir() else []:
-        if files := [d / name for name in (*SCORED, SOCIAL_SCORED) if (d / name).is_file()]:
-            out[d.name] = {e["episode_id"]: e for f in files for e in json.loads(f.read_text(encoding="utf-8")).get("episodes") or []
-                           if listed_by_site(e, f.name == SOCIAL_SCORED)}
+    """{run name: {episode id: scored record}} for every run in runs/ with a ranking or scores: every interview score, and each
+    Social score the site lists. The Social list shows an episode whose score is at MIN_SCORE or higher and that has a page,
+    which its claims always give it. Its score is the site's choice (site.episode_scores over the scores each run made,
+    site.scored_here); an episode with no such score, which the site drops, is held to the scores the runs carry."""
+    folders = [d for d in sorted((root / "runs").iterdir()) if d.is_dir()] if (root / "runs").is_dir() else []
+    out, social = {}, []
+    for d in folders:
+        read = {name: json.loads((d / name).read_text(encoding="utf-8")) for name in (*SCORED, SOCIAL_SCORED, "report.json")
+                if (d / name).is_file()}
+        if not any(name in read for name in (*SCORED, SOCIAL_SCORED)):
+            continue
+        records = lambda name: [e for e in (read.get(name) or {}).get("episodes") or [] if isinstance(e, dict) and isinstance(e.get("score"), int)]
+        out[d.name] = {e["episode_id"]: e for name in SCORED for e in records(name)}
+        doc = read.get(SOCIAL_SCORED) or {}
+        social.append({"name": d.name, "date": run_date(d.name, read.get("ranked.json"), read.get("report.json")),
+                       "rubric": doc.get("rubric") or 1, "carried": records(SOCIAL_SCORED)})
+    social.sort(key=lambda r: (r["date"], r["name"]), reverse=True)
+    kept = episode_scores([{**r, "scored": [e for e in r["carried"] if scored_here(e, r["name"])]} for r in social])
+    with_claims = {e["episode_id"] for r in social for e in r["carried"] if e.get("claims")}
+    for r in social:
+        out[r["name"]].update({e["episode_id"]: e for e in r["carried"] if e["episode_id"] in with_claims
+                               and kept.get(e["episode_id"], (e, 0))[0]["score"] >= MIN_SCORE})
     return out
 
 

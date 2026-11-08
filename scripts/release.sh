@@ -383,7 +383,7 @@ def help_text():
     print("By default, make publish prepares, validates, saves private data, tags, and deploys the exact frozen production build.")
     print("Use make publish PREPARE_ONLY=1 to inspect a plan without saving private data or pushing a tag/site.")
     print("Use make publish APPROVE=<full-plan-id> to apply a previously inspected plan and its exact frozen build.")
-    print("Use FIRST_PUBLICATION=1 only for a site with no recorded deployment and no readable live episode list; it is refused otherwise.")
+    print("Use FIRST_PUBLICATION=1 only when no deployment is recorded and the live site has no episodes.json or does not answer.")
 
 
 if args in (["--help"], ["-h"]):

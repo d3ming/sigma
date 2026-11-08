@@ -84,6 +84,23 @@ def test_a_social_score_the_site_would_list_but_the_build_lacks_refuses(tmp_path
     assert len(problems) == 1 and "yt:floor" in problems[0] and "yt:low" not in problems[0] and "yt:bare" not in problems[0]
 
 
+def test_a_social_episode_is_expected_by_the_score_the_site_keeps_not_by_any_run_score(tmp_path, monkeypatch):
+    """failure-seen (final review of 2026-11-07, a copy of the real data root): an episode scored 3 first and 6 later is shown
+    with its first score, so the site leaves it off Social, and the guard refused the publish. A score only reused (scored_in
+    names a run that lacks it) has no run that shows it, so the site loses it and the guard must still refuse."""
+    def social(run, *episodes):
+        scored_run(tmp_path, run, published=True)
+        (tmp_path / "runs" / run / "scores-influencer.json").write_text(json.dumps({"episodes": [
+            {"episode_id": eid, "score": score, "scored_in": made_in, "claims": [{"claim": "c"}]} for eid, score, made_in in episodes]}))
+
+    social("2026-10-28", ("yt:rescored", 3, None))
+    social("2026-10-29-videos", ("yt:rescored", 6, None))
+    social("2026-10-30", ("yt:rescored", 6, "2026-10-29-videos"), ("yt:orphan", 7, "2026-10-29-videos"))
+    live(monkeypatch)
+    problems, _ = coverage.check(tmp_path, build(tmp_path, []), "https://sigma.example")
+    assert len(problems) == 1 and "run 2026-10-30" in problems[0] and "yt:orphan" in problems[0] and "yt:rescored" not in problems[0]
+
+
 def test_a_served_episode_that_keeps_its_id_but_loses_its_page_or_every_claim_refuses(tmp_path, monkeypatch):
     """failure-seen (second review of 2026-11-07, a copy of the real data root): emptying published/2026-11-02-weekly's
     claims.jsonl kept every id but took 29 episode pages and 154 claims off the site, and the guard passed."""

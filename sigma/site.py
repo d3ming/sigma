@@ -440,6 +440,17 @@ def load_themes(d: Path) -> dict | None:
     return {**t, "themes": items} if items else None
 
 
+def scored_here(e: dict, run: str) -> bool:
+    """A score this run made, not one it reused (scored_in names another run): a reused score is shown with the run that made it."""
+    return e.get("scored_in") in (None, run)
+
+
+def run_date(name: str, ranked: dict | None, report: dict | None) -> str:
+    """The date a run is filed and ordered under: a weekly or special issue's week_of, else the report's date, else the name's."""
+    listed = (ranked or {}).get("title") or (ranked or {}).get("episodes")
+    return ((ranked or {}).get("week_of") if listed else None) or (report or {}).get("date") or (re.match(r"\d{4}-\d{2}-\d{2}", name) or [""])[0]
+
+
 def load_run(d: Path) -> dict | None:
     name = d.name
     ranked = read_json(d / "ranked.json")
@@ -463,7 +474,7 @@ def load_run(d: Path) -> dict | None:
     title = (ranked or {}).get("title")  # a one-off issue: a chosen set of episodes, titled instead of dated
     weekly = bool((ranked or {}).get("episodes"))
     kind = "special" if title else "weekly" if weekly else "daily"
-    date_ = ((ranked or {}).get("week_of") if title or weekly else None) or (report or {}).get("date") or (re.match(r"\d{4}-\d{2}-\d{2}", name) or [""])[0]
+    date_ = run_date(name, ranked, report)
     by_ep: dict[str, list[dict]] = {}
     for c in claims:
         by_ep.setdefault(c.get("episode_id", ""), []).append(c)
@@ -495,8 +506,8 @@ def load_run(d: Path) -> dict | None:
                         "url": first.get("url") or rep.get("url") or m.get("url"), "claims": cl, **link_fields(m, cl),
                         "transcript_url": first.get("transcript_url") or rep.get("transcript_url")})
     scored = [e for e in ((ranked or (scores if isinstance(scores, dict) else None) or {}).get("episodes") or [])
-              if isinstance(e, dict) and isinstance(e.get("score"), int) and e.get("scored_in") in (None, name)]
-    own = [e for e in iep if e.get("scored_in") in (None, name)]  # a reused score is shown with the run that made it
+              if isinstance(e, dict) and isinstance(e.get("score"), int) and scored_here(e, name)]
+    own = [e for e in iep if scored_here(e, name)]
     influencer = {"name": name, "meta": imeta, "rubric": iscores.get("rubric") or 1 if isinstance(iscores, dict) else 1,
                   "scored": [e for e in own if isinstance(e.get("score"), int)],
                   "claims": [{"episode_id": e["episode_id"], "title": e.get("title"), "show": e.get("source"), "published": e.get("published"),
@@ -1402,6 +1413,17 @@ def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
     return alias
 
 
+def episode_scores(runs: list[dict]) -> dict[str, tuple[dict, int]]:
+    """{episode id: (the scored record the site shows, its rubric)} from runs newest first, as load_runs orders them: the first
+    score under the newest rubric. sigma.coverage expects the Social list from this same choice."""
+    kept: dict[str, tuple[dict, int]] = {}
+    for r in reversed(runs):
+        for x in r["scored"]:
+            if r["rubric"] > kept.get(x["episode_id"], ({}, 0))[1]:
+                kept[x["episode_id"]] = (x, r["rubric"])
+    return kept
+
+
 def build_episodes(runs: list[dict]) -> dict:
     """episode_id -> info merged across issues (newest issue wins), including episodes with no claims."""
     reg: dict[str, dict] = {}
@@ -1449,13 +1471,12 @@ def build_episodes(runs: list[dict]) -> dict:
                      transcript_url=safe_url(m.get("transcript_url")),
                      transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
-    for r in reversed(runs):  # oldest issue first: an episode's score is the first one under the newest rubric
+    for r in reversed(runs):
         for x in r["scored"]:
-            e = entry(x["episode_id"])
-            fill(e, title=x.get("title"), show=x.get("source"), published=x.get("published"), url=safe_url(x.get("url")),
-                 tier=x.get("tier"))
-            if r["rubric"] > e["rubric"]:
-                e["score"], e["reason"], e["rubric"] = x["score"], x.get("reason"), r["rubric"]
+            fill(entry(x["episode_id"]), title=x.get("title"), show=x.get("source"), published=x.get("published"),
+                 url=safe_url(x.get("url")), tier=x.get("tier"))
+    for eid, (x, rubric) in episode_scores(runs).items():
+        entry(eid).update(score=x["score"], reason=x.get("reason"), rubric=rubric)
     for e in reg.values():
         e["claims"] = sorted(claimdedupe.dedupe(uniq_claims(e["claims"]))[0], key=claim_ts)  # two runs can word one moment differently
         e["page"] = episode_path(e["id"]) if e["claims"] or e.get("key_insights") or e.get("user_pick") else ""
