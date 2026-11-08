@@ -41,27 +41,41 @@ def codex(prompt: str, workdir: Path, log: Path) -> str | None:
     return None if done.returncode == 0 else f"codex exited {done.returncode}"
 
 
+def check_draft(run: Path, draft: Path, episode_id: str) -> tuple[dict | None, str]:
+    """(entry, "") when the draft is for this episode and passes the editor check against that episode's transcript, else (None, why)."""
+    try:
+        entry = json.loads(draft.read_text())
+        if not isinstance(entry, dict) or entry.get("episode_id") != episode_id:
+            found = entry.get("episode_id") if isinstance(entry, dict) else None
+            return None, f"the draft is for episode {found!r}, not {episode_id!r}"
+        editor.validate(run, {"version": 1, "episodes": [entry]})
+    except FileNotFoundError:
+        return None, "no draft was written"
+    except jsonschema.ValidationError as exc:
+        return None, f"{exc.message} at {'/'.join(map(str, exc.absolute_path))}"
+    except (OSError, ValueError) as exc:
+        return None, str(exc)
+    return entry, ""
+
+
 def edit_one(run: Path, row: dict, source: Path, fixes: int) -> tuple[dict | None, str, int]:
-    """Draft one episode, check it alone, and hand the check's error back for up to `fixes` rewrites.
-    Returns (entry or None, last error, attempts used)."""
+    """An existing draft that passes is used as it stands (a hand repair); one that fails goes back to Codex with the check's
+    error, up to `fixes` rewrites after the first run. Returns (entry or None, last error, Codex runs used)."""
     drafts = run / DRAFTS
     safe = row["episode_id"].replace(":", "_")
     draft, log = drafts / f"{safe}.json", drafts / f"{safe}.log"
     _, _, role = agent()
     facts = {"repo": ROOT, "transcript": source, "draft": draft, "episode_id": row["episode_id"], "entities": entities.ENTITIES_FILE}
-    prompt = role + "\n\n" + (ROOT / "prompts" / "edit-episode.md").read_text().format(**facts)
-    error = ""
-    for attempt in range(1, fixes + 2):
-        if error := codex(prompt, drafts, log) or "":
-            return None, error, attempt
-        try:
-            entry = json.loads(draft.read_text())
-            editor.validate(run, {"version": 1, "episodes": [entry]})
-            return entry, "", attempt
-        except (OSError, ValueError, jsonschema.ValidationError) as exc:
-            error = f"{exc.message} at {'/'.join(map(str, exc.absolute_path))}" if isinstance(exc, jsonschema.ValidationError) else str(exc)
-        prompt = (ROOT / "prompts" / "edit-fix.md").read_text().format(**facts, error=error)
-    return None, error, fixes + 1
+    entry, error = check_draft(run, draft, row["episode_id"])
+    runs = 0
+    while entry is None and runs <= fixes:
+        runs += 1
+        template = "edit-fix.md" if draft.exists() else "edit-episode.md"
+        prompt = ((role + "\n\n") if template == "edit-episode.md" else "") + (ROOT / "prompts" / template).read_text().format(**facts, error=error)
+        if failure := codex(prompt, drafts, log):
+            return None, failure, runs
+        entry, error = check_draft(run, draft, row["episode_id"])
+    return entry, "" if entry else error, runs
 
 
 def merge(run: Path, entry: dict) -> None:
@@ -100,10 +114,10 @@ def edit_cmd(args) -> None:
             entry, error, attempts = job.result()
             if entry is None:
                 failed.append(eid)
-                print(f"[edit] {eid} failed after {attempts} attempt(s): {error} (draft and log in {run / DRAFTS})")
+                print(f"[edit] {eid} failed after {attempts} Codex run(s): {error} (draft and log in {run / DRAFTS})")
                 continue
             merge(run, entry)
-            print(f"[edit] {eid} checked and merged ({attempts} attempt(s))")
+            print(f"[edit] {eid} checked and merged ({f'{attempts} Codex run(s)' if attempts else 'existing draft, no Codex run'})")
     try:
         checked = editor.load(run)
     except (OSError, ValueError, jsonschema.ValidationError) as exc:
