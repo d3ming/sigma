@@ -30,7 +30,9 @@ def withheld(root: Path) -> dict:
 
 
 def episode_ids(doc: dict) -> set[str]:
-    return {e["episode_id"] for e in doc.get("episodes", [])}
+    """Ids a build serves: its episodes, and the ids it merged into one of them (the site redirects those pages)."""
+    ids = {e["episode_id"] for e in doc.get("episodes", [])}
+    return ids | {old for old, kept in (doc.get("merged") or {}).items() if kept in ids}
 
 
 def live_episodes(base_url: str, timeout: float = 30) -> set[str] | None:
