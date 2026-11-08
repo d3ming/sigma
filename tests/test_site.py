@@ -719,3 +719,33 @@ def test_one_episode_that_arrived_by_feed_and_by_youtube_is_one_card():
     e = reg["yt:P735f1xlpL0"]
     assert len(e["claims"]) == 3 and e["score"] == 7 and e["apple_url"] == "https://podcasts.apple.com/x" and e["youtube_url"] == video
     assert e["runs"] == ["2026-11-07-weekly", "2026-11-07-P735f1xlpL0"]
+
+
+def test_a_social_video_that_arrived_by_feed_and_by_youtube_is_listed_once(tmp_path):
+    """failure-seen (sigma.dming.si/social/episodes.json 2026-11-07): Chip Stock Investor's PTC video was listed as yt:oDMzv7MN-Ks
+    and rss:f59b78c6004968f6; the merge ran on the Deep issues only, so the Social list kept both."""
+    d = tmp_path / "published" / "2026-10-30"
+    d.mkdir(parents=True)
+    video = "https://www.youtube.com/watch?v=oDMzv7MN-Ks"
+    when = "2026-10-30T15:02:13+00:00"
+    def scored(eid, score, n):
+        return {"episode_id": eid, "title": "PTC and Schneider", "url": "https://example.com/p", "source": "Show I", "tier": 2,
+                "published": when, "score": score, "reason": "r", "rank": 1,
+                "claims": [{"ticker": ["PTC"], "claim": f"{eid} claim {i}", "speaker": "host", "timestamp": i} for i in range(n)]}
+    (d / "scores-influencer.json").write_text(json.dumps({"week_of": "2026-10-30", "rubric": 1, "episodes": [
+        scored("yt:oDMzv7MN-Ks", 6, 4), scored("rss:f59b", 5, 3)]}))
+    (d / "episodes.json").write_text(json.dumps([
+        {"episode_id": "yt:oDMzv7MN-Ks", "title": "PTC and Schneider", "source": "Show I", "style": "influencer", "published": when,
+         "youtube_url": video},
+        {"episode_id": "rss:f59b", "title": "PTC and Schneider", "source": "Show I", "style": "influencer", "published": when,
+         "youtube_url": video, "apple_url": "https://podcasts.apple.com/p"}]))
+    (d / "claims.jsonl").write_text("".join(json.dumps({
+        "episode_id": e, "title": "PTC and Schneider", "show": "Show I", "published": when, "speaker": "host", "timestamp": i,
+        "text": f"{e} claim {i}", "tickers": ["PTC"], "run": d.name, "url": "https://example.com/p", "youtube_url": video, "link": video})
+        + "\n" for e, n in (("yt:oDMzv7MN-Ks", 4), ("rss:f59b", 3)) for i in range(n)))
+    out = tmp_path / "dist"
+    main(["site", "--out", str(out), "--published", str(tmp_path / "published")])
+    doc = json.loads((out / "social/episodes.json").read_text())
+    assert [(e["episode_id"], e["score"], e["claims"], bool(e["apple_url"])) for e in doc["episodes"]] == [("yt:oDMzv7MN-Ks", 6, 4, True)]
+    assert doc["merged"] == {"rss:f59b": "yt:oDMzv7MN-Ks"}
+    assert "yt_oDMzv7MN-Ks" in (out / "episodes/rss_f59b.html").read_text()
