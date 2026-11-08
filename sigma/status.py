@@ -13,9 +13,11 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import jsonschema
+
 DAILY_STAGES = ("fetch", "transcribe", "rank_prep", "readers", "rank_merge", "select", "links", "report", "render", "publish")
 EVAL_SAMPLE = 6  # stored episodes the weekly re-scores blind to measure drift
-WEEKLY_STAGES = ("fetch", "rank_prep", "readers", "rank_merge", "publish")
+WEEKLY_STAGES = ("fetch", "rank_prep", "readers", "rank_merge", "edit", "publish")
 CUSTOM_STAGES = ("fetch", "transcribe")  # an agent-built run (`custom-run`): what comes after transcribing is the agent's call
 
 
@@ -333,6 +335,21 @@ def _weekly(run, arg, manifest, out, finish, env):
     if (done := _score(run, arg, out, finish, "ranked.json", EVAL_SAMPLE)) is not True:
         return done
     ranked_p = run / "ranked.json"
+    from . import editor, ranked
+
+    try:
+        todo = editor.unedited(run, ranked.load(ranked_p))
+    except (OSError, ValueError, ranked.RankedError, jsonschema.ValidationError) as exc:
+        st["edit"] = "failed"
+        out["blockers"].append(f"editor.json fails its check: {exc}")
+        return finish("edit", "agent", "editor.json fails check: fix the errors listed under blockers.",
+                      f"python -m sigma.editor {arg}", "prompts/edit.md")
+    if todo:
+        st["edit"] = "pending"
+        return finish("edit", "command", f"Write the full editor entry for the {len(todo)} ranked episode(s) scoring "
+                      f"{editor.MIN_SCORE}+ that have none (one Codex run each, checked, then merged into editor.json).",
+                      f"sigma edit {arg}", "prompts/edit.md")
+    st["edit"] = "done"
     digests = sorted(run.glob("digest*.md"), key=_mtime)
     if not digests or _mtime(digests[-1]) < _mtime(ranked_p):
         return finish("publish", "command", "Render the digest and export into data/published/.",

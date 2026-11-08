@@ -247,6 +247,14 @@ def test_an_episode_is_scored_once_and_a_blind_re_score_never_replaces_it(week, 
     assert (kept["rss:b"]["score"], kept["rss:d"]["score"]) == (8, 6)
 
 
+def test_failure_seen_status_asks_for_the_full_write_up_of_every_episode_scoring_7_before_publish(ranked_week):
+    """The 2026-11-07 weekly shipped its top episodes with short commentary only: no step asked for editor.json. By hand
+    from EPISODES, a (9), b (8), c (7) and g (10) score 7 or more; d (6) and the rest do not."""
+    d = status(ranked_week)
+    assert d["stage"] == "edit" and d["stages"]["edit"] == "pending" and d["stages"]["publish"] == "pending"
+    assert "4 ranked episode(s) scoring 7+" in d["next"]["summary"] and d["next"]["command"].startswith("sigma edit ")
+
+
 def test_a_reader_output_made_for_older_input_is_not_merged(week, monkeypatch):
     """theta#37, reproduced on Sigma 89aee5b: prepare a batch with A, read it, add B, prepare again, merge the old output.
     The input holds A and B, the merge used to keep only A. Now the old output is deleted and the merge refuses a missing one."""
