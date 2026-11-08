@@ -1,5 +1,6 @@
-"""Refuse a publication that silently drops data: an episode the live site serves, or a scored run with no published copy.
+"""Refuse a publication that silently drops data: an episode the site already serves, or a scored episode the build leaves out.
 
+The baseline is every episode list readers have: the live site's and the last publication this checkout deployed.
 Anything left out on purpose is named with a reason in <data root>/withheld.json:
 {"episodes": {"<episode id>": "<reason>"}, "runs": {"<run name>": "<reason>"}}
 """
@@ -12,9 +13,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from .links import yt_id
 from .paths import data_root
+from .site import one_release
 
 WITHHELD = "withheld.json"
+LISTS = ("episodes.json", "social/episodes.json")
+SCORED = ("ranked.json", "scores.json")
 
 
 def withheld(root: Path) -> dict:
@@ -29,63 +34,140 @@ def withheld(root: Path) -> dict:
     return {"episodes": data.get("episodes", {}), "runs": data.get("runs", {})}
 
 
-def episode_ids(doc: dict) -> set[str]:
-    """Ids a build serves: its episodes, and the ids it merged into one of them (the site redirects those pages)."""
-    ids = {e["episode_id"] for e in doc.get("episodes", [])}
-    return ids | {old for old, kept in (doc.get("merged") or {}).items() if kept in ids}
+def site_lists(read) -> dict:
+    """{"episodes": {id: record}, "merged": {old id: kept id}} from a site's lists; read(name) returns one parsed list."""
+    episodes, merged = {}, {}
+    for name in LISTS:
+        doc = read(name)
+        episodes.update({e["episode_id"]: e for e in doc["episodes"]})
+        merged.update(doc.get("merged") or {})
+    return {"episodes": episodes, "merged": merged}
 
 
-def live_episodes(base_url: str, timeout: float = 30) -> set[str] | None:
-    """Episode ids the live site serves; None only when the site has never served episodes.json (a first publication)."""
+def folder_lists(static: Path) -> dict:
+    return site_lists(lambda name: json.loads((static / name).read_text(encoding="utf-8")))
+
+
+def live_lists(base_url: str, timeout: float = 30) -> dict | None:
+    """The live site's lists; None when it serves no episodes.json at all (404). Any other failure raises."""
+    def read(name):
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/{name}", timeout=timeout) as r:
+            return json.load(r)
     try:
-        with urllib.request.urlopen(f"{base_url.rstrip('/')}/episodes.json", timeout=timeout) as r:
-            return episode_ids(json.load(r))
+        read(LISTS[0])
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
             return None
         raise
+    return site_lists(read)
 
 
-def dropped_episodes(live: set[str] | None, build: set[str], kept_out: dict) -> list[str]:
-    return sorted((live or set()) - build - set(kept_out))
+def video(record: dict) -> str | None:
+    eid = str(record.get("episode_id") or "")
+    return eid[3:] if eid.startswith("yt:") else yt_id(record.get("youtube_url"))
 
 
-def unpublished_runs(root: Path, kept_out: dict) -> list[str]:
-    runs, published = root / "runs", root / "published"
-    scored = [d.name for d in sorted(runs.iterdir()) if d.is_dir()
-              and any((d / f).exists() for f in ("ranked.json", "scores.json"))] if runs.is_dir() else []
-    return [r for r in scored if not (published / r).is_dir() and r not in kept_out]
+def served(eid: str, known: dict, build: dict) -> bool:
+    """The build lists eid, or merged it into an episode it lists that is the same release by what the baseline or the run
+    recorded about eid (known: its show, published, youtube_url), not by the build's word alone."""
+    if eid in build["episodes"]:
+        return True
+    kept = build["episodes"].get(build["merged"].get(eid))
+    if not kept:
+        return False
+    known = {**known, "show": known.get("show") or known.get("source")}
+    return (not known.get("youtube_url") or video(known) == video(kept)) and one_release(known, kept)
 
 
-def check(root: Path, build_episodes: Path, base_url: str) -> list[str]:
-    kept = withheld(root)
-    problems = []
+def baseline(base_url: str, previous: Path | None, first: bool) -> tuple[dict, list[str], list[str]]:
+    """({id: record} readers have, notes, problems). Fails closed: some baseline must be read, unless first is set, and first is
+    refused once any baseline exists."""
+    have, notes = {}, []
     try:
-        live = live_episodes(base_url)
-    except (OSError, ValueError) as exc:
-        return [f"could not read the live episode list at {base_url}/episodes.json ({exc}); nothing proves this build keeps it"]
-    gone = dropped_episodes(live, episode_ids(json.loads(build_episodes.read_text(encoding="utf-8"))), kept["episodes"])
+        live = live_lists(base_url)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        live, unreadable = None, f"could not read the live episode lists at {base_url} ({exc})"
+    else:
+        unreadable = ""
+    if live:
+        have.update(live["episodes"])
+    if previous:
+        try:
+            have.update(folder_lists(previous)["episodes"])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            return {}, notes, [f"could not read the last deployed publication's episode lists in {previous} ({exc})"]
+    if unreadable and not previous:
+        return {}, notes, [f"{unreadable}, and no deployed publication is recorded; nothing proves this build keeps them"]
+    if unreadable:
+        notes.append(f"{unreadable}; compared against the last deployed publication only")
+    if live is None and previous and not unreadable:
+        notes.append(f"{base_url} serves no episodes.json; compared against the last deployed publication only")
+    if live is None and not previous and not unreadable:
+        if not first:
+            return {}, notes, [f"{base_url} serves no episodes.json and no deployed publication is recorded; "
+                               "if this is the site's first publication, say so with FIRST_PUBLICATION=1"]
+        notes.append("first publication: no baseline to compare against")
+    elif first:
+        return {}, notes, ["FIRST_PUBLICATION=1, but the site already serves episodes"]
+    return have, notes, []
+
+
+def scored_runs(root: Path) -> dict[str, dict]:
+    """{run name: {episode id: scored record}} for every run in runs/ with a ranking or scores."""
+    out = {}
+    for d in sorted((root / "runs").iterdir()) if (root / "runs").is_dir() else []:
+        if files := [d / name for name in SCORED if (d / name).is_file()]:
+            out[d.name] = {e["episode_id"]: e for f in files for e in json.loads(f.read_text(encoding="utf-8")).get("episodes") or []
+                           if isinstance(e, dict) and isinstance(e.get("score"), int)}
+    return out
+
+
+def listed(ids: list[str]) -> str:
+    return ", ".join(ids[:20]) + (" ..." if len(ids) > 20 else "")
+
+
+def check(root: Path, build_static: Path, base_url: str, previous: Path | None = None, first: bool = False) -> tuple[list[str], list[str]]:
+    """(problems, notes) for the build in build_static."""
+    kept = withheld(root)
+    have, notes, problems = baseline(base_url, previous, first)
+    if problems:
+        return problems, notes
+    build = folder_lists(build_static)
+    gone = sorted(e for e, rec in have.items() if e not in kept["episodes"] and not served(e, rec, build))
     if gone:
-        problems.append(f"{len(gone)} episode(s) the live site serves are missing from this build: {', '.join(gone[:20])}"
-                        + (" ..." if len(gone) > 20 else ""))
-    if left := unpublished_runs(root, kept["runs"]):
-        problems.append(f"{len(left)} scored run(s) have no published copy: {', '.join(left[:20])}" + (" ..." if len(left) > 20 else ""))
-    return problems
+        problems.append(f"{len(gone)} episode(s) the site serves are missing from this build: {listed(gone)}")
+    unpublished = []
+    for run, eps in scored_runs(root).items():
+        if run in kept["runs"]:
+            continue
+        if not (root / "published" / run).is_dir():
+            unpublished.append(run)
+        elif left := sorted(e for e, rec in eps.items() if e not in kept["episodes"] and not served(e, rec, build)):
+            problems.append(f"run {run}: {len(left)} scored episode(s) are missing from this build: {listed(left)}")
+    if unpublished:
+        problems.append(f"{len(unpublished)} scored run(s) have no published copy: {listed(unpublished)}")
+    if merged := {o: k for o, k in build["merged"].items() if o in have}:
+        notes.append(f"{len(merged)} served id(s) merged into another episode: " + ", ".join(f"{o} -> {k}" for o, k in sorted(merged.items())))
+    return problems, notes
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="sigma coverage", description=__doc__.splitlines()[0])
-    p.add_argument("--build", required=True, type=Path, help="the new build's episodes.json")
+    p.add_argument("--build", required=True, type=Path, help="the new build's static folder (holds episodes.json and social/)")
     p.add_argument("--base-url", required=True, help="the live site whose episodes this build must keep")
+    p.add_argument("--previous", type=Path, help="the static folder of the last publication this checkout deployed")
+    p.add_argument("--first-publication", action="store_true", help="the site has never been published; refused once it has")
     args = p.parse_args(argv)
     root = data_root()
-    problems = check(root, args.build, args.base_url)
+    problems, notes = check(root, args.build, args.base_url, args.previous, args.first_publication)
+    for line in notes:
+        print(f"[coverage] {line}")
     for line in problems:
         print(f"[coverage] {line}", file=sys.stderr)
     if problems:
         print(f"[coverage] publish it, or name it with a reason in {root / WITHHELD}", file=sys.stderr)
         return 1
-    print("[coverage] build keeps every live episode and every scored run is published")
+    print("[coverage] build keeps every served episode and every scored episode")
     return 0
 
 

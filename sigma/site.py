@@ -1307,10 +1307,21 @@ EDITOR_FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor
 CLAIM_IDENTITY = ("title", "show", "published", "url", "youtube_url", "transcript_url")
 
 
+def one_release(a: dict, b: dict) -> bool:
+    """Two episode records ({show, published}) can be one release: the same show, published within a day of each other. The five
+    feed/YouTube pairs seen live (2026-11-07) were minutes apart; one show's next part comes days later."""
+    try:
+        apart = abs(date.fromisoformat(str(a.get("published"))[:10]) - date.fromisoformat(str(b.get("published"))[:10])).days
+    except ValueError:
+        return False
+    return bool(norm_show(a.get("show"))) and norm_show(a.get("show")) == norm_show(b.get("show")) and apart <= 1
+
+
 def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
     """{merged-away id: kept id}; every run is rewritten to the kept id, so nothing downstream sees the other one.
     An episode is ingested twice when its podcast feed entry (rss:...) and its YouTube upload (yt:...) both arrive. They are one
-    episode when they name one video: a yt: id is its video, and the feed copy's youtube_url (episodes.json, or a claim's) is too.
+    episode when the feed copy's youtube_url (its meta's, or a claim's) is the yt: copy's video and one_release agrees. Pairs do not
+    chain: an id that would pair with two others pairs with neither.
     The kept copy has the most claims, then the larger editor write-up, then the feed id. It takes the other's links and issues;
     a field the kept copy has (title, url, claims, score, write-up) is never taken from the other, which fills only what is missing.
     The other's claims still reach the people and ticker pages, but the episode lists only the kept copy's (_restated): the two
@@ -1318,7 +1329,13 @@ def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
     info: dict[str, dict] = {}
 
     def row(eid):
-        return info.setdefault(eid, {"videos": set(), "claims": [], "insights": 0, "scored": False, "fields": set()})
+        return info.setdefault(eid, {"videos": set(), "claims": [], "insights": 0, "scored": False, "fields": set(), "release": {}})
+
+    def release(eid, show, published):
+        rel = row(eid)["release"]
+        for k, v in (("show", show), ("published", published)):
+            if v and not rel.get(k):
+                rel[k] = v
 
     for r in runs:
         for c in r["claims"]:
@@ -1328,23 +1345,29 @@ def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
                 row(eid)["fields"] |= {k for k in CLAIM_IDENTITY if c.get(k)} | ({"published"} if c.get("date") else set())
         for eid, m in r["meta"].items():
             if eid:
+                release(eid, m.get("show") or m.get("source"), m.get("published"))
                 row(eid)["videos"].add(yt_id(m.get("youtube_url")))
                 row(eid)["insights"] = max(row(eid)["insights"], len(m.get("key_insights") or []))
                 row(eid)["fields"] |= {k for k, v in m.items() if v}
         for x in r["scored"]:
             row(x["episode_id"])["scored"] = True
-    group = {eid: {eid} for eid in info}
-    first_with: dict[str, str] = {}
+            release(x["episode_id"], x.get("source") or x.get("show"), x.get("published"))
+    for r in runs:
+        for c in r["claims"]:
+            if eid := c.get("episode_id"):
+                release(eid, c.get("show"), c.get("published") or c.get("date"))
+    pairs, refused = [], []
     for eid, x in info.items():
-        if eid.startswith("yt:"):
-            x["videos"].add(eid[3:])
-        for v in x["videos"] - {None}:
-            other = first_with.setdefault(v, eid)
-            joined = group[other] | group[eid]
-            for member in joined:
-                group[member] = joined
+        for v in sorted(x["videos"] - {None}) if not eid.startswith("yt:") else ():
+            if (mirror := f"yt:{v}") in info:
+                (pairs if one_release(x["release"], info[mirror]["release"]) else refused).append((eid, mirror))
+    count = Counter(i for pair in pairs for i in pair)
+    refused += [p for p in pairs if count[p[0]] > 1 or count[p[1]] > 1]
+    if refused:
+        print(f"[site] warning: {len(refused)} episode pairs name one video but are not merged (different show or date, or more "
+              "than one candidate): " + "; ".join(f"{a} / {b}" for a, b in refused[:5]))
     alias: dict[str, str] = {}
-    for g in {frozenset(g) for g in group.values() if len(g) > 1}:
+    for g in [set(p) for p in pairs if count[p[0]] == 1 and count[p[1]] == 1]:
         keep = max(sorted(g), key=lambda i: (len(uniq_claims(info[i]["claims"])), info[i]["insights"], not i.startswith("yt:")))
         alias.update({i: keep for i in g if i != keep})
     for r in runs:
