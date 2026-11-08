@@ -635,6 +635,28 @@ def other_worktree(cwd: Path) -> Path | None:
     return None
 
 
+HEAVY_LOCK = Path.home() / ".local/state/alpha/heavy.lock"
+
+
+def heavy_lock():
+    """Hold the machine's shared heavy-job lock (lockf -k compatible) and lower priority, so whisper never overlaps another
+    heavy job. SIGMA_HEAVY_LOCK overrides the path; "none" turns it off. Returns the open file, which holds the lock."""
+    import fcntl
+
+    where = os.environ.get("SIGMA_HEAVY_LOCK") or str(HEAVY_LOCK)
+    if where == "none":
+        return None
+    Path(where).parent.mkdir(parents=True, exist_ok=True)
+    held = open(where, "a")
+    try:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        print(f"[heavy] waiting for {where}: another heavy job holds it", file=sys.stderr, flush=True)
+        fcntl.flock(held, fcntl.LOCK_EX)
+    os.nice(15)
+    return held
+
+
 def main(argv=None):
     if (argv := sys.argv[1:] if argv is None else list(argv))[:1] == ["event"]:
         return events.event_main(argv[1:])  # before the wrapper and the main parser: it must never fail or log itself
@@ -930,6 +952,8 @@ def _main(argv=None):
         from . import site
 
         return site.main(["--out", args.out, "--published", args.published] + (["--base-url", args.base_url] if args.base_url else []))
+    if args.cmd in ("fetch", "daily", "transcribe"):
+        args.heavy = heavy_lock()
     {"fetch": fetch, "daily": daily, "transcribe": transcribe_run, "publish": publish, "check": check,
      "report": render_report, "links": links, "show-links": show_links, "rank-prep": rank_prep, "rank-merge": rank_merge, "stance-prep": stance_cmd, "stance-merge": stance_cmd, "tickers-refresh": tickers_refresh_cmd, "score-eval": score_eval_cmd, "themes-check": themes_check, "transcript-links": transcript_links_cmd, "export-published": export_published, "dedupe-published": dedupe_published, "check-claims": check_claims, "mark": mark, "stats": stats, "library": library_cmd}[args.cmd](args)
 

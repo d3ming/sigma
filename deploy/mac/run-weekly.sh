@@ -3,7 +3,6 @@
 # writes themes and publishes. --refetch because the weekday runs already marked most episodes as seen;
 # transcribe reuses their transcripts, so only the rest is whispered.
 # Usage: run-weekly.sh [run-name]   (default: this week's Monday + -weekly). Safe to rerun; transcribe is resumable.
-# SIGMA_HEAVY_LOCK, when set, runs fetch and transcribe under `lockf -k <path> nice -n 15` so they never overlap other heavy jobs.
 set -uo pipefail
 # One function so the git pull below cannot rewrite this file under the running shell (as run-daily.sh does).
 main() {
@@ -24,14 +23,12 @@ ev() { "$PA" event launchd_weekly --run "$RUN" "$@" >/dev/null 2>&1 || true; }
 fail() { echo "FAILED: $1"; ev --status fail --dur "$SECONDS" --err "$1"; exit 1; }
 ev --status start
 
-HEAVY=()
-[ -n "${SIGMA_HEAVY_LOCK:-}" ] && HEAVY=(lockf -k "$SIGMA_HEAVY_LOCK" nice -n 15)
 
 caffeinate -dimsu -w $$ &
 git checkout -q develop && git pull --ff-only -q || { echo "warn: git pull failed; running current checkout"; ev --status warn --warn "git pull failed; ran the current checkout"; }
-[ -f "$RUN_DIR/manifest.json" ] || ${HEAVY[@]+"${HEAVY[@]}"} "$PA" fetch --days 7 --refetch --run-name "$RUN" \
+[ -f "$RUN_DIR/manifest.json" ] || "$PA" fetch --days 7 --refetch --run-name "$RUN" \
   || fail "fetch"
-${HEAVY[@]+"${HEAVY[@]}"} "$PA" transcribe "$RUN_DIR" --top 0 --minutes 6000 --backend "$SIGMA_WHISPER_BACKEND" || fail "transcribe"
+"$PA" transcribe "$RUN_DIR" --top 0 --minutes 6000 --backend "$SIGMA_WHISPER_BACKEND" || fail "transcribe"
 ev --status ok --dur "$SECONDS"
 echo "== $(date '+%F %T %Z') done"
 }
