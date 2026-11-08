@@ -230,6 +230,14 @@ def prepare():
     artifact = state / "publication" / artifact_hash / ".vercel" / "output"
     if not artifact.is_dir() or publication_hash(artifact) != artifact_hash:
         refuse("frozen publication is missing or changed")
+    base = subprocess.run([sys.executable, "-m", "sigma.site_config"], cwd=root, text=True, capture_output=True)
+    if base.returncode:
+        refuse("could not resolve the configured base URL")
+    covered = subprocess.run([sys.executable, "-m", "sigma.coverage", "--build", str(artifact / "static" / "episodes.json"),
+                              "--base-url", base.stdout.strip()], cwd=root, text=True, capture_output=True)
+    sys.stdout.write(covered.stdout + covered.stderr)
+    if covered.returncode:
+        refuse("this publication would drop data")
     data_after = private_data_state("--plan")
     if data_before["tree"] != data_after["tree"]:
         refuse("private data changed during the production build; prepare a new publication")
