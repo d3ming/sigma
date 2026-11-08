@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -41,40 +42,48 @@ def codex(prompt: str, workdir: Path, log: Path) -> str | None:
     return None if done.returncode == 0 else f"codex exited {done.returncode}"
 
 
-def check_draft(run: Path, draft: Path, episode_id: str) -> tuple[dict | None, str]:
-    """(entry, "") when the draft is for this episode and passes the editor check against that episode's transcript, else (None, why)."""
+def check_draft(run: Path, draft: Path, episode_id: str, source: Path) -> tuple[dict | None, str, bool]:
+    """(entry, "", True) when the draft is this episode's and passes the editor check. Otherwise (None, why, mine): mine is
+    True only for a draft that names this episode and its transcript's hash and fails a content check; anything else
+    (no draft, unreadable, another episode's id or hash) is not this episode's work and is never patched."""
     try:
         entry = json.loads(draft.read_text())
-        if not isinstance(entry, dict) or entry.get("episode_id") != episode_id:
-            found = entry.get("episode_id") if isinstance(entry, dict) else None
-            return None, f"the draft is for episode {found!r}, not {episode_id!r}"
-        editor.validate(run, {"version": 1, "episodes": [entry]})
     except FileNotFoundError:
-        return None, "no draft was written"
-    except jsonschema.ValidationError as exc:
-        return None, f"{exc.message} at {'/'.join(map(str, exc.absolute_path))}"
+        return None, "no draft was written", False
     except (OSError, ValueError) as exc:
-        return None, str(exc)
-    return entry, ""
+        return None, f"the draft is not readable JSON: {exc}", False
+    found = entry.get("episode_id") if isinstance(entry, dict) else None
+    if found != episode_id:
+        return None, f"the draft is for episode {found!r}, not {episode_id!r}", False
+    if entry.get("source_sha256") != hashlib.sha256(source.read_bytes()).hexdigest():
+        return None, f"the draft's source_sha256 is not the hash of {source.name}", False
+    try:
+        editor.validate(run, {"version": 1, "episodes": [entry]})
+    except jsonschema.ValidationError as exc:
+        return None, f"{exc.message} at {'/'.join(map(str, exc.absolute_path))}", True
+    except (OSError, ValueError) as exc:
+        return None, str(exc), True
+    return entry, "", True
 
 
 def edit_one(run: Path, row: dict, source: Path, fixes: int) -> tuple[dict | None, str, int]:
-    """An existing draft that passes is used as it stands (a hand repair); one that fails goes back to Codex with the check's
-    error, up to `fixes` rewrites after the first run. Returns (entry or None, last error, Codex runs used)."""
+    """An existing draft that passes is used as it stands (a hand repair). One that is this episode's but fails a content check
+    goes back to Codex with the error, up to `fixes` rewrites after the first run; any other draft is written fresh.
+    Returns (entry or None, last error, Codex runs used)."""
     drafts = run / DRAFTS
     safe = row["episode_id"].replace(":", "_")
     draft, log = drafts / f"{safe}.json", drafts / f"{safe}.log"
     _, _, role = agent()
     facts = {"repo": ROOT, "transcript": source, "draft": draft, "episode_id": row["episode_id"], "entities": entities.ENTITIES_FILE}
-    entry, error = check_draft(run, draft, row["episode_id"])
+    entry, error, mine = check_draft(run, draft, row["episode_id"], source)
     runs = 0
     while entry is None and runs <= fixes:
         runs += 1
-        template = "edit-fix.md" if draft.exists() else "edit-episode.md"
+        template = "edit-fix.md" if mine else "edit-episode.md"
         prompt = ((role + "\n\n") if template == "edit-episode.md" else "") + (ROOT / "prompts" / template).read_text().format(**facts, error=error)
         if failure := codex(prompt, drafts, log):
             return None, failure, runs
-        entry, error = check_draft(run, draft, row["episode_id"])
+        entry, error, mine = check_draft(run, draft, row["episode_id"], source)
     return entry, "" if entry else error, runs
 
 
