@@ -15,10 +15,10 @@ from pathlib import Path
 
 DEFAULT = Path.home() / ".local/state/alpha/heavy.lock"
 CHECKOUT = Path(__file__).resolve().parent.parent.name
-GAP = 6  # seconds between this process's holds; Alpha polls the lock every 5 s, so a shorter gap never lets it in
+GAP = 6  # must exceed Alpha's non-blocking poll interval, or Alpha never sees the lock free between Sigma holds
+RELEASED = "sigma-released"
 _held: int | None = None
 _niced = False
-_released = 0.0
 
 
 def path() -> Path | None:
@@ -52,9 +52,23 @@ def holder(lock: Path) -> str:
         return "held by a job that wrote no holder line"
 
 
+def released_at(fd: int) -> float:
+    """When a Sigma process last released the lock, from the line it left under the holder line; 0 when another job holds
+    or held it since (taking it rewrites the file)."""
+    for line in os.pread(fd, 4096, 0).decode(errors="replace").splitlines():
+        name, _, when = line.partition("\t")
+        if name == RELEASED:
+            try:
+                return float(when)
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def take(what: str) -> int | None:
     """Wait for the lock, write the holder line, and lower this process's priority once. Returns the descriptor that holds
-    it, or None when the lock is off or already held by this process or an ancestor lockf."""
+    it, or None when the lock is off or already held by this process or an ancestor lockf. Within GAP seconds of a Sigma
+    release it lets go again at once and waits out the rest, so a job that polls (Alpha) gets in between Sigma's holds."""
     global _held, _niced
     import fcntl
 
@@ -62,13 +76,20 @@ def take(what: str) -> int | None:
     if lock is None or _held is not None or ancestor_lockf_holds(lock):
         return None
     lock.parent.mkdir(parents=True, exist_ok=True)
-    time.sleep(max(0.0, _released + GAP - time.monotonic()))
     fd = os.open(lock, os.O_RDWR | os.O_CREAT, 0o644)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
-        print(f"[heavy] waiting for {lock}: {holder(lock)}", file=sys.stderr, flush=True)
-        fcntl.flock(fd, fcntl.LOCK_EX)
+    said = False
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            if not said:
+                print(f"[heavy] waiting for {lock}: {holder(lock)}", file=sys.stderr, flush=True)
+                said = True
+            fcntl.flock(fd, fcntl.LOCK_EX)
+        if (left := released_at(fd) + GAP - time.time()) <= 0:
+            break
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        time.sleep(left)
     os.ftruncate(fd, 0)
     os.write(fd, f"{os.getpid()}\t{int(time.time())}\t{CHECKOUT}\t{what}\n".encode())
     if not _niced:
@@ -79,10 +100,11 @@ def take(what: str) -> int | None:
 
 
 def release(fd: int | None) -> None:
-    global _held, _released
+    global _held
     if fd is not None:
+        os.write(fd, f"{RELEASED}\t{time.time()}\n".encode())
         os.close(fd)
-        _held, _released = None, time.monotonic()
+        _held = None
 
 
 @contextlib.contextmanager
