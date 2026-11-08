@@ -15,11 +15,13 @@ from pathlib import Path
 
 from .links import yt_id
 from .paths import data_root
+from .publication_policy import MIN_SCORE
 from .site import one_release
 
 WITHHELD = "withheld.json"
 LISTS = ("episodes.json", "social/episodes.json")
 SCORED = ("ranked.json", "scores.json")
+SOCIAL_SCORED = "scores-influencer.json"
 
 
 def withheld(root: Path) -> dict:
@@ -67,16 +69,21 @@ def video(record: dict) -> str | None:
     return eid[3:] if eid.startswith("yt:") else yt_id(record.get("youtube_url"))
 
 
-def served(eid: str, known: dict, build: dict) -> bool:
-    """The build lists eid, or merged it into an episode it lists that is the same release by what the baseline or the run
-    recorded about eid (known: its show, published, youtube_url), not by the build's word alone."""
+def served(eid: str, known: dict, build: dict) -> dict | None:
+    """The build's record for eid: its own, or the episode it merged eid into when that is the same release by what the
+    baseline or the run recorded about eid (known: its show, published, youtube_url), not by the build's word alone."""
     if eid in build["episodes"]:
-        return True
+        return build["episodes"][eid]
     kept = build["episodes"].get(build["merged"].get(eid))
     if not kept:
-        return False
+        return None
     known = {**known, "show": known.get("show") or known.get("source")}
-    return (not known.get("youtube_url") or video(known) == video(kept)) and one_release(known, kept)
+    return kept if (not known.get("youtube_url") or video(known) == video(kept)) and one_release(known, kept) else None
+
+
+def thinned(before: dict, after: dict) -> bool:
+    """A served episode lost its page, or all its claims."""
+    return bool(before.get("page")) and not after.get("page") or bool(before.get("claims")) and not after.get("claims")
 
 
 def baseline(base_url: str, previous: Path | None, first: bool) -> tuple[dict, list[str], list[str]]:
@@ -96,8 +103,12 @@ def baseline(base_url: str, previous: Path | None, first: bool) -> tuple[dict, l
             have.update(folder_lists(previous)["episodes"])
         except (OSError, ValueError, KeyError, TypeError) as exc:
             return {}, notes, [f"could not read the last deployed publication's episode lists in {previous} ({exc})"]
+    if unreadable and not previous and not first:
+        return {}, notes, [f"{unreadable}, and no deployed publication is recorded; nothing proves this build keeps them. "
+                           "If this is the site's first publication, say so with FIRST_PUBLICATION=1"]
     if unreadable and not previous:
-        return {}, notes, [f"{unreadable}, and no deployed publication is recorded; nothing proves this build keeps them"]
+        notes.append(f"first publication: {unreadable}, and no deployed publication is recorded")
+        return have, notes, []
     if unreadable:
         notes.append(f"{unreadable}; compared against the last deployed publication only")
     if live is None and previous and not unreadable:
@@ -112,13 +123,19 @@ def baseline(base_url: str, previous: Path | None, first: bool) -> tuple[dict, l
     return have, notes, []
 
 
+def listed_by_site(e, social: bool) -> bool:
+    """A scored record the site must list: every interview score; a Social score at the site's floor (MIN_SCORE) with claims,
+    since the Social list shows only episodes with a page and claims always give one."""
+    return isinstance(e, dict) and isinstance(e.get("score"), int) and (not social or e["score"] >= MIN_SCORE and bool(e.get("claims")))
+
+
 def scored_runs(root: Path) -> dict[str, dict]:
     """{run name: {episode id: scored record}} for every run in runs/ with a ranking or scores."""
     out = {}
     for d in sorted((root / "runs").iterdir()) if (root / "runs").is_dir() else []:
-        if files := [d / name for name in SCORED if (d / name).is_file()]:
+        if files := [d / name for name in (*SCORED, SOCIAL_SCORED) if (d / name).is_file()]:
             out[d.name] = {e["episode_id"]: e for f in files for e in json.loads(f.read_text(encoding="utf-8")).get("episodes") or []
-                           if isinstance(e, dict) and isinstance(e.get("score"), int)}
+                           if listed_by_site(e, f.name == SOCIAL_SCORED)}
     return out
 
 
@@ -133,9 +150,11 @@ def check(root: Path, build_static: Path, base_url: str, previous: Path | None =
     if problems:
         return problems, notes
     build = folder_lists(build_static)
-    gone = sorted(e for e, rec in have.items() if e not in kept["episodes"] and not served(e, rec, build))
-    if gone:
+    now = {e: served(e, rec, build) for e, rec in have.items() if e not in kept["episodes"]}
+    if gone := sorted(e for e, rec in now.items() if rec is None):
         problems.append(f"{len(gone)} episode(s) the site serves are missing from this build: {listed(gone)}")
+    if thin := sorted(e for e, rec in now.items() if rec is not None and thinned(have[e], rec)):
+        problems.append(f"{len(thin)} episode(s) the site serves lose their page or every claim in this build: {listed(thin)}")
     unpublished = []
     for run, eps in scored_runs(root).items():
         if run in kept["runs"]:

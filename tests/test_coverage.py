@@ -69,3 +69,28 @@ def test_a_published_run_whose_scored_episodes_are_not_in_the_build_refuses(tmp_
     live(monkeypatch)
     problems, _ = coverage.check(tmp_path, static, "https://sigma.example")
     assert len(problems) == 1 and "rss:y" in problems[0] and "rss:x" not in problems[0]
+
+
+def test_a_social_score_the_site_would_list_but_the_build_lacks_refuses(tmp_path, monkeypatch):
+    """failure-seen (second review of 2026-11-07, a copy of the real data root): published/2026-11-07-weekly without its
+    scores-influencer.json lost 17 Social episodes and the guard passed. Below the floor (MIN_SCORE 4) or without claims the
+    site lists none, so those are not expected."""
+    scored_run(tmp_path, "2026-11-07-weekly", published=True)
+    (tmp_path / "runs" / "2026-11-07-weekly" / "scores-influencer.json").write_text(json.dumps({"episodes": [
+        {"episode_id": "yt:floor", "score": 4, "claims": [{"claim": "c"}]}, {"episode_id": "yt:low", "score": 3, "claims": [{"claim": "c"}]},
+        {"episode_id": "yt:bare", "score": 6, "claims": []}]}))
+    live(monkeypatch)
+    problems, _ = coverage.check(tmp_path, build(tmp_path, []), "https://sigma.example")
+    assert len(problems) == 1 and "yt:floor" in problems[0] and "yt:low" not in problems[0] and "yt:bare" not in problems[0]
+
+
+def test_a_served_episode_that_keeps_its_id_but_loses_its_page_or_every_claim_refuses(tmp_path, monkeypatch):
+    """failure-seen (second review of 2026-11-07, a copy of the real data root): emptying published/2026-11-02-weekly's
+    claims.jsonl kept every id but took 29 episode pages and 154 claims off the site, and the guard passed."""
+    page = "https://sigma.example/episodes/x.html"
+    live(monkeypatch, {"episode_id": "rss:paged", "page": page, "claims": 5}, {"episode_id": "rss:claims", "page": page, "claims": 3},
+         {"episode_id": "rss:fewer", "page": page, "claims": 6})
+    static = build(tmp_path, [{"episode_id": "rss:paged", "page": None, "claims": 5}, {"episode_id": "rss:claims", "page": page, "claims": 0},
+                              {"episode_id": "rss:fewer", "page": page, "claims": 2}])
+    problems, _ = coverage.check(tmp_path, static, "https://sigma.example")
+    assert len(problems) == 1 and "rss:paged" in problems[0] and "rss:claims" in problems[0] and "rss:fewer" not in problems[0]
