@@ -1329,7 +1329,8 @@ def one_release(a: dict, b: dict) -> bool:
 
 
 def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
-    """{merged-away id: kept id}; every run is rewritten to the kept id, so nothing downstream sees the other one.
+    """{merged-away id: kept id}; every run is rewritten to the kept id, so nothing downstream sees the other one. `runs` is one
+    registry's: the issues for Deep, or their `influencer` parts for Social, which never share an episode.
     An episode is ingested twice when its podcast feed entry (rss:...) and its YouTube upload (yt:...) both arrive. They are one
     episode when the feed copy's youtube_url (its meta's, or a claim's) is the yt: copy's video and one_release agrees. Pairs do not
     chain: an id that would pair with two others pairs with neither.
@@ -1397,7 +1398,7 @@ def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
         r["scored"] = [{**x, "episode_id": alias[x["episode_id"]]} if x["episode_id"] in alias else x for x in r["scored"]
                        if x["episode_id"] not in alias or not info[alias[x["episode_id"]]]["scored"]]
         eps: dict[str, dict] = {}
-        for e in r["episodes"]:
+        for e in r.get("episodes", []):
             own = e["id"] not in alias
             e["id"] = alias.get(e["id"], e["id"])
             if kept := eps.get(e["id"]):
@@ -1406,8 +1407,9 @@ def merge_same_episodes(runs: list[dict]) -> dict[str, str]:
                 kept.update({k: e[k] for k in LINK_FIELDS if e.get(k) and not kept.get(k)})
             else:
                 eps[e["id"]] = e
-        r["episodes"] = list(eps.values())
-        for t in (r["themes"] or {}).get("themes", []):
+        if "episodes" in r:
+            r["episodes"] = list(eps.values())
+        for t in (r.get("themes") or {}).get("themes", []):
             for ev in evidence_of(t):
                 ev["episode_id"] = alias.get(ev.get("episode_id"), ev.get("episode_id"))
     return alias
@@ -2641,6 +2643,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     from . import signals_site  # imports this module, so not at the top
     runs = load_runs(published)
     merged = merge_same_episodes(runs)
+    social_merged = merge_same_episodes([r["influencer"] for r in runs])
     research_posts = research_posts or []
     if out.exists():
         shutil.rmtree(out)
@@ -2818,7 +2821,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
         if e["page"] and (e["claims"] or e.get("key_insights")):
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))
     write(out / "episodes.md", episodes_md(reg))
-    for old, keep in merged.items():  # the merged-away copy's pages stay where outsiders may hold them
+    for old, keep in {**merged, **social_merged}.items():  # the merged-away copy's pages stay where outsiders may hold them
         if target := allreg.get(keep, {}).get("page"):
             label = allreg[keep]["title"] or keep
             write(out / file_of(episode_path(old)), redirect_page(target, label, md_of(episode_path(old))))
@@ -2831,7 +2834,7 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     social_json = [{**episode_json(e), "style": "influencer"}
                    for e in sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True)
                    if e["score"] >= MIN_SCORE and e["page"]]
-    write(out / "social" / "episodes.json", dump({"base_url": BASE_URL, "episodes": social_json}))
+    write(out / "social" / "episodes.json", dump({"base_url": BASE_URL, "episodes": social_json, "merged": social_merged}))
     write(out / "shows.json", dump({"base_url": BASE_URL, "shows": shows_json(reg, ent)}))
     write(out / "companies.json", dump({"base_url": BASE_URL, "companies": cj}))
     write(out / "llms.txt", llms_txt(runs, reg, pub, people, ireg, eds, adays or None))
