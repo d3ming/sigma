@@ -155,9 +155,13 @@ def run_faster(path: str) -> tuple[list, float]:
 
 
 def transcribe_file(path: str, budget: Budget) -> tuple[list[dict] | None, float]:
+    """Whisper a downloaded file under the heavy-job lock, held for this file only so other heavy jobs get in between."""
+    from . import heavy
+
     limit = budget.take()
-    segs, duration = run_mlx(path, limit) if backend() == "mlx" else run_faster(path)
-    out = segments_until(segs, limit)
+    with heavy.held(f"sigma whisper ({round(limit / 60)} min budget)"):
+        segs, duration = run_mlx(path, limit) if backend() == "mlx" else run_faster(path)
+        out = segments_until(segs, limit)
     used = min(limit, duration)
     budget.spend(used)
     return out or None, used
