@@ -7,7 +7,7 @@ Read prompts/edit.md and the complete source transcript before editing.
 Use the runtime checkout and Python assigned by the parent; do not infer a virtual environment under the private data root.
 Resolve repository-relative prompt and schema paths from that source checkout, never from the data directory.
 Write separate key_insights and dense_summary fields. Order insights by value; keep the summary chronological.
-Episode selection already applies the investing lens. Preserve the strongest useful ideas beyond company tags.
+Match the source’s subject. Technical and AI picks need no investment angle; preserve practical value without forcing stock implications.
 Keep source clocks, attribution, caveats and historical context. Exclude commercial reads, not editorial discussion of advertising.
 Do not change scores, investment claims or stances. Save drafts only to the data destination assigned by the parent.
 Report missing evidence and uncertain attribution. Do not publish or change source code.

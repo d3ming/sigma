@@ -1,9 +1,12 @@
 # Edit one complete episode
 
-Read the complete source transcript before writing. The investing lens selected the episode; the edit preserves its
-most useful, surprising and interesting ideas, including technical mechanisms, company detail, practical mental
-models, organizational choices and human questions. An insight needs no ticker. Do not change investment scores,
-ranked claims or stance labels.
+Read the complete source transcript before writing. Preserve its most useful, surprising and interesting ideas,
+including technical mechanisms, company detail, practical mental models, organizational choices and human questions.
+An owner pick may be about development, coding agents or AI without an investment angle. Match the source’s subject:
+explain what a technical reader can understand or use, without adding stock implications, an investment blurb or a
+“No investment view” disclaimer. Discuss investment implications only when substantive source content supports
+them. Apply the same rule to context, insights, why_it_matters and the chronological summary. An insight needs no
+ticker. Do not change investment scores, ranked claims or stance labels.
 
 Write the run's optional `editor.json` against `schema/editor.schema.json`. Include the exact episode ID and the
 SHA-256 of its source transcript. Record `prompt_version` so later backfills can distinguish edits. Keep recording

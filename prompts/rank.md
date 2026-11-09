@@ -77,7 +77,7 @@ others' data at comparable materiality, never level with them.
 
 Scores are absolute: never spread or squeeze them to fit a batch. A batch of strong interviews can be all 7 and up.
 
-Keep score-band comparisons internal. The viewer-facing summary describes the investment content.
+Keep score-band comparisons internal. The viewer-facing summary describes the episode’s substantive content.
 
 ## 3. Tier rules
 
@@ -88,11 +88,14 @@ Keep score-band comparisons internal. The viewer-facing summary describes the in
 
 ## 4. Write it up
 
-- `reason`: one viewer-facing line under 240 characters: lead with the primary ticker and the speaker's five-point
-  investment stance from `prompts/stance.md`, then their stated action, thesis or condition. Read the whole transcript
-  before choosing facts; public buy/add/sell/short/hold statements take priority over background numbers. If no
-  investment view is stated, say so and name the material disclosure; never turn good business news into a buy call.
-  Keep each ticker's stance separate, attribute the view, and preserve different time horizons. The evidence-quality
-  score is separate from bullishness; never fill the summary with a rating justification.
+- `reason`: one viewer-facing line under 240 characters, describing the episode’s main contribution. For development,
+  coding-agent or AI material without substantive investment content, name the useful technique, mechanism or finding;
+  do not force a ticker, stock implication or “No investment view” disclaimer. For substantive investment content,
+  lead with the primary ticker and the speaker’s five-point stance from `prompts/stance.md`, then their stated action,
+  thesis or condition. Read the whole transcript before choosing facts; public buy/add/sell/short/hold statements take
+  priority over background numbers. For company disclosures without a stock view, describe the material disclosure
+  without implying a recommendation. Keep tickers’ stances separate, attribute views and preserve time horizons.
+  Never turn good business news into a buy call or fill the summary with a rating justification. This summary rule
+  does not change the scoring rubric, claims or stance labels.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
 - Never include the owner's holdings, weights or portfolio data in `ranked.json`, and never add a holdings-style field (`holdings`, `weight`, `market_pct`). A guest's public statement about their own portfolio is a claim to attribute in prose.
