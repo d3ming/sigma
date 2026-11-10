@@ -1,7 +1,7 @@
 ---
 name: x-scan
 description: Scan the X accounts Sigma follows and deliver the day's raw posts in Sigma's scan format. For the scanner, which reads X with the Bird CLI (`bird-x` skill), read-only. Run before each X run, on the operator's schedule, so the scan has landed before the run starts, and again whenever asked for an on-demand scan. Read-only on X.
-contract_version: 2
+contract_version: 3
 ---
 
 # X scan (scanner)
@@ -12,7 +12,7 @@ day's private digest (step 8). Delivery is a pull request in the configured priv
 
 The contract is this file, `schema/x-scan.schema.json` and `sigma x scan-check`. Copy `contract_version` (front matter)
 into every manifest; `scan-check` refuses another version, which means your copy of this file is stale: pull and re-read.
-Missing accounts, an uncovered window, failed paging or other systemic collection gaps require `complete: false` and an explanation in the manifest's `notes`. An isolated unusable post follows the exclusion rule below; it does not block the usable scan.
+Missing accounts, an uncovered window, failed paging or other systemic collection gaps require `complete: false` and an explanation in the manifest's `notes`. The one exception is a sample the operator's request allows and the manifest declares (`sampling`, step 3). An isolated unusable post follows the exclusion rule below; it does not block the usable scan.
 
 ## Setup
 
@@ -31,6 +31,16 @@ Missing accounts, an uncovered window, failed paging or other systemic collectio
 3. **Posts.** Each account's own posts in the window: no reposts, no replies to other people (replies to itself, its
    threads, stay), the full text of long posts, and each quoted post once (`quoted.jsonl`). Make sure paging covered
    the whole window for every account; an account with nothing usually means the search missed it, so check it alone.
+
+   **Declared sampling.** When the operator's request names caps, read at most that many posts and pages per account
+   instead, ask X to exclude replies in the request, and declare it in the manifest:
+   `"sampling": {"posts_per_account": N, "pages_per_account": M, "replies_excluded": true, "accounts_sampled": [...]}`.
+   `accounts_sampled` lists each account whose last page was full and did not reach `window_start`. A declared sample is
+   `complete: true` when every account was read once within those caps; undeclared caps are not (use `complete: false`).
+   Under a declared sample, (a) fetch a quoted post only when a digest cites the post that quotes it, so `quoted.jsonl` may
+   lack the rest, and (b) do not recheck a silent account alone; the digest names silent accounts instead. `scan-check`
+   enforces the caps, the no-replies claim and that every sampled account has a post, and warns about sampled accounts,
+   accounts exactly at the cap but not listed, and quoted posts with no line.
    If an individual post is truncated or otherwise unusable, try to recover it. If it remains unusable, preserve its original row with its id and reason in private `scan/D/excluded.jsonl`, omit it from usable `posts.jsonl` or `quoted.jsonl`, and disclose the count and reason in the manifest's `notes` and digest coverage. Do not cite excluded text or statements that depend on it. `complete` describes account and window coverage; a disclosed isolated exclusion does not require `complete: false`.
 4. **Deletions.** If `$SIGMA_X_DIR/check-ids.json` lists ids, look each up and report in `ids_gone` the ones X says no
    longer exist or are no longer visible. X's terms require Sigma to delete those, and Sigma deletes on your word, so a

@@ -167,8 +167,34 @@ def scan_problems(d: str, contract: bool = False) -> list[str]:
                 t = datetime.fromisoformat(r["created_at"].replace("Z", "+00:00"))
                 if not start <= t <= end:
                     out.append(f"{name}:{n}: {r['created_at']} is outside the window")
+    out += sampling_problems(sd, man)
     out += id_check_problems(d, man)
     return out[:40]
+
+
+def sampling_problems(sd: Path, man: dict) -> list[str]:
+    """A manifest that declares `sampling` (skills/x-scan, step 3) is held to what it declares, from the scan's own files only
+    (never x-accounts.json, which may change after the scan): no account has more posts than posts_per_account x
+    pages_per_account, no reply to another account when replies_excluded, and each sampled account has a post (its last page
+    was full). A scan without the declaration is not checked for any of this."""
+    s = man.get("sampling")
+    if not s:
+        return []
+    cap = s["posts_per_account"] * s["pages_per_account"]
+    own: dict[str, int] = {}
+    out = []
+    for p in read_jsonl(sd / "posts.jsonl"):
+        h = str(p.get("handle", "")).lower()
+        own[h] = own.get(h, 0) + 1
+        if s["replies_excluded"] and p.get("in_reply_to_id") and (p.get("in_reply_to_handle") or "").lower() != h:
+            out.append(f"posts.jsonl: {p.get('id')} is a reply to someone else, but sampling says replies_excluded")
+    for h, n in sorted(own.items()):
+        if n > cap:
+            out.append(f"@{h}: {n} posts, but sampling caps an account at {cap} ({s['posts_per_account']} x {s['pages_per_account']} pages)")
+    for h in s["accounts_sampled"]:
+        if own.get(h.lower().lstrip("@"), 0) == 0:
+            out.append(f"sampling.accounts_sampled lists @{h.lstrip('@')}, which has no post in posts.jsonl")
+    return out
 
 
 def id_check_problems(d: str, man: dict) -> list[str]:
@@ -222,6 +248,16 @@ def coverage_warnings(d: str) -> list[str]:
     if quiet:
         out.append(f"{len(quiet)} of {len(core)} core accounts have no post in the window: " + ", ".join("@" + h for h in quiet[:30])
                    + (f" and {len(quiet) - 30} more" if len(quiet) > 30 else ""))
+    if sm := man.get("sampling"):
+        cap = sm["posts_per_account"] * sm["pages_per_account"]
+        listed = {h.lower().lstrip("@") for h in sm["accounts_sampled"]}
+        if listed:
+            out.append(f"{len(listed)} accounts were sampled (cap {cap} posts, window not fully read): " + ", ".join("@" + h for h in sorted(listed)[:30]))
+        if full := sorted(h for h in core if own.get(h, 0) >= cap and h not in listed):
+            out.append("accounts at the cap but not listed as sampled: " + ", ".join("@" + h for h in full[:30]))
+    quoted = {str(q.get("id")) for q in read_jsonl(sd / "quoted.jsonl")} if (sd / "quoted.jsonl").exists() else set()
+    if missing := {str(p["quoted_id"]) for p in read_jsonl(sd / "posts.jsonl") if p.get("quoted_id")} - quoted:
+        out.append(f"{len(missing)} quoted posts have no line in quoted.jsonl (allowed when only cited posts' quotes are recovered); a digest must not cite them")
     for h in core:
         if own.get(h) and replies.get(h) == own[h]:
             out.append(f"@{h}: all {own[h]} posts are replies to other people, so its own posts were probably not returned (search by author, not by word)")

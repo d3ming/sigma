@@ -293,6 +293,57 @@ def test_scan_check_warns_about_accounts_the_scan_missed_but_still_passes(monkey
     assert "@active" not in out and "scan 2026-10-26 ok: 3 posts" in out
 
 
+def test_a_declared_sample_is_complete_only_while_the_scan_keeps_what_it_declares(monkeypatch, tmp_path, capsys):
+    """stated-rule (skills/x-scan, step 3): a scanner may read a capped sample when its manifest declares it, and the
+    check holds the scan to the declaration. Without a declaration the same posts are not capped."""
+    from types import SimpleNamespace
+
+    from sigma import xdaily
+
+    monkeypatch.setenv("SIGMA_X_DIR", str(tmp_path))
+    rows = [{"handle": h, "tier": "core", "type": "news"} for h in ("Busy", "Calm")]
+    (tmp_path / "accounts.json").write_text(json.dumps({"accounts": rows}))
+    monkeypatch.setattr(xdaily, "ACCOUNTS", tmp_path / "accounts.json")
+    sd = tmp_path / "scan" / "2026-10-26"
+    sd.mkdir(parents=True)
+    base = {"created_at": "2026-10-26T13:08:00Z", "text": "x" * 50, "metrics": {}}
+    ids = [f"21147056865130333{i:02d}" for i in range(10)]
+    posts = [{**base, "id": ids[0], "handle": "busy", "quoted_id": "2114705686513039999"},
+             {**base, "id": ids[1], "handle": "busy"}, {**base, "id": ids[2], "handle": "busy"},
+             {**base, "id": ids[3], "handle": "calm"}]
+    write = lambda ps: (sd / "posts.jsonl").write_text("\n".join(json.dumps(p) for p in ps) + "\n")
+    write(posts)
+    (sd / "quoted.jsonl").write_text("")
+    man = {"date": "2026-10-26", "window_start": "2026-10-25T14:00:00Z", "window_end": "2026-10-26T14:00:00Z",
+           "accounts_requested": 2, "accounts_ok": 2, "accounts_failed": [], "calls": 2, "rate_limited": False,
+           "complete": True, "scanner": "test", "tool": "test", "contract_version": xdaily.contract_version()}
+    sample = {"posts_per_account": 3, "pages_per_account": 1, "replies_excluded": True, "accounts_sampled": ["Busy"]}
+    save = lambda **kw: (sd / "manifest.json").write_text(json.dumps({**man, **kw}))
+
+    save()
+    assert xdaily.scan_problems("2026-10-26", contract=True) == []  # no declaration: nothing is capped
+    save(sampling=sample)
+    assert xdaily.scan_problems("2026-10-26", contract=True) == []  # declared, complete: true, quote not fetched
+    xdaily.scan_check_cmd(SimpleNamespace(date="2026-10-26"))
+    out = capsys.readouterr().out
+    assert "1 accounts were sampled (cap 3 posts, window not fully read): @busy" in out
+    assert "1 quoted posts have no line in quoted.jsonl" in out and "accounts at the cap but not listed" not in out
+
+    save(sampling={**sample, "posts_per_account": 2})  # busy has 3 posts: the declared cap is false
+    assert any("@busy: 3 posts, but sampling caps an account at 2" in p for p in xdaily.scan_problems("2026-10-26"))
+    save(sampling={**sample, "accounts_sampled": ["Busy", "Calm", "Ghost"]})  # a sampled account must have returned posts
+    assert [p for p in xdaily.scan_problems("2026-10-26") if "accounts_sampled" in p] == [
+        "sampling.accounts_sampled lists @Ghost, which has no post in posts.jsonl"]
+    save(sampling={**sample, "accounts_sampled": []})  # at the cap but not declared sampled: a warning, not a problem
+    assert xdaily.scan_problems("2026-10-26") == []
+    assert any("at the cap but not listed as sampled: @busy" in w for w in xdaily.coverage_warnings("2026-10-26"))
+    write([*posts, {**base, "id": ids[4], "handle": "calm", "in_reply_to_id": ids[9], "in_reply_to_handle": "busy"}])
+    save(sampling=sample)  # replies_excluded is a claim about the posts
+    assert any("is a reply to someone else, but sampling says replies_excluded" in p for p in xdaily.scan_problems("2026-10-26"))
+    save(sampling={**sample, "replies_excluded": False})
+    assert xdaily.scan_problems("2026-10-26") == []
+
+
 def test_today_is_the_pacific_date_even_when_the_machine_clock_is_utc(monkeypatch):
     """stated-rule (AGENTS.md: Sigma dates everything in Pacific time): 02:30 UTC on Oct 28 is 19:30 PDT on Oct 27, hand-worked."""
     from datetime import datetime, timezone
