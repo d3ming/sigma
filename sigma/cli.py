@@ -211,11 +211,22 @@ def record_speakers(run: Path) -> dict:
 
 
 def speakers_cmd(args) -> None:
+    import shutil
+
+    from . import published, speakers
+
+    run = Path(args.run)
     try:
-        r = record_speakers(Path(args.run))
-    except (ValueError, FileNotFoundError) as exc:
+        if args.read:
+            if not shutil.which("codex"):
+                sys.exit("[speakers] codex is not installed")
+            speakers.read_run(run, args.only, args.jobs)
+        r = record_speakers(run)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
         sys.exit(f"[speakers] {exc}")
-    print(f"[speakers] {args.run}: {r['named']} of {r['episodes']} episodes name a speaker ({r['guests']} guests from the reader)")
+    print(f"[speakers] {args.run}: {r['named']} of {r['episodes']} episodes name a speaker")
+    if (published.ROOT / run.resolve().name / "episodes.json").is_file():
+        print(f"[speakers] published/{run.resolve().name} is out of date: run `sigma export-published {args.run}` before publishing")
 
 
 def export_published(args) -> None:
@@ -753,8 +764,11 @@ def _main(argv=None):
     tl = sub.add_parser("transcript-links", help="record the hosted transcript URL for older manifests (re-reads the feeds)")
     tl.add_argument("run")
     tl.add_argument("--sources", default=str(DATA / "sources.yaml"))
-    sk = sub.add_parser("speakers", help="record who speaks in each episode of a run (people.yaml matches plus the reader's guests) in manifest.json")
+    sk = sub.add_parser("speakers", help="record who speaks in each episode of a run (the readers' speakers, checked against the text, with people.yaml profiles attached) in manifest.json")
     sk.add_argument("run")
+    sk.add_argument("--read", action="store_true", help="first have Codex read each episode's description and transcript (prompts/speakers.md) into rank/speakers-<id>-out.json; the ones already read are skipped")
+    sk.add_argument("--only", nargs="+", metavar="EPISODE_ID", help="with --read: read only these episodes, again")
+    sk.add_argument("--jobs", type=int, default=4, help="with --read: Codex runs at a time")
     ep = sub.add_parser("export-published", help="copy a run's report/ranking outputs into data/published/<run>")
     ep.add_argument("run")
     ep.add_argument("--name", help="folder name under data/published/ (default: the run folder's name)")

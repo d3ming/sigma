@@ -35,7 +35,7 @@ def test_a_fund_is_a_name_and_a_cik_never_holdings(tmp_path):
                  "  - {name: B, role: r, priority: watch, fund: {name: G, cik: null}}\n")
     a, b = load_people(p)
     assert (a.kind, a.fund["cik"], b.fund["cik"]) == ("fund manager", "0001697591", None)
-    for bad in ("fund: {name: F, cik: '1', holdings: [CVNA]}", "kind: wizard", "links: [{label: x, url: 'http://x.io'}]"):
+    for bad in ("fund: {name: F, cik: '1', holdings: [CVNA]}", "fund: {name: F, cik: 0001234567}", "kind: wizard", "links: [{label: x, url: 'http://x.io'}]"):
         p.write_text("people:\n  - {name: A, role: r, priority: watch, %s}\n" % bad)
         with pytest.raises(ValueError):
             load_people(p)
