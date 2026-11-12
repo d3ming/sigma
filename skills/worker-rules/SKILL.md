@@ -21,17 +21,18 @@ a worker in a worktree needs and the briefs do not repeat.
 
 ## Run the worktree's code
 
-- The venv lives in the main checkout and its `sigma` script refuses to run in a worktree. Use
-  `<main checkout>/.venv/bin/python -m sigma.cli …` and `PYTHONPATH=. <main checkout>/.venv/bin/pytest -q` from the
-  worktree.
-- The site builds with nothing installed: prove it with `/usr/bin/python3 -S -m sigma.site --out <scratch dir>`.
-- A command that needs a run folder reads `runs/<name>/` in your worktree: copy the files it needs (a `manifest.json`)
-  from the main checkout. Copy, never link.
+- Run `make check` first: it gives the worktree its own `.venv` (about a second, with `uv`). Then run code as
+  `.venv/bin/python -m sigma.cli …` from the worktree.
+- Private data lives in the data root the brief names, never in this repository. For any command that writes, copy
+  what it needs into your scratch and point `SIGMA_DATA_ROOT` at the copy; copy, never link. Set `SIGMA_NO_EVENTS=1`
+  on any command run against the real root, because the event log writes into it.
+- Prove the site with `SIGMA_NO_EVENTS=1 SIGMA_DATA_ROOT=<copy> .venv/bin/python -m sigma.cli site --out <scratch>
+  --published <copy>/published`; it prints `[site] built …`.
 
 ## Never
 
 - Run `sigma today`, `daily`, `fetch`, `transcribe`, or any `x` command that scans X. They start the real pipeline.
-- Write the main checkout's `runs/`, `data/` or `published/`. Read them freely; for a step that writes the X data
+- Write the real data root's `runs/`, `x/` or `published/`. Read them freely; for a step that writes the X data
   folder, point `$SIGMA_X_DIR` at a copy in your scratch. Published output is private data: it never lands in this
   repository, so keep any you produce in your scratch.
 - Use bare `git stash`, push to anything but `develop`, or open a pull request.
