@@ -15,8 +15,8 @@ against accidents, not a secret.
 
 Beyond the list, every mode flags email addresses, formatted phone numbers and compact phone numbers labeled as
 phone, tel, mobile or call. Unlabeled digit strings can also be financial figures; list known private numbers explicitly. Allowed: addresses at reserved example domains
-(example.com, .org, .net, .invalid, .test, .example, localhost), noreply@github.com, any @users.noreply.github.com
-address, git@github.com, and the fictional 555-01xx phone numbers. A hit prints file:line and the kind, never the value.
+(example.com, .org, .net, .invalid, .test, .example, localhost), any noreply@ or no-reply@ address (the agent co-author
+trailers), any @users.noreply.github.com address, git@github.com, and the fictional 555-01xx phone numbers. A hit prints file:line and the kind, never the value.
 
 A missing or empty list fails, never passes. An optional git-ignored `.private-words` (one plain word per line) adds to
 the committed list on one machine. A hit prints file:line and never the word.
@@ -42,7 +42,8 @@ PHONE = re.compile(r"(?<![\w.:/-])(?:\+\d{1,3}[ .-]?)?(?:\(\d{3}\)\s?|\d{3}[ .-]
 COMPACT_PHONE = re.compile(r"(?i)(?<!\w)(?:(?:phone|mobile|telephone|tel)(?:[_ -]?number)?|call(?:\s+me)?(?:\s+at)?)\s*[\"']?\s*[:=]?\s*[\"']?(?:1)?[2-9]\d{9}(?!\d)")
 FICTIONAL_PHONE = re.compile(r"555[ .-]?01\d\d")
 SAFE_DOMAIN = re.compile(r"(?:(?:[a-z0-9-]+\.)*example\.(?:com|org|net)|(?:[a-z0-9-]+\.)*(?:invalid|test|example|localhost)|users\.noreply\.github\.com)$", re.I)
-SAFE_ADDRESS = {"noreply@github.com", "git@github.com"}
+SAFE_ADDRESS = {"git@github.com"}
+NO_REPLY = re.compile(r"no-?reply", re.I)
 
 
 def normalize(phrase: str) -> str:
@@ -100,7 +101,7 @@ def contact_kinds(line: str) -> list[str]:
     """What kind of personal contact detail a line holds (never the value): "email address", "phone number"."""
     kinds = []
     for m in EMAIL.finditer(line):
-        if m.group(0).lower() not in SAFE_ADDRESS and not SAFE_DOMAIN.match(m.group(1)):
+        if m.group(0).lower() not in SAFE_ADDRESS and not SAFE_DOMAIN.match(m.group(1)) and not NO_REPLY.fullmatch(m.group(0).split("@")[0]):
             kinds.append("email address")
             break
     for m in PHONE.finditer(line):
@@ -244,7 +245,7 @@ def main(argv: list[str] | None = None) -> int:
             found += scan_text(text, path, salt, hashes)
     if found:
         print("\n".join(found[:50]), file=sys.stderr)
-        print(f"{what} name a private word from {LIST.name} or hold a personal email address or phone number; reword (see AGENTS.md). File:line shown, never the value.",
+        print(f"{what} name a private word from {LIST.name} or hold a personal email address or phone number; reword (see SECURITY.md). File:line shown, never the value.",
               file=sys.stderr)
         return 1
     return 0
