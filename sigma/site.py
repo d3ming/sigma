@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import quote, unquote
 
-from . import board, claimdedupe, creators, stance
+from . import board, claimdedupe, creators, speakers as spk, stance
 from . import entities as ents
 from .creators import norm_show
 from .links import yt_id
@@ -1471,7 +1471,7 @@ def build_episodes(runs: list[dict]) -> dict:
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
                      image_url=safe_url(m.get("image_url")), show_image_url=safe_url(m.get("show_image_url")),
                      transcript_url=safe_url(m.get("transcript_url")),
-                     transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
+                     speakers=m.get("speakers"), transcript_source=m.get("transcript_source"), key_insights=m.get("key_insights"),
                      dense_summary=m.get("dense_summary"), context=m.get("context"), overview=m.get("overview"), editor_source=m.get("editor_source"))
     for r in reversed(runs):
         for x in r["scored"]:
@@ -1610,12 +1610,57 @@ def roles_of(p: dict) -> list[str]:
     return [r for r, _ in p["roles"].most_common()]
 
 
-def person_page(p: dict, aff: tuple | None = None, cos: dict | None = None) -> str:
+def speaker_profiles(reg: dict) -> dict[str, dict]:
+    """person slug -> {row, episodes}: the profile row from the newest episode that lists the person as a speaker, and every
+    episode page that does, newest first."""
+    out: dict[str, dict] = {}
+    for e in sorted(reg.values(), key=lambda e: (e["date"], e["id"]), reverse=True):
+        for s in (e.get("speakers") or []) if e["page"] else []:
+            if isinstance(s, dict) and s.get("name"):
+                out.setdefault(person_slug(s["name"]), {"row": s, "episodes": []})["episodes"].append(e)
+    return out
+
+
+def speaker_label(s: dict) -> str:
+    return " · ".join(esc(x) for x in (s.get("role"), s.get("kind")) if x)
+
+
+def profile_links(row: dict) -> list[tuple[str, str]]:
+    """(label, url) for the person's own links, then the SEC EDGAR filer page built from the fund's CIK."""
+    out = [(str(l.get("label")), safe_url(l.get("url"))) for l in row.get("links") or [] if isinstance(l, dict)]
+    fund = row.get("fund") or {}
+    if fund.get("cik"):
+        out.append(("SEC EDGAR filings", spk.edgar_url(fund["cik"])))
+    return [(label, url) for label, url in out if url]
+
+
+def profile_facts(row: dict) -> list[str]:
+    """Plain-text facts about a person: role, kind, and a fund whose CIK no filing has confirmed."""
+    fund = row.get("fund") or {}
+    return [x for x in (row.get("role"), row.get("kind")) if x] + \
+        ([f"{fund['name']}: CIK not confirmed"] if fund.get("name") and not fund.get("cik") else [])
+
+
+def profile_html(prof: dict | None, seen: list[str] = ()) -> str:
+    if not prof:
+        return ""
+    row = prof["row"]
+    facts = [f for f in profile_facts(row) if f not in seen]
+    out = f'<p class="meta">{esc(" · ".join(facts))}</p>' if facts else ""
+    links = " · ".join(ext_link(url, label) for label, url in profile_links(row))
+    out += f'<p class="meta">{links}</p>' if links else ""
+    eps = "".join(f'<li><a href="{esc(e["page"])}">{esc(e.get("title") or e["id"])}</a> · {show_name(e)} · {esc(human_date(e["date"]))}</li>'
+                  for e in prof["episodes"])
+    return out + (f'<h2 style="margin-top:1.6em">Speaks in</h2><ul>{eps}</ul>' if eps else "")
+
+
+def person_page(p: dict, aff: tuple | None = None, cos: dict | None = None, prof: dict | None = None) -> str:
     roles = roles_of(p)
     co = (cos or {}).get(aff[0]) if aff else None
     where = (f'<a href="{esc(company_path(co["id"]))}">{esc(co["name"])}</a>' + (f' · {esc(aff[1])}' if aff[1] else "")) if co else ""
     sub = f'<p class="meta">{where}</p>' if where else ""
     sub += f'<p class="meta">{esc(" · ".join(roles))}</p>' if roles else ""
+    sub += profile_html(prof, roles)
     li = "".join(claim_li(c, show_ep=True) for c in newest_first(p["claims"]))
     return page(f"{p['name']} · {SITE}", f'<h1>{esc(p["name"])}</h1>{sub}<ul class="claims" style="margin-top:2em">{li}</ul>',
                 "tags", md=md_of(person_path(p["slug"])), updated=newest_of(*(claim_date(c) for c in p["claims"])))
@@ -1905,7 +1950,17 @@ def find_md(ent: ents.Entities) -> str:
                 f"- Lenses: {lenses or 'none'}."])
 
 
-def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = None) -> str:
+def speakers_html(e: dict, people: dict | None) -> str:
+    rows = []
+    for s in e.get("speakers") or []:
+        if isinstance(s, dict) and s.get("name"):
+            slug = person_slug(s["name"])
+            name = f'<a href="{esc(person_path(slug))}">{esc(s["name"])}</a>' if slug in (people or {}) else esc(s["name"])
+            rows.append(name + (f' ({speaker_label(s)})' if speaker_label(s) else ""))
+    return f'<p class="meta">Speakers: {"; ".join(rows)}</p>' if rows else ""
+
+
+def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = None, people: dict | None = None) -> str:
     title = e.get("title") or e["id"]
     t = ext_link(e.get("url"), title) or esc(title)
     meta = (rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") else "") + e.get("_marks", "") + " · ".join(
@@ -1917,7 +1972,7 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
     context = f'<p>{esc(e["context"])}</p>' if e.get("context") else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{take}{about}{context}{content}',
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{speakers_html(e, people)}{take}{about}{context}{content}',
                 "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
@@ -2082,13 +2137,17 @@ def ticker_md(sym: str, claims: list[dict], reg: dict, social: list[dict] = ()) 
     return doc(out + (["## Social", ""] + grouped_md(list(social), reg, 3) if social else []))
 
 
-def person_md(p: dict, reg: dict) -> str:
+def person_md(p: dict, reg: dict, prof: dict | None = None) -> str:
     roles = roles_of(p)
     n_ep = len({c.get("episode_id") for c in p["claims"]})
     latest = max(claim_date(c) for c in p["claims"])
     out = [f"# {p['name']}", ""]
     if roles:
         out += [f"Role: {'; '.join(mt(r) for r in roles)}", ""]
+    if prof:
+        row = prof["row"]
+        out += ([mt(" · ".join(profile_facts(row))), ""] if profile_facts(row) else []) + ([" · ".join(mlink(l, u) for l, u in profile_links(row)), ""] if profile_links(row) else [])
+        out += ["Speaks in: " + "; ".join(mlink(mt(e.get("title") or e["id"]), absu(md_of(e["page"]))) for e in prof["episodes"]), ""]
     out += [f"{plural(len(p['claims']), 'claim')} across {plural(n_ep, 'episode')}, latest {latest}. [HTML]({absu(person_path(p['slug']))}) · "
             f"[All people]({absu('/people.md')})", "", NOTE, ""]
     return doc(out + grouped_md(p["claims"], reg, 2))
@@ -2145,6 +2204,9 @@ def companies_md(cos: dict) -> str:
 
 def episode_md(e: dict) -> str:
     out = episode_head_md(e, 1, self_page=True)
+    named = [f"{mt(s['name'])}" + (f" ({mt(' · '.join(x for x in (s.get('role'), s.get('kind')) if x))})" if s.get("role") or s.get("kind") else "")
+             for s in e.get("speakers") or [] if isinstance(s, dict) and s.get("name")]
+    out += [f"Speakers: {'; '.join(named)}", ""] if named else []
     issues = ", ".join(mlink(issue_name, absu(run_md_path(issue_name))) for issue_name in e["runs"])
     rated = f"Rated {e['score']}/10 as social commentary. " if e.get("influencer") else ""
     count = (f"{len(e['key_insights'])} key insights, {len(e.get('dense_summary') or [])} summary sections"
@@ -2790,11 +2852,12 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     for sym, cl in sorted(ipub.items()):  # a ticker only influencers named still gets the page their chips link to; the ticker index leaves it out
         if sym not in pub:
             emit(ticker_path(sym), ticker_page(sym, [], cl), ticker_md(sym, [], allreg, cl), max(claim_date(c) for c in cl))
+    profiles = speaker_profiles(reg)
     pj = []
     for p_ in sorted(people.values(), key=lambda p: (-len(p["claims"]), p["name"])):
         p = person_path(p_["slug"])
         last = max(claim_date(c) for c in p_["claims"])
-        emit(p, person_page(p_, ents.affiliation(ent, p_["slug"]), cos), person_md(p_, reg), last)
+        emit(p, person_page(p_, ents.affiliation(ent, p_["slug"]), cos, profiles.get(p_["slug"])), person_md(p_, reg, profiles.get(p_["slug"])), last)
         pj.append({"slug": p_["slug"], "name": p_["name"], "roles": roles_of(p_), "claims": len(p_["claims"]),
                    "episodes": len({c.get("episode_id") for c in p_["claims"]}), "latest_date": last,
                    "page": absu(p), "md": absu(md_of(p))})
@@ -2813,10 +2876,10 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
                    "page": absu(p), "md": absu(md_of(p))})
     for e in sorted(reg.values(), key=lambda e: (e["date"], e["id"]), reverse=True):
         if e["page"]:
-            emit(e["page"], episode_page(e, ent, cos), episode_md(e), e["date"])
+            emit(e["page"], episode_page(e, ent, cos, people), episode_md(e), e["date"])
     for e in sorted(ireg.values(), key=lambda e: (e["date"], e["id"]), reverse=True):
         if e["page"]:
-            emit(e["page"], episode_page(e, ent, cos), episode_md(e), e["date"])
+            emit(e["page"], episode_page(e, ent, cos, people), episode_md(e), e["date"])
     for e in home_rows:  # the summaries a home-page row opens to (top_entry expand)
         if e["page"] and (e["claims"] or e.get("key_insights")):
             write(out / file_of(claims_path(e["id"])), claims_fragment(e))

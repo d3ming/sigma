@@ -11,6 +11,7 @@ import yaml
 from .feedcache import image_url
 from .ingest import Episode, _yt_json, canonical_id, in_window, parse_date
 from .config import check
+from .speakers import check_profile
 from .transcribe import title_match
 
 PEOPLE_DEFAULTS = {"preferred_source": "itunes", "fallback": [], "transcripts": ["podcast_transcript", "whisper"]}
@@ -35,6 +36,9 @@ class Person:
     fallback: list[str] = field(default_factory=list)
     transcripts: list[str] = field(default_factory=list)
     context: list[str] = field(default_factory=list)  # for common names: one must appear in title/description/show
+    kind: str | None = None
+    links: list[dict] = field(default_factory=list)
+    fund: dict | None = None
 
     @property
     def order(self) -> list[str]:
@@ -57,6 +61,7 @@ def load_people(path: str | Path) -> list[Person]:
         check(p.name, vars(p))
         if p.priority not in ("core", "watch"):
             raise ValueError(f"{p.name}: priority must be core or watch")
+        check_profile(p.name, p.kind, p.links, p.fund)
     if len({p.name for p in people}) != len(people):
         raise ValueError("duplicate person name")
     return people

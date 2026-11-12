@@ -5,7 +5,7 @@ list and a claims.jsonl. Transcripts and show descriptions stay in the run folde
 
 What a published/<run>/ folder holds, for the programs and agents that read it (the site and `sigma stance-prep`):
   FILES and digest-*.md   the run's outputs as the agent wrote them, in the schemas under schema/; one over MAX_BYTES is skipped
-  episodes.json           one row per episode with EPISODE_KEYS (metadata only; `style` is "influencer" for creators who pick
+  episodes.json           one row per episode with EPISODE_KEYS (metadata and `speakers` only; `style` is "influencer" for creators who pick
                           stocks) and the listen links LINK_KEYS found at export
   claims.jsonl            one claim per line, the shape of `library export` (schema/library-claim.schema.json) with `run` and
                           without `transcript_path`
@@ -32,7 +32,7 @@ FILES = ("selected.json", "report.json", "report.md", "ranked.json", "scores.jso
 STANCES = "stances.jsonl"
 MAX_BYTES = 1_000_000  # a published file this large is almost certainly not a report; keep it out of git
 EPISODE_KEYS = ("episode_id", "title", "source", "tier", "style", "published", "url", "youtube_id", "transcript_url",
-                "has_transcript", "transcript_source", "excluded", "image_url", "show_image_url", "user_pick")
+                "has_transcript", "transcript_source", "excluded", "image_url", "show_image_url", "user_pick", "speakers")
 
 
 LINK_KEYS = ("youtube_url", "apple_url", "spotify_url", "spotify_kind")

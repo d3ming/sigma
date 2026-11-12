@@ -8,7 +8,7 @@ it and later runs reuse it. So score against the absolute anchors below; never a
 You are one reader. Input: `rank/batch-N-in.json` (or `rank/eval-in.json`, a blind re-score of already-scored episodes
 that measures drift), written by `sigma rank-prep` (episodes with real transcripts, condensed to a `[timestamp]` every
 30 s). Output: the same name ending `-out.json`, a JSON list of `{episode_id, title, url, source,
-tier, published, score, reason, claims}`, one entry per input episode. Cite timestamps from the condensed text.
+tier, published, score, reason, claims, speakers}`, one entry per input episode. Cite timestamps from the condensed text.
 `rank-merge` combines the batches into `ranked.json` (`schema/ranked.schema.json`) and rejects ids it does not know;
 `publish` rejects timestamps or numbers the transcripts do not support. Merge does not rescale scores, so score against
 the absolute anchors below, not against the other episodes in your batch.
@@ -97,5 +97,10 @@ Keep score-band comparisons internal. The viewer-facing summary describes the ep
   without implying a recommendation. Keep tickers’ stances separate, attribute views and preserve time horizons.
   Never turn good business news into a buy call or fill the summary with a rating justification. This summary rule
   does not change the scoring rubric, claims or stance labels.
+- `speakers`: the people who speak in the episode and are named in its title, description or transcript, as
+  `{name, role}`: the guest or guests, and the host when named. `role` is how the description or the speaker introduces them
+  ("CAS Investment Partners founder"); leave it out when none is given. Use the name as written there. Never guess a name:
+  `rank-merge` stops on one that none of those texts contains. An empty list is valid. This is identity only and does not
+  change the score.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
 - Never include the owner's holdings, weights or portfolio data in `ranked.json`, and never add a holdings-style field (`holdings`, `weight`, `market_pct`). A guest's public statement about their own portfolio is a claim to attribute in prose.

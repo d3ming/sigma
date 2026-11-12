@@ -202,6 +202,22 @@ def transcript_links_cmd(args) -> None:
     print(f"[transcript-links] {r['found']} of {r['missing']} publisher transcripts linked in {args.run}")
 
 
+def record_speakers(run: Path) -> dict:
+    from .people import load_people
+    from .speakers import record_run
+
+    path = people_file()
+    return record_run(run, load_people(path) if path.exists() else [])
+
+
+def speakers_cmd(args) -> None:
+    try:
+        r = record_speakers(Path(args.run))
+    except (ValueError, FileNotFoundError) as exc:
+        sys.exit(f"[speakers] {exc}")
+    print(f"[speakers] {args.run}: {r['named']} of {r['episodes']} episodes name a speaker ({r['guests']} guests from the reader)")
+
+
 def export_published(args) -> None:
     from . import published
     from .themes import ThemesError
@@ -326,6 +342,10 @@ def rank_merge(args) -> None:
         sys.exit(f"[rank-merge] {exc}")
     for w in warnings:
         print(f"[rank-merge] warning: {w}")
+    try:
+        record_speakers(run)
+    except (ValueError, FileNotFoundError) as exc:
+        sys.exit(f"[rank-merge] {exc}")
     out = run / target
     # A special issue's hand-added title and issue date survive a re-merge: losing them once listed a custom set as a weekly
     # dated by its oldest episode (2026-10-26).
@@ -733,6 +753,8 @@ def _main(argv=None):
     tl = sub.add_parser("transcript-links", help="record the hosted transcript URL for older manifests (re-reads the feeds)")
     tl.add_argument("run")
     tl.add_argument("--sources", default=str(DATA / "sources.yaml"))
+    sk = sub.add_parser("speakers", help="record who speaks in each episode of a run (people.yaml matches plus the reader's guests) in manifest.json")
+    sk.add_argument("run")
     ep = sub.add_parser("export-published", help="copy a run's report/ranking outputs into data/published/<run>")
     ep.add_argument("run")
     ep.add_argument("--name", help="folder name under data/published/ (default: the run folder's name)")
@@ -970,7 +992,7 @@ def _main(argv=None):
 
         args.heavy = heavy.take(f"sigma {args.cmd}")
     {"fetch": fetch, "daily": daily, "transcribe": transcribe_run, "publish": publish, "check": check,
-     "report": render_report, "links": links, "show-links": show_links, "rank-prep": rank_prep, "rank-merge": rank_merge, "stance-prep": stance_cmd, "stance-merge": stance_cmd, "tickers-refresh": tickers_refresh_cmd, "score-eval": score_eval_cmd, "themes-check": themes_check, "transcript-links": transcript_links_cmd, "export-published": export_published, "dedupe-published": dedupe_published, "check-claims": check_claims, "mark": mark, "stats": stats, "library": library_cmd}[args.cmd](args)
+     "report": render_report, "links": links, "show-links": show_links, "rank-prep": rank_prep, "rank-merge": rank_merge, "stance-prep": stance_cmd, "stance-merge": stance_cmd, "tickers-refresh": tickers_refresh_cmd, "score-eval": score_eval_cmd, "themes-check": themes_check, "transcript-links": transcript_links_cmd, "speakers": speakers_cmd, "export-published": export_published, "dedupe-published": dedupe_published, "check-claims": check_claims, "mark": mark, "stats": stats, "library": library_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
