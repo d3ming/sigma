@@ -8,7 +8,7 @@ body of a commit in the range.
 
     python3 scripts/check_rubric_bump.py BASE [HEAD]
 
-Exit 0 when every changed ranking prompt has a higher version, 1 with one line per prompt that does not.
+Run by scripts/check.sh, so before every push, against origin/develop. Exit 0 when every changed ranking prompt has a higher version, 1 with one line per prompt that does not.
 """
 import re
 import subprocess
