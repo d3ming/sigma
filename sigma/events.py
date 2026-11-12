@@ -29,7 +29,7 @@ from .paths import data_root
 VERSION = 1
 STATUSES = ("ok", "warn", "fail", "skip", "start")
 LONG = {"daily", "fetch", "transcribe"}  # also write a `start` line: a start with no end was interrupted
-QUIET = {"status", "doctor", "stats", "find", "library_query", "library_stats"}  # polling and reads: logged only on failure
+QUIET = {"status", "doctor", "stats", "find", "library_query", "library_stats", "score_audit", "transcript"}  # polling and reads: logged only on failure
 # A problem line as the commands print it: "[command] warning: ...", "[command] invalid: ...", "[transcribe] 12:00:00 FAILED ...".
 # Anchored at the start of the line so data a command prints (a claim, a title) never marks the run as warn.
 PROBLEM = re.compile(r"^\[[\w-]+\] (?:\d\d:\d\d:\d\d )?(?:warning:|invalid:|FAILED\b)")
