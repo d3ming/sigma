@@ -28,6 +28,19 @@ def test_the_watchlist_loads_a_person_and_rejects_bad_priorities_and_duplicates(
         load_people(p)
 
 
+def test_a_fund_is_a_name_and_a_cik_never_holdings(tmp_path):
+    """Stated rule (the CIO's ruling): Sigma stores a fund's name and SEC CIK only, no holdings; an unconfirmed CIK is null."""
+    p = tmp_path / "p.yaml"
+    p.write_text('people:\n  - {name: A, role: r, priority: watch, kind: fund manager, fund: {name: F, cik: "0001697591"}}\n'
+                 "  - {name: B, role: r, priority: watch, fund: {name: G, cik: null}}\n")
+    a, b = load_people(p)
+    assert (a.kind, a.fund["cik"], b.fund["cik"]) == ("fund manager", "0001697591", None)
+    for bad in ("fund: {name: F, cik: '1', holdings: [CVNA]}", "fund: {name: F, cik: 0001234567}", "kind: wizard", "links: [{label: x, url: 'http://x.io'}]"):
+        p.write_text("people:\n  - {name: A, role: r, priority: watch, %s}\n" % bad)
+        with pytest.raises(ValueError):
+            load_people(p)
+
+
 def test_which_search_hits_are_about_the_person_and_not_clips():
     assert mentions(CC, "An hour with CC Wei") and mentions(CC, "", "TSMC's C.C. Wei on capacity")  # aliases count
     assert not mentions(JH, "Jensen Huangs") and mentions(JH, "JENSEN HUANG | full interview")  # whole words, any case

@@ -8,7 +8,7 @@ it and later runs reuse it. So score against the absolute anchors below; never a
 You are one reader. Input: `rank/batch-N-in.json` (or `rank/eval-in.json`, a blind re-score of already-scored episodes
 that measures drift), written by `sigma rank-prep` (episodes with real transcripts, condensed to a `[timestamp]` every
 30 s). Output: the same name ending `-out.json`, a JSON list of `{episode_id, title, url, source,
-tier, published, score, reason, claims}`, one entry per input episode. Cite timestamps from the condensed text.
+tier, published, score, reason, claims, speakers}`, one entry per input episode. Cite timestamps from the condensed text.
 `rank-merge` combines the batches into `ranked.json` (`schema/ranked.schema.json`) and rejects ids it does not know;
 `publish` rejects timestamps or numbers the transcripts do not support. Merge does not rescale scores, so score against
 the absolute anchors below, not against the other episodes in your batch.
@@ -97,5 +97,10 @@ Keep score-band comparisons internal. The viewer-facing summary describes the ep
   without implying a recommendation. Keep tickers’ stances separate, attribute views and preserve time horizons.
   Never turn good business news into a buy call or fill the summary with a rating justification. This summary rule
   does not change the scoring rubric, claims or stance labels.
+- `speakers`: who speaks in the episode, as `{name, role}`: the host, co-host, guest or panelist whose voice you read in the
+  transcript. A person the episode is about, quoted, or named only in the title or description is not a speaker. `name` is the
+  full name as the title, description or transcript writes it; `role` only the words they use for that person, left out when
+  none. `rank-merge` stops on a name those texts do not contain. An empty list is valid. This is identity only and does not
+  change the score.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
 - Never include the owner's holdings, weights or portfolio data in `ranked.json`, and never add a holdings-style field (`holdings`, `weight`, `market_pct`). A guest's public statement about their own portfolio is a claim to attribute in prose.
