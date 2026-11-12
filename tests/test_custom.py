@@ -147,8 +147,8 @@ def test_transcribe_a_custom_run_and_follow_it_with_status(monkeypatch, tmp_path
     calls = []
     transcript = [{"start": 0, "speaker": None, "text": "word " * 1000}]
     monkeypatch.setattr(whisper, "available", lambda: True)
-    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append(vid) or (budget.spend(180) or transcript, 180.0))
-    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0))
+    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append(vid) or (budget.spend(180) or transcript, 180.0, 180.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0, 180.0))
     fetch_mod.transcribe_run(targs(run, top=8, people=None))  # top=8 would triage a daily run; a custom run takes every pick
     rows = {e["episode_id"]: e for e in manifest(run)["episodes"]}
     assert sorted(calls) == ["https://cdn/rss:friar.mp3", "xyz"]
@@ -181,10 +181,10 @@ def test_a_youtube_bot_check_waits_then_retries_once_then_gives_up_for_the_run(m
         calls.append(vid)
         if calls.count(vid) == 1:
             raise whisper.YouTubeBlocked("bot check")
-        return budget.spend(180) or transcript, 180.0
+        return budget.spend(180) or transcript, 180.0, 180.0
 
     monkeypatch.setattr(whisper, "transcribe_youtube", youtube)
-    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, budget: calls.append(url) or (budget.spend(180) or transcript, 180.0, 180.0))
     fetch_mod.transcribe_run(targs(run, people=None))
     assert calls.count("xyz") == 2 and calls[-1] == "xyz" and len(waits) == 1
     assert all(e["has_transcript"] for e in manifest(run)["episodes"]) and not (run / "transcribe.failed.log").exists()

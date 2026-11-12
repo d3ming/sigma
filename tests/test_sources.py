@@ -71,15 +71,21 @@ def test_a_source_falls_back_in_order_and_a_person_hit_inherits_its_shows_tier(m
     assert [e.source_name for e in out[4:]] == ["Invest Like the Best", "BG2 Pod"]
 
 
-def test_transcript_methods_run_in_order_within_the_budget_and_feed_links_are_loaded_once(monkeypatch):
+def test_transcript_methods_run_in_order_within_the_budget_and_feed_links_are_loaded_once(monkeypatch, tmp_path):
     import sigma.whisper as w
+    from sigma import fetch
 
     monkeypatch.setattr(transcribe, "from_rss_tag", lambda links, used=None: None)
-    monkeypatch.setattr(w, "transcribe", lambda url, b: (b.spend(600) or [{"start": 0, "speaker": None, "text": "x"}], 600))
+    monkeypatch.setattr(w, "transcribe", lambda url, b: (b.spend(600) or [{"start": 0, "speaker": None, "text": "x"}], 600, 600))
     b = Budget(30, 20)
     segs, label = transcribe.get_transcript(ep(transcript_urls=[{"url": "t"}], audio_url="a", methods=["podcast_transcript", "whisper"]), b)
     assert label == "whisper base.en (10 min)" and b.used == 600
     assert transcribe.get_transcript(ep(audio_url="a", methods=["whisper"])) == (None, None)  # whisper needs a budget
+    monkeypatch.undo()
+    captioned = ep(audio_url="a", youtube_id="v", duration=3600, methods=["whisper", "youtube_captions"])
+    monkeypatch.setattr(transcribe, "from_youtube", lambda vid: [{"start": float(t), "speaker": None, "text": "said " * 30} for t in range(0, 3600, 60)])
+    segs, label = transcribe.get_transcript(captioned, Budget(0))  # failure seen: the skipped whisper marked these captions partial
+    assert label == "youtube-captions" and fetch.write_episode(tmp_path, captioned, segs, label)["has_transcript"]
     b = Budget(50, 30)
     assert b.take() == 1800
     b.spend(1800)

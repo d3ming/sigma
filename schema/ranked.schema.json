@@ -31,6 +31,11 @@
           "transcript_url": {"type": "string", "pattern": "^https?://", "description": "Optional. Where a reader can open the transcript (publisher page or YouTube captions). publish fills it from the manifest."},
           "score": {"type": "integer", "minimum": 1, "maximum": 10},
           "scored_in": {"type": "string", "description": "Optional. The run that scored this episode, when it is not this run: the score and claims are the stored ones, reused unchanged."},
+          "transcript": {"type": "object", "additionalProperties": false, "required": ["sha256", "end_seconds", "media_seconds"],
+            "description": "Optional. The transcript the score was made on: rank-merge stamps it, a reused score carries the stored one.",
+            "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "end_seconds": {"type": "integer", "minimum": 0},
+                           "media_seconds": {"type": ["integer", "null"], "minimum": 0}}},
+          "score_check": {"enum": ["unverifiable", "mismatch"], "description": "Optional. A reused score whose stored transcript record is missing or does not match this run's transcript; kept as it is and listed by `sigma score-audit`."},
           "reason": {"type": "string", "maxLength": 240, "description": "One line on why it earned this score."},
           "claims": {
             "type": "array",

@@ -21,6 +21,18 @@
         "scanner": {"type": "string", "description": "who ran it"},
         "tool": {"type": "string", "description": "e.g. x api v2"},
         "notes": {"type": "string"},
+        "sampling": {
+          "type": "object", "additionalProperties": false,
+          "description": "present only when the scanner read a capped sample of each account instead of paging the whole window (skills/x-scan, step 3); a declared sample can still be complete: true",
+          "required": ["posts_per_account", "pages_per_account", "replies_excluded", "accounts_sampled"],
+          "properties": {
+            "posts_per_account": {"type": "integer", "minimum": 1, "description": "posts asked for per page; no account has more than this times pages_per_account in posts.jsonl"},
+            "pages_per_account": {"type": "integer", "minimum": 1},
+            "replies_excluded": {"type": "boolean", "description": "replies to other people were excluded in the request; true means posts.jsonl has none"},
+            "accounts_sampled": {"type": "array", "items": {"type": "string", "pattern": "^@?\\w{1,15}$"},
+                                 "description": "accounts whose last page was full and did not reach window_start, so older posts in the window were not read; each has at least one post"}
+          }
+        },
         "ids_requested": {"type": "integer", "minimum": 0, "description": "ids in <x dir>/check-ids.json when the scan ran (0 or absent when there is no file)"},
         "ids_checked": {"type": "integer", "minimum": 0, "description": "of those, ids the API answered for: returned, or reported not found / not authorized"},
         "ids_gone": {"type": "array", "items": {"type": "string", "pattern": "^\\d{5,25}$"},

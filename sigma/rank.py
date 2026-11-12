@@ -18,6 +18,8 @@ import random
 import re
 from pathlib import Path
 
+from . import transcripts
+
 ANCHOR_SECONDS = 30
 RANK_DIR = "rank"
 RUBRIC = Path(__file__).resolve().parent.parent / "prompts" / "rank.md"
@@ -107,10 +109,23 @@ def _deal(todo: list[dict], n: int) -> list[list[dict]]:
     return groups
 
 
-def _reuse(rows: list[dict], stored: dict) -> list[dict]:
-    return [{**{k: e[k] for k in ("episode_id", "title", "url", "source", "tier", "published")},
-             **{k: stored[e["episode_id"]][k] for k in ("score", "reason", "claims")},
-             "scored_in": stored[e["episode_id"]]["scored_run"]} for e in rows if e["episode_id"] in stored]
+def transcript_record(run_dir: Path, row: dict) -> dict | None:
+    return transcripts.record(run_dir / row["file"], row)
+
+
+def _reuse(run_dir: Path, rows: list[dict], stored: dict) -> list[dict]:
+    """Stored scores, kept as they are. One whose record does not match this run's transcript, or that has no record,
+    says so in `score_check` so `sigma score-audit` lists it for review."""
+    out = []
+    for e in rows:
+        if (s := stored.get(e["episode_id"])) is None:
+            continue
+        check = transcripts.check(s.get("transcript"), transcript_record(run_dir, e))
+        out.append({**{k: e[k] for k in ("episode_id", "title", "url", "source", "tier", "published")},
+                    **{k: s[k] for k in ("score", "reason", "claims")}, "scored_in": s["scored_run"],
+                    **({"transcript": s["transcript"]} if s.get("transcript") else {}),
+                    **({} if check == "verified" else {"score_check": check})})
+    return out
 
 
 def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0, db=None, influencer_batches: int = 2) -> dict:
@@ -128,7 +143,7 @@ def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0
     out = run_dir / RANK_DIR
     (out / "cond").mkdir(parents=True, exist_ok=True)
     stored = {} if rescore else library.stored_scores([e["episode_id"] for e in rows], db, rubric=rubric_version())
-    reuse = _reuse(rows, stored)
+    reuse = _reuse(run_dir, rows, stored)
     (out / "stored.json").write_text(json.dumps(reuse, indent=1, ensure_ascii=False) + "\n")
     todo = [e for e in rows if e["episode_id"] not in stored]
     groups = _deal(todo, batches)
@@ -138,7 +153,7 @@ def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0
     _drop_unused(out, "batch", len(groups))
     istored = {} if rescore else library.stored_scores([e["episode_id"] for e in irows], db,
                                                        rubric=rubric_version(INFLUENCER_RUBRIC), style="influencer")
-    ireuse = _reuse(irows, istored)
+    ireuse = _reuse(run_dir, irows, istored)
     itodo = [e for e in irows if e["episode_id"] not in istored]
     igroups = _deal(itodo, influencer_batches)
     if irows:
@@ -155,6 +170,7 @@ def prep(run_dir: Path, batches: int = 4, rescore: bool = False, eval_n: int = 0
         (out / "eval-in.json").write_text(json.dumps(sample, indent=1, ensure_ascii=False) + "\n")
     return {"transcribed": len(rows), "without_transcript": len(man["episodes"]) - len(all_rows), "batches": len(groups),
             "to_score": len(todo), "stored": len(reuse), "eval": len(sample),
+            **{c: sum(r.get("score_check") == c for r in reuse + ireuse) for c in ("unverifiable", "mismatch")},
             "influencer": len(irows), "influencer_batches": len(igroups), "influencer_to_score": len(itodo), "influencer_stored": len(ireuse)}
 
 
@@ -231,8 +247,11 @@ def merge(run_dir: Path, ranked_by: str, week_of: str | None = None, ranking: bo
     ranked = sorted(best.values(), key=lambda r: (-r["score"], r["tier"], "".join(chr(255 - ord(c)) for c in r["published"][:10]),
                                                   r["episode_id"]))
     ranked, cut = apply_tier3(ranked) if ranking and not influencer else (ranked, [])
+    for r in ranked:
+        if not r.get("scored_in") and (rec := transcript_record(run_dir, by_id[r["episode_id"]])):
+            r["transcript"] = rec
     eps = [{**{k: r[k] for k in ("episode_id", "title", "url", "source", "tier", "published", "score", "reason", "claims")},
-            **({"scored_in": r["scored_in"]} if r.get("scored_in") else {}), "rank": i} for i, r in enumerate(ranked, 1)]
+            **{k: r[k] for k in ("scored_in", "transcript", "score_check") if r.get(k)}, "rank": i} for i, r in enumerate(ranked, 1)]
     with_text = by_id_with_text(man)
     apart = sum(is_influencer(e) for e in with_text)
     untranscribed = len(man["episodes"]) - len(with_text)

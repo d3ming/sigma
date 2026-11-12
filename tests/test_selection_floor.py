@@ -125,7 +125,7 @@ def test_the_default_triage_cap_is_wide_and_every_gap_has_a_reason(monkeypatch, 
                    **{"rss:n": {"news": True}, "rss:rr": {"rerun": True}})
     monkeypatch.setattr(whisper, "available", lambda: True)
     calls = []
-    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 60.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 60.0, 60.0))
     main(["transcribe", str(run), "--people", ""])  # the default top
     rows = {e["episode_id"]: e for e in json.loads((run / "manifest.json").read_text())["episodes"]}
     assert len(calls) == 4 and all(rows[f"rss:e{i}"]["has_transcript"] and "transcribe_skip" not in rows[f"rss:e{i}"] for i in range(4))

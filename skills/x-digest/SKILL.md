@@ -26,7 +26,7 @@ In this order, about two screens, plain and specific (numbers over adjectives, n
    to watch when a poster states one, and its best two posts; then 5 to 10 more to watch.
 4. **Most useful posts**: 8 to 12, real trades and position changes first, then analysis with levels or data, then
    news. Each: handle, link, the post's text quoted as is (cut at about 280 characters), and one line on why it matters.
-5. **Coverage**: the window, accounts with no posts, and anything the manifest says was incomplete or failed. An
+5. **Coverage**: the window, accounts with no posts, and anything the manifest says was incomplete or failed. When the manifest declares `sampling`, name the caps and the sampled accounts: posts older than each one's page were not read. An
    incomplete scan says so at the top.
 
 ## Rules

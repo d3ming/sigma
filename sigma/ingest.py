@@ -27,6 +27,8 @@ class Episode:
     youtube_id: str | None = None
     transcript_urls: list | None = None
     transcript_url: str | None = None  # where a reader can open the transcript we used; set by get_transcript
+    media_seconds: float | None = None
+    transcript_complete: bool | None = None
     audio_url: str | None = None
     description: str = ""
     via: str = ""

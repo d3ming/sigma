@@ -186,7 +186,7 @@ def test_transcribe_is_resumable_prefetches_and_records_failures(tmp_path, monke
     calls, files = [], []
     monkeypatch.setattr(whisper, "PREFETCH", True)  # download the next episode while the current one transcribes
     monkeypatch.setattr(whisper, "available", lambda: True)
-    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append("youtube") or (budget.spend(60) or SEGS, 60.0))
+    monkeypatch.setattr(whisper, "transcribe_youtube", lambda vid, budget: calls.append("youtube") or (budget.spend(60) or SEGS, 60.0, 60.0))
 
     def download(url, f, **kw):
         calls.append(url)
@@ -197,7 +197,7 @@ def test_transcribe_is_resumable_prefetches_and_records_failures(tmp_path, monke
     def transcribe_file(path, budget):
         files.append(path)
         budget.spend(120)
-        return SEGS, 120.0
+        return SEGS, 120.0, 120.0
 
     monkeypatch.setattr(whisper, "download", download)
     monkeypatch.setattr(whisper, "transcribe_file", transcribe_file)
@@ -229,7 +229,7 @@ def test_triage_whispers_the_top_pick_and_every_other_tier_1_episode_unless_told
     monkeypatch.setattr(whisper, "available", lambda: True)
     monkeypatch.setattr(fetch_mod, "is_news", lambda e: e.get("news", False))
     calls = []
-    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url.split("/")[-1]) or (LONG, 60.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url.split("/")[-1]) or (LONG, 60.0, 60.0))
     fetch_mod.transcribe_run(targs(week("floor"), top=1, people=None))
     assert sorted(calls) == ["rss:a.mp3", "rss:b.mp3"]  # the top pick, plus the tier-1 floor; not news, a replay or lower tiers
     calls.clear()
@@ -251,7 +251,7 @@ def test_fetch_merge_and_transcribe_wait_for_the_manifest_lock_and_still_land_th
 
     run, first = fetch(tmp_path, "day1", "--only", "widget")
     monkeypatch.setattr(whisper, "available", lambda: True)
-    monkeypatch.setattr(whisper, "transcribe", lambda url, b: (b.spend(60) or SEGS, 60.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, b: (b.spend(60) or SEGS, 60.0, 60.0))
     commands = {"fetch": (lambda: fetch(tmp_path, "day1", "--only", "lowa"), lambda m: any(e["title"] == "Low A one" for e in m["episodes"])),
                 "transcribe": (lambda: fetch_mod.transcribe_run(targs(run, top=0, people=None)),
                                lambda m: m["timing"]["transcribe"]["end"])}

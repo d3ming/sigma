@@ -154,8 +154,9 @@ def run_faster(path: str) -> tuple[list, float]:
     return segs, info.duration
 
 
-def transcribe_file(path: str, budget: Budget) -> tuple[list[dict] | None, float]:
-    """Whisper a downloaded file under the heavy-job lock, held for this file only so other heavy jobs get in between."""
+def transcribe_file(path: str, budget: Budget) -> tuple[list[dict] | None, float, float]:
+    """Whisper a downloaded file under the heavy-job lock, held for this file only so other heavy jobs get in between.
+    Returns (segments, seconds transcribed, media seconds): fewer seconds than the media means the budget cut it short."""
     from . import heavy
 
     limit = budget.take()
@@ -164,7 +165,11 @@ def transcribe_file(path: str, budget: Budget) -> tuple[list[dict] | None, float
         out = segments_until(segs, limit)
     used = min(limit, duration)
     budget.spend(used)
-    return out or None, used
+    return out or None, used, duration
+
+
+def complete(used: float, media: float | None) -> bool:
+    return media is not None and used >= media
 
 
 RETRIES = int(os.environ.get("SIGMA_DOWNLOAD_RETRIES", "3"))  # extra attempts after the first
@@ -259,19 +264,19 @@ class Prefetch:
             pass
 
 
-def transcribe_prefetched(pf: Prefetch, budget: Budget | None) -> tuple[list[dict] | None, float]:
+def transcribe_prefetched(pf: Prefetch, budget: Budget | None) -> tuple[list[dict] | None, float, float | None]:
     try:
         path = pf.result()
         if not budget or budget.take() < 60:
-            return None, 0.0
+            return None, 0.0, None
         return transcribe_file(path, budget)
     finally:
         pf.cleanup()
 
 
-def transcribe(audio_url: str | None, budget: Budget | None) -> tuple[list[dict] | None, float]:
+def transcribe(audio_url: str | None, budget: Budget | None) -> tuple[list[dict] | None, float, float | None]:
     if not audio_url or not budget or budget.take() < 60:
-        return None, 0.0
+        return None, 0.0, None
     with tempfile.NamedTemporaryFile(suffix=".audio") as f:
         download(audio_url, f)
         return transcribe_file(f.name, budget)
@@ -286,9 +291,9 @@ class YouTubeBlocked(Exception):
     """YouTube asked this IP to prove it is not a bot. It usually clears within minutes, so transcribe waits and retries."""
 
 
-def transcribe_youtube(video_id: str, budget: Budget | None) -> tuple[list[dict] | None, float]:
+def transcribe_youtube(video_id: str, budget: Budget | None) -> tuple[list[dict] | None, float, float | None]:
     if not budget or budget.take() < 60 or not available():
-        return None, 0.0
+        return None, 0.0, None
     with tempfile.TemporaryDirectory() as d:
         cmd = ytdlp_audio_cmd(video_id, os.path.join(d, "a.%(ext)s"))
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=3600)

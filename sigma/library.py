@@ -46,7 +46,8 @@ PRAGMA user_version = 2;
 """
 # Columns added after the first release; connect(write=True) adds them to an older file.
 COLUMNS = {"episodes": (("reason", "TEXT"), ("scored_run", "TEXT"), ("scored_rubric", "INTEGER")),
-           "scores": (("rubric", "INTEGER"), ("style", "TEXT"))}  # rubric: version of prompts/rank.md (influencer rows: rank-influencer.md);
+           "scores": (("rubric", "INTEGER"), ("style", "TEXT"), ("transcript_sha256", "TEXT"), ("transcript_end", "INTEGER"),
+                      ("media_seconds", "INTEGER"))}  # rubric: version of prompts/rank.md (influencer rows: rank-influencer.md);
 # a missing one is version 1. style: NULL or 'interview' for the episode score, 'influencer' for influencer episodes,
 # whose scores are kept out of episodes.score so the interview ranking and the gold-set pool never see them.
 
@@ -187,14 +188,14 @@ def ingest_run(run_dir: str | Path, db: str | Path | None = None, transcripts: b
     own_influencer = {}
     for e in ranked.get("episodes", []):
         if e.get("scored_in") in (None, run) and e.get("score") is not None:
-            own[e["episode_id"]] = (e["score"], e.get("reason"))
+            own[e["episode_id"]] = (e["score"], e.get("reason"), e.get("transcript") or {})
         d = eps.setdefault(e["episode_id"], {"file": None, "youtube_url": None})
         for k, v in (("title", e.get("title")), ("show", e.get("source")), ("url", e.get("url")), ("tier", e.get("tier")),
                      ("published", _day(e.get("published"))), ("transcript_url", e.get("transcript_url"))):
             d[k] = d.get(k) or v
     for e in influencer.get("episodes", []):
         if e.get("scored_in") in (None, run) and e.get("score") is not None:
-            own_influencer[e["episode_id"]] = (e["score"], e.get("reason"))
+            own_influencer[e["episode_id"]] = (e["score"], e.get("reason"), e.get("transcript") or {})
         d = eps.setdefault(e["episode_id"], {"file": None, "youtube_url": None})
         for k, v in (("title", e.get("title")), ("show", e.get("source")), ("url", e.get("url")), ("tier", e.get("tier")),
                      ("published", _day(e.get("published")))):
@@ -266,12 +267,12 @@ def ingest_run(run_dir: str | Path, db: str | Path | None = None, transcripts: b
         # Keep each score's first scored_at across re-ingests: the earliest score of an episode is its score.
         first = dict(con.execute("SELECT episode_id, scored_at FROM scores WHERE run=? AND kind='primary'", (run,)).fetchall())
         con.execute("DELETE FROM scores WHERE run=? AND kind='primary'", (run,))
-        con.executemany("INSERT INTO scores (episode_id, run, run_date, kind, score, reason, scored_at, rubric, style) "
-                        "VALUES (?,?,?,'primary',?,?,?,?,?)",
-                        [(eid, run, run_date, sc, why, first.get(eid, now), ranked.get("rubric", 1), "interview")
-                         for eid, (sc, why) in own.items()]
-                        + [(eid, run, run_date, sc, why, first.get(eid, now), influencer.get("rubric", 1), "influencer")
-                           for eid, (sc, why) in own_influencer.items()])
+        con.executemany("INSERT INTO scores (episode_id, run, run_date, kind, score, reason, scored_at, rubric, style, "
+                        "transcript_sha256, transcript_end, media_seconds) VALUES (?,?,?,'primary',?,?,?,?,?,?,?,?)",
+                        [(eid, run, run_date, sc, why, first.get(eid, now), ranked.get("rubric", 1), "interview",
+                          t.get("sha256"), t.get("end_seconds"), t.get("media_seconds")) for eid, (sc, why, t) in own.items()]
+                        + [(eid, run, run_date, sc, why, first.get(eid, now), influencer.get("rubric", 1), "influencer",
+                            t.get("sha256"), t.get("end_seconds"), t.get("media_seconds")) for eid, (sc, why, t) in own_influencer.items()])
         _canonical(con, list(eps))
         for eid, source, text, speaker, ts, tickers, nov, ver, score in claims:
             d = eps.get(eid, {})
@@ -374,9 +375,20 @@ def stored_scores(ids: list[str], db: str | Path | None = None, rubric: int | No
             tickers = [r[0] for r in con.execute("SELECT ticker FROM claim_tickers WHERE claim_id=?", (c["id"],))]
             claims.append({"ticker": tickers, "claim": c["text"], "speaker": c["speaker"] or "unknown",
                            "timestamp": c["timestamp"], "novelty": c["novelty"], "verifiable": c["verifiable"]})
-        out[eid] = {"score": e["score"], "reason": e["reason"], "scored_run": e["scored_run"], "claims": claims}
+        out[eid] = {"score": e["score"], "reason": e["reason"], "scored_run": e["scored_run"], "claims": claims,
+                    "transcript": _record(con, eid, e["scored_run"])}
     con.close()
     return out
+
+
+def _record(con, episode_id: str, run: str) -> dict | None:
+    """The transcript record the score was stored with; None for a score stored before records existed."""
+    try:
+        r = con.execute("SELECT transcript_sha256, transcript_end, media_seconds FROM scores WHERE episode_id=? AND run=? "
+                        "AND kind='primary'", (episode_id, run)).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return {"sha256": r[0], "end_seconds": r[1], "media_seconds": r[2]} if r and r[0] else None
 
 
 def _drop_chunks(con, episode_id: str) -> None:

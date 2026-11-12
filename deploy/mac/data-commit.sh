@@ -48,7 +48,10 @@ cd "$REPO"
 
 level_checkout() {
   git fetch -q origin main 2>/dev/null || { echo "[data] checkout left as is: could not fetch origin/main"; return 0; }
-  [[ "$(git symbolic-ref -q --short HEAD)" == main ]] || { echo "[data] checkout is not on main; left as is"; return 0; }
+  local branch upstream
+  branch=$(git symbolic-ref -q --short HEAD) || { echo "[data] checkout is detached; left as is"; return 0; }
+  upstream=$(git rev-parse -q --abbrev-ref "$branch@{upstream}" 2>/dev/null) || upstream=""
+  [[ "$branch" == main || "$upstream" == origin/main ]] || { echo "[data] checkout is not on main or a branch tracking origin/main; left as is"; return 0; }
   git merge-base --is-ancestor HEAD origin/main || { echo "[data] checkout has commits origin/main lacks; left as is"; return 0; }
   local untracked=() edited=() owned
   while IFS= read -r -d "" owned; do
