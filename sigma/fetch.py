@@ -185,13 +185,14 @@ def fetch(args) -> Path:
     workers = 1 if args.whisper_minutes else min(4, max(1, len(todo)))
     with ThreadPoolExecutor(workers) as pool:
         results = list(pool.map(lambda ep: safe_transcript(ep, budget), todo))
+    remembered = []
     for ep, (segs, tsrc) in zip(todo, results):
         failed = tsrc == FAILED  # keep the row (it can still be whispered) but leave the dedupe DB alone so a later run retries
         row = write_episode(run_dir, ep, segs, None if failed else tsrc, getattr(args, "min_transcript_chars", MIN_TRANSCRIPT_CHARS))
         row["news"] = ep.source_id in news_ids
         manifest["episodes"].append(row)
         if not failed:
-            store.add_episode(ep, tsrc)
+            remembered.append((ep, tsrc))
     manifest["whisper_minutes"] = round(budget.used / 60, 1)
     timing_apply(manifest, "fetch", "end")
     new = manifest
@@ -215,6 +216,8 @@ def fetch(args) -> Path:
             timing_apply(m, "fetch", "end", new["timing"]["fetch"]["end"])
 
     final = update_manifest(path, apply, lambda: new)
+    for ep, tsrc in remembered:
+        store.add_episode(ep, tsrc)
     print(f"[run] {run_dir} ({len(final['episodes'])} episodes, +{len(new['episodes'])} new)")
     events.note(episodes=len(final["episodes"]), new=len(new["episodes"]), skipped_seen=len(new["skipped_seen"]))
     return run_dir
