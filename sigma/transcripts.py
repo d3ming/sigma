@@ -62,14 +62,33 @@ def incomplete(row: dict) -> str | None:
     return f"partial transcript ({row.get('transcript_minutes')} of {round(media / 60) if media else '?'} min)"
 
 
-def whisper_short(row: dict) -> str | None:
-    """A transcript made before completeness was recorded whose whisper label names fewer minutes than the media has."""
+def _label_short(row: dict) -> tuple[int, float, float] | None:
+    """(label minutes, media seconds, share of the media the transcript reaches) for a transcript made before completeness
+    was recorded whose whisper label names fewer minutes than the media has."""
     if "transcript_complete" in row:
         return None
     m = WHISPER_MINUTES.match(row.get("transcript_source") or "")
     media = media_seconds(row)
-    if m and media and int(m.group(1)) * 60 < media - WHISPER_SHORT_SECONDS:
-        return f"whisper stopped at {m.group(1)} of {round(media / 60)} min"
+    if not (m and media and int(m.group(1)) * 60 < media - WHISPER_SHORT_SECONDS):
+        return None
+    reach = (row.get("transcript_minutes") or int(m.group(1))) * 60 / media
+    return int(m.group(1)), media, reach
+
+
+def whisper_short(row: dict) -> str | None:
+    """A legacy whisper transcript that ends well short of its media: the budget cut it. A feed often declares more time
+    than the audio has, so a label a few minutes short is not evidence of a cut on its own."""
+    short = _label_short(row)
+    if short and short[2] < LOW_COVERAGE:
+        return f"whisper stopped at {short[0]} of {round(short[1] / 60)} min"
+    return None
+
+
+def unverified_length(row: dict) -> str | None:
+    """A legacy whisper label a few minutes short of the feed's length, reaching LOW_COVERAGE or more: not partial."""
+    short = _label_short(row)
+    if short and short[2] >= LOW_COVERAGE:
+        return f"unverified length (whisper {short[0]} of {round(short[1] / 60)} min)"
     return None
 
 

@@ -6,9 +6,11 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .transcripts import LOW_COVERAGE, check, choose, copy_of, fuller, media_seconds, minutes, partial, record, same_media
+from .transcripts import (LOW_COVERAGE, check, choose, copy_of, fuller, media_seconds, minutes, partial, record, same_media,
+                          unverified_length)
 
 SCORE_FILES = ("ranked.json", "scores.json", "scores-influencer.json")
+LOW = "unverified length"
 
 
 def _read(path: Path):
@@ -40,8 +42,9 @@ def audit(root: Path) -> dict:
                 why = reasons(rows.get((run_dir.name, eid), {}), here.get((run_dir.name, eid)), copies[eid], rec)
                 if why:
                     flagged.append({"run": run_dir.name, "episode_id": eid, "score": e["score"],
-                                    "published": run_dir.name in published, "file": name, "reasons": why})
-    flagged.sort(key=lambda f: (-f["score"], f["episode_id"], f["run"]))
+                                    "published": run_dir.name in published, "file": name, "reasons": why,
+                                    "low_priority": all(r.startswith(LOW) for r in why)})
+    flagged.sort(key=lambda f: (f["low_priority"], -f["score"], f["episode_id"], f["run"]))
     return {"scores": total, "flagged": flagged, "episodes": len({f["episode_id"] for f in flagged}),
             "unverifiable_legacy": legacy}
 
@@ -55,6 +58,8 @@ def reasons(row: dict, c, copies: list, rec: dict | None) -> list[str]:
         out.append("media length unknown")
     if cut := partial(row):
         out.append(cut)
+    if unsure := unverified_length(row):
+        out.append(unsure)
     if media and c.end / media < LOW_COVERAGE:
         out.append(f"coverage {c.end / media:.0%}")
     best, _ = choose(copies, row)
@@ -66,9 +71,10 @@ def reasons(row: dict, c, copies: list, rec: dict | None) -> list[str]:
 
 
 def summary(report: dict) -> str:
-    pub = sum(f["published"] for f in report["flagged"])
-    return (f"score audit: {len(report['flagged'])} of {report['scores']} stored scores flagged ({report['episodes']} episodes; "
-            f"{pub} in published runs); {report['unverifiable_legacy']} have no transcript record (unverifiable legacy); "
+    review = [f for f in report["flagged"] if not f["low_priority"]]
+    return (f"score audit: {len(review)} of {report['scores']} stored scores flagged ({len({f['episode_id'] for f in review})} "
+            f"episodes; {sum(f['published'] for f in review)} in published runs), {len(report['flagged']) - len(review)} more of "
+            f"unverified length only; {report['unverifiable_legacy']} have no transcript record (unverifiable legacy); "
             "`sigma score-audit` lists them")
 
 

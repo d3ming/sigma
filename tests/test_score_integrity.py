@@ -39,7 +39,8 @@ def test_a_budget_cut_transcript_is_never_complete_or_reused_and_the_fullest_sam
     run(runs, "2026-10-27", (episode(), segs(2928), "whisper large-v3-turbo (49 min)"))
     run(runs, "2026-10-31-bucco", (episode(), segs(3750), "whisper large-v3-turbo (63 min)"))
     run(runs, "2026-11-01-adshift", (episode(duration=3900), segs(3900), "whisper large-v3-turbo (65 min)"))
-    run(runs, "2026-11-02-weekly", (episode("x:nomedia"), segs(4200, "talk"), "whisper large-v3-turbo (70 min)"))
+    run(runs, "2026-11-02-weekly", (episode("rss:feedlong", duration=3582), segs(3420, "feed"), "whisper large-v3-turbo (57 min)"),
+        (episode("x:nomedia"), segs(4200, "talk"), "whisper large-v3-turbo (70 min)"))
     run(tmp_path / "archive", "2026-10-27", (episode(), segs(2928), "whisper large-v3-turbo (49 min)"))
     (tmp_path / "operator.json").write_text(json.dumps({"legacy_transcripts": ["archive"]}))
     (runs / "2026-10-27" / "scores.json").write_text(json.dumps({"episodes": [{"episode_id": "rss:sosin", "score": 5}]}))
@@ -59,7 +60,7 @@ def test_a_budget_cut_transcript_is_never_complete_or_reused_and_the_fullest_sam
     assert status.inspect_run(new)["transcribe"]["whisper_pending"] == 1
     assert fetch_mod.ReuseIndex(runs).find(cut) is None
     index = fetch_mod.ReuseIndex(runs, exclude=new)
-    for eid in ("x:nomedia",):  # failure seen in review: an episode with no media keys
+    for eid in ("rss:feedlong", "x:nomedia"):  # failures seen in review: a feed declaring 3 more minutes, an episode with no media keys
         assert index.find(rows(runs / "2026-11-02-weekly")[eid])[2].startswith("2026-11-02-weekly/")
 
     found = transcripts.locate(tmp_path, "rss:sosin")
@@ -71,7 +72,8 @@ def test_a_budget_cut_transcript_is_never_complete_or_reused_and_the_fullest_sam
     report = scoreaudit.audit(tmp_path)
     assert report["flagged"] == [{"run": "2026-10-27", "episode_id": "rss:sosin", "score": 5, "published": False, "file": "scores.json",
                                   "reasons": ["whisper stopped at 49 of 61 min", "coverage 80%",
-                                              "fuller copy of the same media in 2026-10-31-bucco (62.5 vs 48.8 min)"]}]
+                                              "fuller copy of the same media in 2026-10-31-bucco (62.5 vs 48.8 min)"],
+                                  "low_priority": False}]
     assert report["unverifiable_legacy"] == 1
 
 
