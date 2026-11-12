@@ -59,3 +59,7 @@ label beside that total. Repeated claims could outweigh independent speakers and
 Sentiment now uses the same per-speaker voting rule for video and X, with a five-point stance or Mixed and source
 evidence, over the past 30 days. Stored labels and video ratings are unchanged. The former model is at
 `51bc256:sigma/board.py` and its display is at `51bc256:sigma/site.py`.
+
+## Python 3.10 and 3.11 support
+
+`requires-python` was `>=3.10`, CI tested 3.10 and 3.12, and `sigma/edit.py` fell back to `tomli` when `tomllib` was missing. Every runtime the repository installs (`scripts/bootstrap.sh` creates a 3.12 venv) is 3.12, and code that ran on 3.12 but not 3.10 failed CI twice (`68f6d6c`, then `1e188c0` fixed in `3c2e676`). The floor is 3.12; the CI matrix is 3.12 only and the `tomli` dependency and fallback are gone. The last tree that supports 3.10 is `d0a96cb`.

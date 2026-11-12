@@ -6,17 +6,13 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import jsonschema
 
 from . import editor, entities, ranked
-
-try:
-    import tomllib
-except ImportError:
-    import tomli as tomllib
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT = ROOT / ".codex" / "agents" / "podcast-editor.toml"

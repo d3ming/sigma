@@ -17,8 +17,8 @@ MIN_FREE_GB = 5.0
 
 
 def check_python():
-    ok = sys.version_info >= (3, 10)
-    return ("ok" if ok else "fail", f"python {sys.version.split()[0]} ({sys.executable})" + ("" if ok else "; need >= 3.10"))
+    ok = sys.version_info >= (3, 12)
+    return ("ok" if ok else "fail", f"python {sys.version.split()[0]} ({sys.executable})" + ("" if ok else "; need >= 3.12"))
 
 
 def check_whisper():
