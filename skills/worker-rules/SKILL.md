@@ -13,9 +13,9 @@ a worker in a worktree needs and the briefs do not repeat.
 
 ## Start
 
-- Other workers are changing this repository at the same time. Branch from current `origin/main`
-  (`git fetch origin`; your worktree may be older), stay inside the files the brief names, and rebase on `origin/main`
-  right before your last commit.
+- Other workers are changing this repository at the same time. Branch from current `origin/develop`
+  (`git fetch origin`; your worktree may be older), stay inside the files the brief names, and rebase on
+  `origin/develop` right before your last commit.
 - Check the brief's premise against the code and data before building on it. A false premise is a report, not a
   workaround.
 
@@ -32,19 +32,20 @@ a worker in a worktree needs and the briefs do not repeat.
 
 - Run `sigma today`, `daily`, `fetch`, `transcribe`, or any `x` command that scans X. They start the real pipeline.
 - Write the main checkout's `runs/`, `data/` or `published/`. Read them freely; for a step that writes the X data
-  folder, point `$SIGMA_X_DIR` at a copy in your scratch. Published output you produce goes in your worktree's
-  `published/` and lands with your commit.
-- Use bare `git stash`, push to anything but `main`, or open a pull request.
+  folder, point `$SIGMA_X_DIR` at a copy in your scratch. Published output is private data: it never lands in this
+  repository, so keep any you produce in your scratch.
+- Use bare `git stash`, push to anything but `develop`, or open a pull request.
 - Put private research in the public repo: no copied post or newsletter text, no holdings, no reasons for following
-  someone (AGENTS.md, Rules).
+  someone (AGENTS.md, Tenets).
 - Start subagents.
 
 ## Land
 
 - Commit in your worktree. Push only when the brief says so; otherwise the lead reviews and pushes.
 - Proof is the command in use on real data or a faithful copy, with what it printed, in the commit message or report.
-  `pytest -q` must pass in under 5 s; most changes need no new test (CONTRIBUTING.md).
-- A change to published data ships with its republish: run the step by hand for the days or runs it affects and commit
-  the result.
+  `make check` must pass; most changes need no new test (CONTRIBUTING.md).
+- A change to published data does not republish from a worker: name the days or runs it affects in your report. The
+  lead republishes them through the `develop`→`main` release PR and `make publish` from the release checkout; a worker
+  never runs `make publish`.
 - Report: commit hash and branch, the proof, numbers before and after when the change moves a number people read, and
   what you did not verify.
