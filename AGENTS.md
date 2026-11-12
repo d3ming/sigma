@@ -6,13 +6,8 @@ the pipeline and the site. Owner's instance: a Mac publisher, cloud contributors
 ([skills/ingest-request](skills/ingest-request/SKILL.md)); the daily and weekly editions continue.
 
 The publisher pushes to `develop`; contributors open PRs. Source reaches `main` through a reviewed `develop`→`main` PR. A passing release
-PR authorizes publication, including new public pages, without another owner approval, except a post. Use `make publish`; it validates
-the frozen build, saves private data
-to its own repository’s `main`, then tags and uploads. Merging alone does not deploy. Keep automatic Git deployments
+PR authorizes publication, including new public pages, without another owner approval, except a post. Use `make publish`. Merging alone does not deploy. Keep automatic Git deployments
 disabled. Private migration notes never enter this repository or its history.
-
-This file holds only what a capable agent would get wrong here without being told. The code and each command's
-`--help` own the rest.
 
 ## Where things are
 
@@ -21,10 +16,8 @@ This file holds only what a capable agent would get wrong here without being tol
 - [REVIEW.md](REVIEW.md): how to review a change and the `develop`→`main` release PR.
 - [docs/architecture.md](docs/architecture.md): how the pipeline, data root and site fit together.
 - [deploy/mac/README.md](deploy/mac/README.md): the publisher's macOS setup.
-- [skills/](skills/): the agent-run procedures, one folder each with a `SKILL.md`.
 - [skills/test-audit](skills/test-audit/SKILL.md): whether a test earns its place; apply it to every added or changed test.
 - [prompts/](prompts/): the prompts the scheduled agents follow word for word.
-- [schema/](schema/): schemas for agents' output files.
 
 ## Tenets
 
@@ -58,9 +51,8 @@ Everything else is yours to decide. Be bold with reversible work.
 - Commit subjects are [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/), 72 characters at most.
 - Err toward a body. The subject says what changed; the body says why, what you chose over what, and how you proved it.
 - Never name the owner or anyone behind the project in files or commit messages: write "the owner" or "the maintainer".
-  Private holdings, contact details and personal identity stay out. Keep public site identity in operator configuration; a handle explicitly designated public is not a private word. `.private-words.sha256` (committed) holds salted hashes of the words the commit hooks and CI refuse;
-  `scripts/private_words.py --add` adds one from stdin, so a word never lands in a file. A missing list fails. An optional
-  git-ignored `.private-words` adds plain words on one machine. Run `git config core.hooksPath .githooks` once per clone.
+  Private holdings, contact details and personal identity stay out. Keep public site identity in operator configuration; a handle explicitly designated public is not a private word. Add
+  a private word with `scripts/private_words.py --add` (stdin), never in a file. Run `git config core.hooksPath .githooks` once per clone.
 - Early history, before this guard, names the owner's domains and handle. The owner accepted it as it stands: no history
   rewrite, no force-push. Keep current files clean; do not copy old strings forward from history.
 - Commits use the GitHub no-reply address, which is set in this repo's config. Check it with `git config user.email`
@@ -75,8 +67,7 @@ Everything else is yours to decide. Be bold with reversible work.
 
 ## Commands
 
-- `make check`: the private-word guard, the agent-doc check and the full suite. The pre-push hook runs the same.
-- `make test`: the suite alone. `make test-fast`: the suite without the `slow` modules, stopping at the first failure.
+- `make check`: private words, agent docs, rubric version, full suite; the pre-push hook runs it. `make test-fast` for quick feedback.
 
 ## Verification
 
@@ -86,8 +77,6 @@ Choose proof with [verify](skills/verify/SKILL.md) and its feature map.
 - CLI/data: run the actual command in isolated data and inspect outputs and side effects. Keep automatic proof of grounding, calculations, privacy and stored-data integrity.
 - Instructions: run document guards; exercise changed instructions in a fresh context when practical.
 - Publication: use reviewed main, `make publish` and live checks. Never release fictional fixtures.
-
-Browser driving is opt-in, outside pytest/pre-push; run affected journeys, then `make check` before pushing. Manual proof cannot replace unique automatic coverage. Remove overlaps only after preserving distinct assertions and proving retained checks catch deliberate breaks. A timing retry does not repair the five-second target.
 
 ## Tests
 
