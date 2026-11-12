@@ -145,6 +145,17 @@ def test_reserved_example_addresses_and_fictional_numbers_are_allowed(tmp_path):
     assert run(root).returncode == 1
 
 
+def test_a_no_reply_address_is_allowed_only_when_nothing_else_makes_it_personal(tmp_path):
+    """Failure seen in PR 29: the default agent co-author trailer was refused. A look-alike or a listed domain still is."""
+    root = repo(tmp_path, words=(WORD, "corpx"))
+    trailer = f"Co-Authored-By: Claude <noreply{AT}anthropic.com>\n"
+    stage(root, "t.md", trailer)
+    assert run(root).returncode == 0
+    for bad in (f"noreplyx{AT}anthropic.com", f"no-reply{AT}corpx.org", f"noreply{AT}corpx.org"):
+        stage(root, "t.md", f"{trailer}{bad}\n")
+        assert run(root).returncode == 1, bad
+
+
 def test_a_directory_of_built_output_is_checked(tmp_path):
     root = repo(tmp_path, words=(WORD, "sigma.example"))
     out = tmp_path / "site"

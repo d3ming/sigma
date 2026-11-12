@@ -1823,7 +1823,7 @@ def find_index(reg: dict, ent: ents.Entities, cos: dict) -> dict:
     used = {c for x in eps for c in x["c"]}
     return {"picks_label": PICKS_LABEL, "topics": {t: n for t, n in ent.topic_names.items()},
             "lenses": {k: {"name": v.get("name") or k, "mark": v.get("mark") or k, "about": v.get("about") or ""} for k, v in ent.lenses.items()},
-            "companies": {k: cos[k]["name"] for k in used if k in cos}, "people": people, "eps": eps}
+            "companies": {k: cos[k]["name"] for k in sorted(used) if k in cos}, "people": people, "eps": eps}
 
 
 FIND_JS = """<script>(async()=>{const $=id=>document.getElementById(id),P=new URLSearchParams(location.search),L=()=>window.sigmaLens?sigmaLens.get():'';

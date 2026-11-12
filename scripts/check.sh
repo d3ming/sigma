@@ -7,7 +7,10 @@ set -eu
 cd "$(dirname "$0")/.."
 [ "${1:-}" = "--hook" ] && exec scripts/setup.sh  # old name for scripts/setup.sh
 py=python3
-main="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"  # a worktree has no .venv of its own: use the main checkout's
+main="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+if [ ! -x .venv/bin/python ] && [ "$main" != "$PWD" ] && command -v uv >/dev/null 2>&1; then
+  uv venv -q --python 3.12 .venv && uv pip install -q --python .venv/bin/python -e ".[dev]"
+fi
 for v in .venv "$main/.venv"; do [ -x "$v/bin/python" ] && { py="$v/bin/python"; break; }; done
 tests=
 if [ "${1:-}" = "--tests" ]; then tests=1; shift; fi

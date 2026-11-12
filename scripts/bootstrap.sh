@@ -34,7 +34,7 @@ fi
 if [ ! -x .venv/bin/python ]; then
   uv venv --python 3.12 .venv
 fi
-.venv/bin/python -c 'import sys; sys.exit(0 if (3, 10) <= sys.version_info[:2] <= (3, 14) else "Existing .venv needs Python 3.10-3.14. Save it elsewhere and rerun make setup.")'
+.venv/bin/python -c 'import sys; sys.exit(0 if (3, 12) <= sys.version_info[:2] <= (3, 14) else "Existing .venv needs Python 3.12-3.14. Save it elsewhere and rerun make setup.")'
 EXTRAS=dev,whisper
 if [ "$(uname -s)" = Darwin ] && [ "$(uname -m)" = arm64 ]; then
   EXTRAS=dev,mac
