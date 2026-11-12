@@ -42,7 +42,7 @@ def test_a_transcript_from_another_run_is_reused_and_news_is_whispered_last_or_n
                                             ep("rss:n", "Brand new", "a16z")])
     monkeypatch.setattr(whisper, "available", lambda: True)
     calls = []
-    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 180.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 180.0, 180.0))
     fetch_mod.transcribe_run(targs(run))
     m = {e["episode_id"]: e for e in json.loads((run / "manifest.json").read_text())["episodes"]}
     assert calls == ["https://cdn.example/rss:n.mp3"]  # same title, or same audio behind a tracker: already transcribed
@@ -50,7 +50,7 @@ def test_a_transcript_from_another_run_is_reused_and_news_is_whispered_last_or_n
     assert "[0:00:10] word" in (run / m["rss:z"]["file"]).read_text()
     news = make_run(tmp_path / "news", [ep("rss:h", "Halftime", "cnbc-halftime"), ep("rss:x", "Deep dive", "no-priors")], **{"rss:h": {"news": True}})
     calls.clear()
-    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 60.0))
+    monkeypatch.setattr(whisper, "transcribe", lambda url, b: calls.append(url) or (LONG, 60.0, 60.0))
     main(["transcribe", str(news), "--top", "0", "--people", ""])  # news shows are not whispered unless asked
     assert calls == ["https://cdn.example/rss:x.mp3"]
     main(["transcribe", str(news), "--top", "0", "--people", "", "--news"])

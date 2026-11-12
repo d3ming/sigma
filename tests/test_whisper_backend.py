@@ -51,16 +51,16 @@ def test_mlx_cuts_at_the_budget_and_trims_the_audio_only_when_it_is_shorter(monk
     seen = _mlx_fakes(monkeypatch, 230.0, segs)
     monkeypatch.setattr(whisper, "trim_audio", lambda p, l: None)  # trim failed: whole file, output still cut at budget
     b = whisper.Budget(2)  # 120 s
-    out, used = whisper.transcribe_file("x.mp3", b)
+    out, used, media = whisper.transcribe_file("x.mp3", b)
     assert out == [{"start": 0.0, "speaker": None, "text": "one"}, {"start": 90.0, "speaker": None, "text": "two"}]
-    assert used == 120 and b.used == 120 and seen["paths"] == ["x.mp3"]
+    assert used == 120 and media == 230.0 and not whisper.complete(used, media) and b.used == 120 and seen["paths"] == ["x.mp3"]
     assert seen["language"] == "en" and seen["condition_on_previous_text"] is False
     monkeypatch.setattr(whisper, "audio_seconds", lambda p: None)  # no ffprobe: fall back to the last segment end
     assert whisper.transcribe_file("x.mp3", whisper.Budget(60))[1] == 230.0
     seen = _mlx_fakes(monkeypatch, 3 * 3600)
-    out, used = whisper.transcribe_file("long.mp3", whisper.Budget(5))
+    out, used, media = whisper.transcribe_file("long.mp3", whisper.Budget(5))
     assert seen["trim"] == [("long.mp3", 300)] and seen["paths"] == ["/tmp/trimmed.wav"]
-    assert seen["unlinked"] == ["/tmp/trimmed.wav"] and used == 300 and out
+    assert seen["unlinked"] == ["/tmp/trimmed.wav"] and (used, media) == (300, 3 * 3600) and out
     seen = _mlx_fakes(monkeypatch, 600)
-    whisper.transcribe_file("short.mp3", whisper.Budget(20))
+    assert whisper.complete(*whisper.transcribe_file("short.mp3", whisper.Budget(20))[1:])
     assert seen["trim"] == [] and seen["paths"] == ["short.mp3"]

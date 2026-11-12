@@ -38,7 +38,7 @@ def make_run(d, eps, segs=None, **extra):
     d.mkdir(parents=True)
     rows = []
     for e in eps:
-        r = fetch_mod.write_episode(d, e, segs, "whisper (3 min)" if segs else None)
+        r = fetch_mod.write_episode(d, e, segs, "podcast:transcript" if segs else None)
         r.update(extra.get(e.id, {}))
         rows.append(r)
     (d / "manifest.json").write_text(json.dumps({"episodes": rows}))

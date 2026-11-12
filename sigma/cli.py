@@ -257,7 +257,9 @@ def rank_prep(args) -> None:
           f"scored)." + (f" rank/eval-in.json: {r['eval']} stored episodes to re-score blind." if r["eval"] else "")
           + (f" {r['influencer_to_score']} of {r['influencer']} influencer episodes to score in {r['influencer_batches']} rank/influencer-N-in.json "
              f"batches (prompts/rank-influencer.md); {r['influencer_stored']} keep their stored score." if r["influencer"] else "")
-          + " Give each file to a reader (prompts/rank.md); save its output as rank/<name>-out.json, then run rank-merge.")
+          + " Give each file to a reader (prompts/rank.md); save its output as rank/<name>-out.json, then run rank-merge."
+          + (f" Kept for review (`sigma score-audit`): {r['unverifiable']} stored scores with no transcript record, "
+             f"{r['mismatch']} made on a materially different transcript." if r["unverifiable"] or r["mismatch"] else ""))
 
 
 def stance_cmd(args) -> None:
@@ -473,6 +475,22 @@ def status_cmd(args) -> None:
         print(st.render_text(info))
         if info.get("recorded"):
             print(f"[status] recorded timing: {', '.join(info['recorded'])}")
+
+
+def score_audit_cmd(args) -> None:
+    from . import scoreaudit
+
+    report = scoreaudit.audit(DATA)
+    print(json.dumps(report, indent=1, ensure_ascii=False) if args.json else scoreaudit.render(report))
+
+
+def transcript_cmd(args) -> None:
+    from . import transcripts
+
+    found = transcripts.locate(DATA, args.episode_id)
+    print(json.dumps(found, indent=1, ensure_ascii=False) if args.json else transcripts.render(found))
+    if not found["chosen"]:
+        sys.exit(1)
 
 
 def today_name(now=None) -> str:
@@ -817,6 +835,11 @@ def _main(argv=None):
     stp.add_argument("--json", action="store_true", help="machine-readable output (schema/status.schema.json)")
     stp.add_argument("--weekly", action="store_true", help="force the weekly (rank) flow instead of auto-detecting")
     stp.add_argument("--record", action="store_true", help="also stamp select/report start/end timing the code can observe (the only write)")
+    sa = sub.add_parser("score-audit", help="list stored scores whose transcript is partial, short of the media, superseded by a fuller copy, missing or changed since scoring; changes nothing")
+    sa.add_argument("--json", action="store_true")
+    tx = sub.add_parser("transcript", help="the fullest complete transcript of an episode under the data root's runs/, and the copies passed over with why; exit 1 when there is none")
+    tx.add_argument("episode_id")
+    tx.add_argument("--json", action="store_true")
     ed = sub.add_parser("edit", help="write the full editor.json entry (prompts/edit.md) for each ranked episode scoring --min-score or more that has none: one Codex run each, checked alone, then merged",
                         description="Model and effort come from .codex/agents/podcast-editor.toml. Each draft is saved in <run>/edits/ and merged into editor.json only after `python -m sigma.editor` checks it against its transcript; a failed check is fed back to Codex up to --fixes times.")
     ed.add_argument("run")
@@ -924,7 +947,7 @@ def _main(argv=None):
     events.command(args)
     if getattr(args, "backend", None):
         os.environ["SIGMA_WHISPER_BACKEND"] = args.backend  # the queued transcribe child inherits it
-    own ={"status": status_cmd, "edit": edit_cmd,"find": find_cmd, "custom-run": custom_run_cmd, "today": today_cmd, "doctor": doctor_cmd,
+    own ={"status": status_cmd, "score-audit": score_audit_cmd, "transcript": transcript_cmd, "edit": edit_cmd,"find": find_cmd, "custom-run": custom_run_cmd, "today": today_cmd, "doctor": doctor_cmd,
            "entities": entities_cmd,
            "calls": calls_cmd,
            "source": source_cmd,

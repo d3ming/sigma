@@ -19,6 +19,7 @@ from .people import apply_source_tiers, discover_people, load_people
 from .ingest import counterparts, different_youtube_videos, in_window, is_rerun, video_id
 from .manifest import update as update_manifest
 from .transcribe import MIN_TRANSCRIPT_CHARS, fmt_ts, get_transcript, is_fallback, title_match, transcript_chars
+from .transcripts import Copy, choose, copy_of, norm_audio, partial
 from .triage import DEFAULT_TOP
 from .whisper import Budget
 
@@ -57,10 +58,16 @@ def same_episode(ep, known) -> bool:
     return same_day and same_show and numbers == old_numbers
 
 
+def whisper_fields(media: float | None, complete: bool | None) -> dict:
+    """What whisper knows and other sources do not: the media length and whether the budget let it reach the end."""
+    return {"media_seconds": round(media), "transcript_complete": complete} if media and complete is not None else {}
+
+
 def episode_md(ep, segs: list[dict] | None, tsrc: str | None) -> str:
     front = {"episode_id": ep.id, "title": ep.title, "source": ep.source_name, "source_id": ep.source_id,
              "tier": ep.tier, "style": ep.style, "published": ep.published_at.isoformat(), "url": ep.url,
-             "youtube_id": ep.youtube_id, "transcript_source": tsrc or "none"}
+             "youtube_id": ep.youtube_id, "transcript_source": tsrc or "none",
+             **whisper_fields(ep.media_seconds, ep.transcript_complete)}
     body = ["---", yaml.safe_dump(front, sort_keys=False, allow_unicode=True).strip(), "---", "", f"# {ep.title}", ""]
     if ep.description:
         body += ["## Description", "", re.sub(r"<[^>]+>", " ", ep.description).strip(), ""]
@@ -81,10 +88,11 @@ def write_episode(run_dir: Path, ep: Episode, segs, tsrc, min_chars: int = MIN_T
     print(f"[episode] {ep.source_id}: transcript={tsrc or 'none'}")
     return {"episode_id": ep.id, "file": name, "title": ep.title, "source": ep.source_name, "source_tag": ep.source_id,
             "via": ep.via or "channel", "tier": ep.tier, "style": ep.style, "published": ep.published_at.isoformat(), "url": ep.url,
-            "transcript_source": "fallback" if fallback else tsrc, "has_transcript": bool(segs) and not fallback,
+            "transcript_source": "fallback" if fallback else tsrc, "has_transcript": bool(segs) and not fallback and ep.transcript_complete is not False,
             "fallback_text": fallback, "fallback_from": tsrc if fallback else None, "transcript_chars": transcript_chars(segs),
             "transcript_minutes": round(segs[-1]["start"] / 60) if segs and not fallback else 0, "audio_url": ep.audio_url,
             "youtube_id": ep.youtube_id, "transcript_url": ep.transcript_url, "rerun": is_rerun(ep.title, ep.description), "duration": ep.duration,
+            **whisper_fields(ep.media_seconds, ep.transcript_complete),
             **({"image_url": ep.image_url} if ep.image_url else {}),
             **({"show_image_url": ep.show_image_url} if ep.show_image_url else {}),
             "description": re.sub(r"<[^>]+>", " ", ep.description or "")[:1500]}
@@ -253,6 +261,8 @@ def skip_reason(e: dict, *, top: int, skip_news: bool, reruns: bool, retry: bool
     None when it has one. Every episode without a transcript gets a reason: an unexplained gap looks like a bug."""
     if e.get("has_transcript"):
         return None
+    if cut := partial(e):
+        return f"{cut}: the audio budget ran out; left for the next transcribe run"
     tri, why = e.get("triage") or {}, (e.get("triage") or {}).get("reasons") or []
     if e.get("rerun") and not reruns:
         return "rerun of an earlier episode; not whispered (--include-reruns)"
@@ -357,6 +367,7 @@ def transcribe_run(args) -> Path:
             try:
                 if hit:
                     segs, tsrc, used = hit[0], hit[1], 0.0
+                    fields = {k: hit[4][k] for k in ("media_seconds", "transcript_complete") if k in hit[4]}
                     log(f"reuse {e['episode_id']} from {hit[2]}")
                     if pf:
                         pf.cleanup()
@@ -365,12 +376,13 @@ def transcribe_run(args) -> Path:
                 else:
                     t0 = time.monotonic()
                     if e.get("audio_url"):
-                        segs, used = whisper.transcribe_prefetched(pf, budget) if pf else whisper.transcribe(e["audio_url"], budget)
+                        segs, used, media = whisper.transcribe_prefetched(pf, budget) if pf else whisper.transcribe(e["audio_url"], budget)
                         tsrc = whisper.label(used)
                     else:  # YouTube-only: same label get_transcript's youtube_audio path writes
-                        segs, used = whisper.transcribe_youtube(e["youtube_id"], budget)
+                        segs, used, media = whisper.transcribe_youtube(e["youtube_id"], budget)
                         tsrc = whisper.label(used, ", youtube audio")
-                    log(f"whispered {round(used / 60)} audio min in {round(time.monotonic() - t0)} s wall")
+                    fields = whisper_fields(media, whisper.complete(used, media))
+                    log(f"whispered {round(used / 60)} of {round((media or 0) / 60)} audio min in {round(time.monotonic() - t0)} s wall")
             except whisper.YouTubeBlocked:
                 yt_blocked = time.monotonic()
                 events.emit("transcribe_episode", run_dir.name, "skip", time.monotonic() - t_ep, err="YouTube bot check",
@@ -380,17 +392,20 @@ def transcribe_run(args) -> Path:
                     log(f"YouTube bot check on {e['episode_id']}; YouTube episodes wait until the podcast audio is done")
                 continue
             except Exception as exc:
-                segs, tsrc, used = None, None, 0.0
+                segs, tsrc, used, fields = None, None, 0.0, {}
                 e["whisper_error"] = str(exc) if isinstance(exc, whisper.DownloadError) else type(exc).__name__
                 rec = record_failure(run_dir, fails, e, exc)
             if segs and is_fallback(segs, min_chars):
                 segs, e["whisper_error"] = None, "short"
             if segs:
                 md = run_dir / e["file"]
-                md.write_text(with_transcript(md.read_text(), segs, tsrc))
-                e.update(has_transcript=True, transcript_source=tsrc, transcript_minutes=round(segs[-1]["start"] / 60),
-                         fallback_text=False, transcript_chars=transcript_chars(segs))
-                if store:
+                md.write_text(with_transcript(md.read_text(), segs, tsrc, fields))
+                for k in ("media_seconds", "transcript_complete"):
+                    e.pop(k, None)
+                e.update(has_transcript=fields.get("transcript_complete") is not False, transcript_source=tsrc,
+                         transcript_minutes=round(segs[-1]["start"] / 60), fallback_text=False,
+                         transcript_chars=transcript_chars(segs), **fields)
+                if store and e["has_transcript"]:
                     store.set_transcript(e["episode_id"], tsrc)
             elif not e.get("whisper_error"):
                 e["whisper_error"] = "empty"
@@ -459,21 +474,6 @@ def norm_title(t: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (t or "").lower()).strip()
 
 
-TRACKER = re.compile(r"^(dts\.podtrac\.com/redirect\.mp3/|www\.podtrac\.com/pts/redirect\.mp3/|chtbl\.com/track/[^/]+/|"
-                     r"pdst\.fm/e/|prfx\.byspotify\.com/e/|tracking\.swap\.fm/track/[^/]+/|claritaspod\.com/measure/|"
-                     r"arttrk\.com/p/[^/]+/|verifi\.podscribe\.com/rss/p/|pfx\.vpixl\.com/[^/]+/|mgln\.ai/e/[^/]+/|op3\.dev/e/)")
-
-
-def norm_audio(u: str | None) -> str:
-    """Host + path of the enclosure with query and tracking-redirect prefixes (podtrac, swap.fm, ...) stripped."""
-    if not u:
-        return ""
-    u = re.sub(r"^https?://", "", u.split("?", 1)[0].lower())
-    while (m := TRACKER.match(u)):
-        u = re.sub(r"^https?://", "", u[m.end():])
-    return u
-
-
 def segments_from_md(text: str) -> list[dict]:
     def parse_ts(t: str) -> float:
         sec = 0
@@ -494,7 +494,7 @@ class ReuseIndex:
     """Transcripts already made in other run folders, keyed by episode id, enclosure, and show + title."""
 
     def __init__(self, runs: Path, exclude: Path | None = None):
-        self.by = {}
+        self.by: dict[str, list] = {}
         self.identities = {}
         for mp in sorted(runs.glob("*/manifest.json")):
             if exclude and mp.parent.resolve() == exclude.resolve():
@@ -508,7 +508,7 @@ class ReuseIndex:
                     self.identities.setdefault(k, e)
                 if e.get("has_transcript"):
                     for k in self.keys(e):
-                        self.by.setdefault(k, (mp.parent, e))
+                        self.by.setdefault(k, []).append((mp.parent, e))
 
     @staticmethod
     def keys(e: dict) -> list[str]:
@@ -529,29 +529,32 @@ class ReuseIndex:
                 return self.identities[k]
         return None
 
-    def locate(self, e: dict):
-        """(run folder, manifest row) of an earlier transcript of this episode whose markdown is still on disk, else None."""
+    def best(self, e: dict) -> Copy | None:
+        """The fullest complete copy of this episode (sigma.transcripts.choose) long enough to stand as its transcript."""
+        seen, copies = set(), []
         for k in self.keys(e):
-            if k in self.by:
-                d, old = self.by[k]
-                if k.startswith("title:") and different_youtube_videos(e["episode_id"], old["episode_id"], e.get("youtube_id"), old.get("youtube_id")):
+            for d, old in self.by.get(k, []):
+                if (d, old["file"]) in seen or (k.startswith("title:") and different_youtube_videos(
+                        e["episode_id"], old["episode_id"], e.get("youtube_id"), old.get("youtube_id"))):
                     continue
-                if (d / old["file"]).exists():
-                    return d, old
-        return None
+                seen.add((d, old["file"]))
+                if (c := copy_of(d, old)) and transcript_chars(segments_from_md(c.path.read_text())) >= MIN_TRANSCRIPT_CHARS:
+                    copies.append(c)
+        copies.sort(key=lambda c: c.run)
+        return choose(copies, e)[0]
+
+    def locate(self, e: dict):
+        """(run folder, manifest row) of the copy `find` would reuse, else None."""
+        c = self.best(e)
+        return (c.path.parent, c.row) if c else None
 
     def find(self, e: dict):
-        for k in self.keys(e):
-            if k in self.by:
-                d, old = self.by[k]
-                if k.startswith("title:") and different_youtube_videos(e["episode_id"], old["episode_id"], e.get("youtube_id"), old.get("youtube_id")):
-                    continue
-                md = d / old["file"]
-                if md.exists():
-                    segs = segments_from_md(md.read_text())
-                    if segs and transcript_chars(segs) >= MIN_TRANSCRIPT_CHARS:
-                        return segs, old["transcript_source"], f"{d.name}/{old['file']}", old.get("transcript_url")
-        return None
+        """(segments, transcript_source, run/file, transcript_url, manifest row) of the copy to reuse, else None."""
+        c = self.best(e)
+        if not c:
+            return None
+        old = c.row
+        return segments_from_md(c.path.read_text()), old["transcript_source"], f"{c.run}/{old['file']}", old.get("transcript_url"), old
 
 
 def can_whisper(e: dict) -> bool:
@@ -577,9 +580,11 @@ def log(msg: str) -> None:
     print(f"[transcribe] {datetime.now().strftime('%H:%M:%S')} {msg}", flush=True)
 
 
-def with_transcript(md: str, segs: list[dict], tsrc: str) -> str:
+def with_transcript(md: str, segs: list[dict], tsrc: str, fields: dict | None = None) -> str:
     head, _, _ = md.partition("## Transcript")
-    head = re.sub(r"^transcript_source: .*$", f"transcript_source: {tsrc}", head, count=1, flags=re.M)
+    head = re.sub(r"^(media_seconds|transcript_complete): .*\n", "", head, flags=re.M)
+    extra = "".join(f"\n{k}: {str(v).lower() if isinstance(v, bool) else v}" for k, v in (fields or {}).items())
+    head = re.sub(r"^transcript_source: .*$", lambda m: f"transcript_source: {tsrc}{extra}", head, count=1, flags=re.M)
     lines = [f"[{fmt_ts(s['start'])}] {s['speaker'] + ': ' if s.get('speaker') else ''}{s['text']}" for s in segs]
     return head + "## Transcript\n\n" + "\n".join(lines) + "\n"
 

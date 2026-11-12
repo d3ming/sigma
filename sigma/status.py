@@ -64,7 +64,7 @@ def _starting(run: Path) -> bool:
 
 
 # transcribe_skip reasons (sigma.fetch.skip_reason) that a rerun fixes; news, reruns, clips and no-audio are choices, not gaps
-FIXABLE_SKIPS = ("triage cap", "audio budget", "YouTube bot check", "an earlier whisper", "whisper failed")
+FIXABLE_SKIPS = ("partial transcript", "whisper stopped at", "triage cap", "audio budget", "YouTube bot check", "an earlier whisper", "whisper failed")
 DELIBERATE_SKIPS = ("news or market-recap", "rerun of", "no audio or YouTube source", "not whispered:")
 
 
@@ -136,6 +136,10 @@ def inspect_run(run: str | Path, arg: str | None = None, weekly: bool | None = N
     out = {"run": arg, "name": run.name, "kind": "custom" if custom else "weekly" if wk else "daily", "exists": run.is_dir(),
            "stages": {}, "blockers": [], "notes": []}
     st = out["stages"]
+    if weekly is True and wk:
+        from . import scoreaudit
+
+        out["notes"].append(scoreaudit.summary(scoreaudit.audit(run.resolve().parent.parent)))
     stages = CUSTOM_STAGES if custom else WEEKLY_STAGES if wk else DAILY_STAGES
     for s in stages:
         st[s] = "pending"

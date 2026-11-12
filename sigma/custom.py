@@ -197,6 +197,7 @@ def build_run(run_dir: Path, picks: list[dict], note: str | None = None, sources
         segs, tsrc = (hit[0], hit[1]) if hit else (None, None)
         if hit:
             ep.transcript_url = hit[3]
+            ep.media_seconds, ep.transcript_complete = hit[4].get("media_seconds"), hit[4].get("transcript_complete")
             reused += 1
             print(f"[custom-run] reuse transcript from {hit[2]}")
         row = write_episode(run_dir, ep, segs, tsrc)
