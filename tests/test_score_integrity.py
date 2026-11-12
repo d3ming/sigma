@@ -12,7 +12,7 @@ AUDIO = "https://traffic.megaphone.fm/CLS5603610979.mp3"
 
 def episode(eid="rss:sosin", duration=3649):
     return Episode(id=eid, source_id="iltb", source_name="Invest Like the Best", tier=1, title=f"Episode {eid}", url="https://show/e",
-                   published_at=datetime(2026, 10, 27, tzinfo=timezone.utc), audio_url=AUDIO if eid == "rss:sosin" else f"https://cdn/{eid}.mp3",
+                   published_at=datetime(2026, 10, 27, tzinfo=timezone.utc), audio_url=AUDIO if eid == "rss:sosin" else None if eid.startswith("x:") else f"https://cdn/{eid}.mp3",
                    duration=duration)
 
 
@@ -39,6 +39,7 @@ def test_a_budget_cut_transcript_is_never_complete_or_reused_and_the_fullest_sam
     run(runs, "2026-10-27", (episode(), segs(2928), "whisper large-v3-turbo (49 min)"))
     run(runs, "2026-10-31-bucco", (episode(), segs(3750), "whisper large-v3-turbo (63 min)"))
     run(runs, "2026-11-01-adshift", (episode(duration=3900), segs(3900), "whisper large-v3-turbo (65 min)"))
+    run(runs, "2026-11-02-weekly", (episode("x:nomedia"), segs(4200, "talk"), "whisper large-v3-turbo (70 min)"))
     run(tmp_path / "archive", "2026-10-27", (episode(), segs(2928), "whisper large-v3-turbo (49 min)"))
     (tmp_path / "operator.json").write_text(json.dumps({"legacy_transcripts": ["archive"]}))
     (runs / "2026-10-27" / "scores.json").write_text(json.dumps({"episodes": [{"episode_id": "rss:sosin", "score": 5}]}))
@@ -57,6 +58,9 @@ def test_a_budget_cut_transcript_is_never_complete_or_reused_and_the_fullest_sam
     assert "transcript_complete: false" in (new / cut["file"]).read_text()
     assert status.inspect_run(new)["transcribe"]["whisper_pending"] == 1
     assert fetch_mod.ReuseIndex(runs).find(cut) is None
+    index = fetch_mod.ReuseIndex(runs, exclude=new)
+    for eid in ("x:nomedia",):  # failure seen in review: an episode with no media keys
+        assert index.find(rows(runs / "2026-11-02-weekly")[eid])[2].startswith("2026-11-02-weekly/")
 
     found = transcripts.locate(tmp_path, "rss:sosin")
     assert found["chosen"]["run"] == "2026-10-31-bucco" and (found["chosen"]["minutes"], found["chosen"]["media_minutes"]) == (62.5, 60.8)

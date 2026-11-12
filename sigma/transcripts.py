@@ -82,8 +82,9 @@ def same_media(a: dict, b: dict) -> bool:
     ad-shifted enclosure or a different video is different media even under one episode id."""
     if a["episode_id"] != b["episode_id"]:
         return False
-    audio = norm_audio(a.get("audio_url"))
-    if not ((audio and audio == norm_audio(b.get("audio_url"))) or (video(a) and video(a) == video(b))):
+    audio, other = norm_audio(a.get("audio_url")), norm_audio(b.get("audio_url"))
+    keyed = audio or other or video(a) or video(b)
+    if keyed and not ((audio and audio == other) or (video(a) and video(a) == video(b))):
         return False
     for k in ("media_seconds", "duration"):
         x, y = a.get(k), b.get(k)
