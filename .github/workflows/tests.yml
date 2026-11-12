@@ -50,6 +50,21 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_BRANCH: ${{ github.head_ref }}
 
+  release-version:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: |
+          v=$(sed -n 's/^version *= *"\(.*\)"/\1/p' pyproject.toml)
+          [ -n "$v" ] || { echo "no version in pyproject.toml" >&2; exit 1; }
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "v$v is already tagged; bump the version in pyproject.toml on develop" >&2
+            exit 1
+          fi
+
   # Secret scan over the full history. Known fake fixtures are listed by fingerprint in .gitleaksignore.
   gitleaks:
     runs-on: ubuntu-latest
