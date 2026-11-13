@@ -200,6 +200,7 @@ min-height:34px;padding:6px 13px;cursor:pointer}
 .epc-t::after{content:"";width:.5em;height:.5em;border:solid var(--text-muted);border-width:0 2px 2px 0;transform:rotate(-45deg);transition:transform .15s}
 .epc-t[aria-expanded=true]::after{transform:rotate(45deg)}
 .epc-t:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+.copy-llm{display:inline-flex;align-items:center;min-height:36px;margin:.9em 0 0;padding:0 12px;color:var(--text);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);font:500 var(--text-caption) var(--font-mono);cursor:pointer}.copy-llm:hover{color:var(--accent);border-color:var(--accent)}.copy-status{display:inline;margin-left:10px;color:var(--text-muted);font:400 var(--text-detail) var(--font-mono)}
 .episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-head.show-identity{grid-template-columns:90px minmax(0,1fr)}.show-identity .episode-image{width:90px;height:90px;object-fit:contain}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}.episode-head.show-identity{grid-template-columns:64px minmax(0,1fr)}.show-identity .episode-image{width:64px;height:64px}}.key-insights,.dense-summary{clear:both;margin-top:1.8em}.key-insights li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
 .eps{margin-top:.6em}.eps:empty{margin:0}
 .eps.busy::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid var(--border);border-top-color:var(--text-muted);border-radius:50%;animation:epspin .8s linear infinite}
@@ -1960,19 +1961,50 @@ def speakers_html(e: dict, people: dict | None) -> str:
     return f'<p class="meta">Speakers: {"; ".join(rows)}</p>' if rows else ""
 
 
+COPY_EPISODE = """<script>(()=>{
+const b=document.getElementById('copy-llm'),status=document.getElementById('copy-status');
+if(!b||!status)return;b.hidden=false;
+b.addEventListener('click',async()=>{
+ const d=b.dataset,lines=['# '+d.title,'Episode ID: '+d.id];
+ lines.push("Transcript lookup: sigma transcript '"+d.id.replace(/'/g, `'"'"'`)+"' --json");
+ if(d.show)lines.push('Show: '+d.show);
+ if(d.date)lines.push('Published: '+d.date);
+ if(d.source)lines.push('Source: '+d.source);
+ if(d.youtube&&d.youtube!==d.source)lines.push('YouTube: '+d.youtube);
+ if(d.page)lines.push('Sigma page: '+d.page);
+ const context=document.querySelector('[data-episode-context]');
+ if(context)lines.push('',context.innerText.trim());
+ const take=document.querySelector('[data-episode-take]');
+ if(take)lines.push('',take.innerText.trim());
+ const sections=document.querySelectorAll('.key-insights,.dense-summary');
+ if(sections.length)sections.forEach(s=>lines.push('',s.innerText.trim()));
+ else {const claims=document.querySelector('main .claims');if(claims&&claims.innerText.trim())lines.push('','Claims',claims.innerText.trim())}
+ try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error();await navigator.clipboard.writeText(lines.join('\\n').trim()+'\\n');status.textContent='Copied.'}
+ catch(e){status.textContent='Copy failed. Select and copy the text on this page.'}
+})})();</script>"""
+
+
+def episode_copy_control(e: dict) -> str:
+    attrs = {"id": e["id"], "title": e.get("title") or e["id"], "show": e.get("show"), "date": e.get("published"),
+             "source": safe_url(e.get("url")), "youtube": safe_url(e.get("youtube_url")), "page": absu(e["page"])}
+    data = " ".join(f'data-{name}="{esc(value)}"' for name, value in attrs.items() if value)
+    return (f'<button class="copy-llm" id="copy-llm" type="button" {data} hidden>Copy for LLM</button>'
+            f'<span class="copy-status" id="copy-status" role="status" aria-live="polite"></span>{COPY_EPISODE}')
+
+
 def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = None, people: dict | None = None) -> str:
     title = e.get("title") or e["id"]
     t = ext_link(e.get("url"), title) or esc(title)
     meta = (rating_bar(e, influencer_hint(e["score"]) if e.get("influencer") else "") + e.get("_marks", "") + " · ".join(
         x for x in [show_name(e), esc(human_date(board.publication_day(e["published"]))) if e.get("published") else ""] if x) + listen_icons(e))
     kind = '<p class="meta">Rated as social commentary</p>' if e.get("influencer") else ""
-    take = f'<p class="take">{esc(e["reason"])}</p>' if e.get("reason") and e["reason"] != title else ""
+    take = f'<p class="take" data-episode-take>{esc(e["reason"])}</p>' if e.get("reason") and e["reason"] != title else ""
     chips = [f'<a class="chip" href="{esc(company_path(cid))}">{esc(cos[cid]["name"])}</a>' for cid in e.get("edges", {}) if cos and cid in cos]
     chips += [f'<a class="chip" href="/find/?topic={quote(tp, safe="")}">{esc(ent.topic_names[tp])}</a>' for tp in e.get("topics", []) if ent]
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
-    context = f'<p>{esc(e["context"])}</p>' if e.get("context") else ""
+    context = f'<p data-episode-context>{esc(e["context"])}</p>' if e.get("context") else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{speakers_html(e, people)}{take}{about}{context}{content}',
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{speakers_html(e, people)}{take}{about}{episode_copy_control(e)}{context}{content}',
                 "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
