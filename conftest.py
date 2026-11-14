@@ -27,7 +27,7 @@ def _whisper_env(monkeypatch, tmp_path):
     monkeypatch.delenv("SIGMA_WHISPER_THREADS", raising=False)
     monkeypatch.setenv("SIGMA_NO_LIBRARY", "1")  # report/publish must not ingest test runs into the real data/library.sqlite
     monkeypatch.setenv("SIGMA_NO_PUBLISHED", "1")  # ...or export them into the committed published/ folder
-    monkeypatch.setenv("SIGMA_HEAVY_LOCK", "none")  # never wait on, or hold, the machine's real heavy-job lock
+    monkeypatch.setenv("SIGMA_HEAVY_LOCK", "none")  # never wait on, or hold, the real whisper lock
     monkeypatch.setenv("SIGMA_NO_LINK_LOOKUP", "1")  # export-time YouTube/Apple/Spotify lookups are network calls: tests pass a fake resolver
     monkeypatch.setenv("SIGMA_NO_EVENTS", "1")  # ...or write the pipeline event log in data/events (the event test points SIGMA_EVENTS_DIR at a temp folder)
     monkeypatch.setenv("SIGMA_FEED_CACHE", str(tmp_path / "feed_cache"))
