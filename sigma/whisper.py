@@ -155,7 +155,7 @@ def run_faster(path: str) -> tuple[list, float]:
 
 
 def transcribe_file(path: str, budget: Budget) -> tuple[list[dict] | None, float, float]:
-    """Whisper a downloaded file under the heavy-job lock, held for this file only so other heavy jobs get in between.
+    """Whisper a downloaded file under Sigma's whisper lock, held for this file only so other Sigma runs get in between.
     Returns (segments, seconds transcribed, media seconds): fewer seconds than the media means the budget cut it short."""
     from . import heavy
 

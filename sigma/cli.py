@@ -1004,7 +1004,7 @@ def _main(argv=None):
     if args.cmd in ("fetch", "daily"):
         from . import heavy
 
-        args.heavy = heavy.take(f"sigma {args.cmd}")
+        heavy.nice()
     {"fetch": fetch, "daily": daily, "transcribe": transcribe_run, "publish": publish, "check": check,
      "report": render_report, "links": links, "show-links": show_links, "rank-prep": rank_prep, "rank-merge": rank_merge, "stance-prep": stance_cmd, "stance-merge": stance_cmd, "tickers-refresh": tickers_refresh_cmd, "score-eval": score_eval_cmd, "themes-check": themes_check, "transcript-links": transcript_links_cmd, "speakers": speakers_cmd, "export-published": export_published, "dedupe-published": dedupe_published, "check-claims": check_claims, "mark": mark, "stats": stats, "library": library_cmd}[args.cmd](args)
 
