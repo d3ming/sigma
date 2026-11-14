@@ -1992,6 +1992,18 @@ def episode_copy_control(e: dict) -> str:
             f'<span class="copy-status" id="copy-status" role="status" aria-live="polite"></span>{COPY_EPISODE}')
 
 
+def episode_source_link(e: dict) -> str:
+    """Give the episode page one visible link to the best available recording."""
+    for field, _, label, _ in LISTEN:
+        if field == "spotify_url" and e.get("spotify_kind") == "show":
+            continue
+        if link := ext_link(e.get(field), label):
+            return link
+    source = safe_url(e.get("url"))
+    label = "Watch on X" if e.get("id", "").startswith("xvideo:") else "Open original episode"
+    return ext_link(source, label)
+
+
 def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = None, people: dict | None = None) -> str:
     title = e.get("title") or e["id"]
     t = ext_link(e.get("url"), title) or esc(title)
@@ -2003,8 +2015,10 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     chips += [f'<a class="chip" href="/find/?topic={quote(tp, safe="")}">{esc(ent.topic_names[tp])}</a>' for tp in e.get("topics", []) if ent]
     about = f'<div class="meta">{" ".join(chips)}</div>' if chips else ""
     context = f'<p data-episode-context>{esc(e["context"])}</p>' if e.get("context") else ""
+    source = episode_source_link(e)
+    source_action = f'<p class="meta">{source}</p>' if source else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{kind}{speakers_html(e, people)}{take}{about}{episode_copy_control(e)}{context}{content}',
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{source_action}{kind}{speakers_html(e, people)}{take}{about}{episode_copy_control(e)}{context}{content}',
                 "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
