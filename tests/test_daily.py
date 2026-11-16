@@ -179,6 +179,9 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     correct_magnitude = {"episode_id": "synthetic", "signal": [{"text": "Revenue is $50m", "timestamp": 284}], "sections": []}
     assert len(report_mod._number_warnings(wrong_magnitude, spoken_millions)) == 1
     assert report_mod._number_warnings(correct_magnitude, spoken_millions) == []
+    pricing_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "one point two million emails"}]))
+    pricing_claim = {"episode_id": "synthetic", "signal": [{"text": "A 1.2-million-email price check", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(pricing_claim, pricing_source) == []
     bcf_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "25 BCF a day"}]))
     gas_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25 billion cubic feet per day", "timestamp": 284}], "sections": []}
     money_claim = {"episode_id": "synthetic", "signal": [{"text": "Spending is $25 billion", "timestamp": 284}], "sections": []}

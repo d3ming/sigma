@@ -305,7 +305,7 @@ _CITE_NUMBER = re.compile(
     r"(?<![A-Za-z\d.,])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)"
     r"(?P<volume>\s*(?:bcf|billion\s+cubic\s+(?:feet|foot))\b)?"
     r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?(?:[\s-]plus\b)?"
-    r"(?P<unit>\s+(?:thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
+    r"(?:(?:\s+|-)(?P<unit>thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
 
 
 def _num_key(v: float | Decimal, unit: str | None = None) -> str:
