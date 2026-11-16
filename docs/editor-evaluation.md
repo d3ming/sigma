@@ -111,3 +111,6 @@ Generate drafts for one private case with the same frozen prompt and named model
 Use a new scratch directory per case and run with the real private data configuration. Send the judge only the
 anonymous drafts and validation receipts under `blind/`, the frozen rubric, transcript and source reference. Keep the model mapping,
 raw drafts and logs in private scratch. Use `--prompt` to repeat the experiment on a candidate prompt.
+
+To isolate a prompt change, pass one `--variant` and `--against /path/to/candidate.md`. The harness runs the two
+prompts with the same model and effort and retains the prompt identities in the private trial results.
