@@ -179,6 +179,25 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     correct_magnitude = {"episode_id": "synthetic", "signal": [{"text": "Revenue is $50m", "timestamp": 284}], "sections": []}
     assert len(report_mod._number_warnings(wrong_magnitude, spoken_millions)) == 1
     assert report_mod._number_warnings(correct_magnitude, spoken_millions) == []
+    bcf_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "25 BCF a day"}]))
+    gas_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25 billion cubic feet per day", "timestamp": 284}], "sections": []}
+    money_claim = {"episode_id": "synthetic", "signal": [{"text": "Spending is $25 billion", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(gas_claim, bcf_source) == []
+    for range_text in ("25 to 35 BCF a day", "25 to 35 billion cubic feet per day"):
+        range_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": range_text}]))
+        assert report_mod._number_warnings(gas_claim, range_source) == []
+        assert len(report_mod._number_warnings(money_claim, range_source)) == 1
+    mixed_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "100,000 to 1 billion cubic feet"}]))
+    mixed_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 100,000 BCF", "timestamp": 284}], "sections": []}
+    assert len(report_mod._number_warnings(mixed_claim, mixed_source)) == 1
+    bare_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(bare_claim, bcf_source) == []
+    assert len(report_mod._number_warnings(money_claim, bcf_source)) == 1
+    expanded_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "twenty five billion cubic feet a day"}]))
+    shorthand_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25 BCF per day", "timestamp": 284}], "sections": []}
+    assert report_mod._number_warnings(shorthand_claim, expanded_source) == []
+    money_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "25 billion dollars"}]))
+    assert len(report_mod._number_warnings(shorthand_claim, money_source)) == 1
     spoken_percent = report_mod.spoken_numbers([(w, 284) for w in "fifty percent growth".split()])
     percent_claim = {"episode_id": "synthetic", "signal": [{"text": "Growth is 50%", "timestamp": 284}], "sections": []}
     amount_claim = {"episode_id": "synthetic", "signal": [{"text": "Growth is 50", "timestamp": 284}], "sections": []}

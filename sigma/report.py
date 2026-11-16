@@ -303,12 +303,15 @@ _PERCENT_WORDS = {"percent", "percentage", "%"}
 _NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+|%")
 _CITE_NUMBER = re.compile(
     r"(?<![A-Za-z\d.,])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)"
+    r"(?P<volume>\s*(?:bcf|billion\s+cubic\s+(?:feet|foot))\b)?"
     r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?(?:[\s-]plus\b)?"
     r"(?P<unit>\s+(?:thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
 
 
 def _num_key(v: float | Decimal, unit: str | None = None) -> str:
     value = Decimal(str(v))
+    if unit == "bcf":
+        return f"bcf:{format(value.normalize(), 'f')}"
     if unit in _PERCENT_WORDS or unit == "%":
         return f"percent:{format(value.normalize(), 'f')}"
     if unit:
@@ -318,7 +321,7 @@ def _num_key(v: float | Decimal, unit: str | None = None) -> str:
 
 def _shared_range_unit(value: Decimal, other: str, unit: str) -> str | None:
     other_value = Decimal(other.replace(",", ""))
-    scale = _MAGNITUDE_SCALE.get(unit)
+    scale = _MAGNITUDE_SCALE.get("billion" if unit == "bcf" else unit)
     if scale and value >= 1000 > other_value and value < other_value * scale:
         return None
     return unit
@@ -331,7 +334,7 @@ def cite_numbers(text: str) -> list[tuple[str, str]]:
     matches = list(_CITE_NUMBER.finditer(text))
     for i, match in enumerate(matches):
         token = match.group("number")
-        unit = (match.group("unit") or match.group("suffix") or "").strip().lower()
+        unit = "bcf" if match.group("volume") else (match.group("unit") or match.group("suffix") or "").strip().lower()
         if not unit:
             for j in (i - 1, i + 1):
                 if not 0 <= j < len(matches):
@@ -359,6 +362,16 @@ def cite_numbers(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def _bcf_width(words: list[tuple[str, float]], start: int) -> int:
+    if start < len(words) and words[start][0] == "bcf":
+        return 1
+    if [word for word, _ in words[start:start + 3]] in (
+        ["billion", "cubic", "feet"], ["billion", "cubic", "foot"]
+    ):
+        return 3
+    return 0
+
+
 def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
     """Every number in a (word, timestamp) stream as (timestamp, key): digits, and spelled out ones
     (one..nineteen, twenty..ninety, hundred, 'twenty five', 'two hundred', 'one point four') as digits."""
@@ -379,16 +392,25 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             value = Decimal(w.replace(",", ""))
             nxt = i + 2 if i + 2 < n and words[i + 1][0] == "plus" and words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             unit = words[nxt][0] if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else None
-            if unit is None and i + 3 < n and words[i + 1][0] in {"to", "through", "or"} and \
-                    words[i + 2][0][:1].isdigit() and words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
-            if unit is None and i > 0 and words[i - 1][0] == "between" and i + 3 < n and \
-                    words[i + 1][0] == "and" and words[i + 2][0][:1].isdigit() and \
-                    words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
-            if unit is None and i + 2 < n and words[i + 1][0][:1].isdigit() and \
-                    words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 1][0], words[i + 2][0])
+            volume_width = _bcf_width(words, nxt)
+            if volume_width:
+                if volume_width == 1:
+                    out.append((ts, _num_key(value)))
+                out.append((ts, _num_key(value, "bcf")))
+                i = nxt + volume_width
+                continue
+            if unit is None:
+                second = i + 1
+                if second < n and (words[second][0] in {"to", "through", "or"} or
+                                   (i > 0 and words[i - 1][0] == "between" and words[second][0] == "and")):
+                    second += 1
+                if second + 1 < n and words[second][0][:1].isdigit():
+                    shared = _bcf_width(words, second + 1)
+                    if shared:
+                        if _shared_range_unit(value, words[second][0], "bcf"):
+                            out.append((ts, _num_key(value, "bcf")))
+                    elif words[second + 1][0] in _MAGNITUDES | _PERCENT_WORDS:
+                        unit = _shared_range_unit(value, words[second][0], words[second + 1][0])
             out.append((ts, _num_key(value, unit)))
             i = nxt + 1 if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             continue
@@ -436,6 +458,14 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                 magnitude = words[j][0]
                 j += 1
             unit = magnitude
+            volume_width = _bcf_width(words, j - 1 if unit == "billion" else j) if unit in {None, "billion"} else 0
+            if volume_width == 3:
+                unit = "bcf"
+                j += 2
+            elif volume_width == 1 and unit is None:
+                out.append((ts, _num_key(Decimal(val))))
+                unit = "bcf"
+                j += 1
             if unit is None and j < n and words[j][0] in _PERCENT_WORDS:
                 unit = words[j][0]
                 j += 1
