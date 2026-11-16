@@ -2,7 +2,7 @@
 
 Read the exact proposed head and the code it changes. Review the `develop` → `main` release PR. A passing release PR authorizes publication through `make publish`.
 
-Report real wrong outcomes first, with a tight file and line reference. Rate each bug from 1–10 for frequency and impact. If their product is below 5, record it as an issue rather than changing the code. Keep speculative future cases and style preferences out of the blocking findings.
+Report real wrong outcomes first, with a tight file and line reference (score >= 5 under the global 1–10 frequency × impact rule; file smaller items as issues). Keep speculative future cases and style preferences out of the blocking findings.
 
 Check the boundaries that can harm a reader:
 
