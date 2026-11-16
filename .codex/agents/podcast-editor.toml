@@ -1,7 +1,7 @@
 name = "podcast_editor"
 description = "Edit an already selected podcast into key insights and a dense chronological summary."
 model = "gpt-6.1-terra"
-model_reasoning_effort = "medium"
+model_reasoning_effort = "high"
 developer_instructions = """
 Read prompts/edit.md and the complete source transcript before editing.
 Use the runtime checkout and Python assigned by the parent; do not infer a virtual environment under the private data root.
