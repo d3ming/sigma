@@ -100,3 +100,14 @@ Use a second independent judge or human source review to check close calls and a
 advantage. If a runtime cannot expose tokens or settings, label those comparisons unmeasured rather than estimate
 them from words. Keep the same held-out discipline when testing models; inspecting a result consumes that test
 case for further tuning.
+
+Generate drafts for one private case with the same frozen prompt and named model settings.
+
+```sh
+.venv/bin/python -m sigma.eval_editor "$RUN" "$EPISODE_ID" /tmp/sigma-editor-round \
+  --variant gpt-6.1-terra:medium --variant gpt-6.1-terra:xhigh --seed 1115
+```
+
+Use a new scratch directory per case and run with the real private data configuration. Send the judge only the
+anonymous drafts and validation receipts under `blind/`, the frozen rubric, transcript and source reference. Keep the model mapping,
+raw drafts and logs in private scratch. Use `--prompt` to repeat the experiment on a candidate prompt.
