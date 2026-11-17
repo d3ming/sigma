@@ -89,9 +89,6 @@ Choose proof with [verify](skills/verify/SKILL.md) and its feature map.
 
 ## Leaving a trail
 
-- **Write no comments.** Why code is the way it is belongs in the commit message, where `git blame` and `git log -L`
-  find it. The one exception is a line an agent would otherwise "fix" wrongly: one line, no measurements.
-- Updating a document means cutting what code, config or `--help` already says, never adding the current state.
-- A removed feature gets an entry in `docs/REMOVED_FEATURES.md`: what it did, why it went, and where its last copy
-  lives.
-- An accepted limitation is a `Known limit:` paragraph in the body of the commit that accepts it.
+- **Write no comments.** Explain why in the commit message; the one exception is a single line an agent would otherwise "fix" wrongly (no measurements).
+- Updating a document cuts what code, config or `--help` already says, never adding current state.
+- Removed features get an entry in `docs/REMOVED_FEATURES.md` (what it did, why it went, where its last copy lives); accepted limits get a `Known limit:` paragraph in the commit body.

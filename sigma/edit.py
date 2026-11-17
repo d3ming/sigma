@@ -25,9 +25,9 @@ def agent() -> tuple[str, str, str]:
     return cfg["model"], cfg["model_reasoning_effort"], cfg["developer_instructions"]
 
 
-def codex(prompt: str, workdir: Path, log: Path) -> str | None:
-    """One `codex exec` with the podcast_editor role's model and effort. None when it ran, else why not."""
-    model, effort, _ = agent()
+def codex(prompt: str, workdir: Path, log: Path, *, settings: tuple[str, str] | None = None) -> str | None:
+    """One `codex exec` with the configured model and effort. None when it ran, else why not."""
+    model, effort = settings or agent()[:2]
     cmd = ["codex", "exec", "-m", model, "-c", f"model_reasoning_effort={effort}", "-s", "workspace-write",
            "-C", str(workdir), "--skip-git-repo-check", "--ephemeral"]
     try:

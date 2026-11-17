@@ -303,12 +303,15 @@ _PERCENT_WORDS = {"percent", "percentage", "%"}
 _NUM_TOKEN = re.compile(r"\d+(?:,\d{3})*(?:\.\d+)?|[a-z]+|%")
 _CITE_NUMBER = re.compile(
     r"(?<![A-Za-z\d.,])(?P<number>\d+(?:,\d{3})*(?:\.\d+)?)"
+    r"(?P<volume>\s*(?:bcf|billion\s+cubic\s+(?:feet|foot))\b)?"
     r"(?P<suffix>\s*(?:%|bn\b|[bmktx]\b))?(?:[\s-]plus\b)?"
-    r"(?P<unit>\s+(?:thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
+    r"(?:(?:\s+|-)(?P<unit>thousands?|millions?|billions?|trillions?|percent(?:age)?))?(?![A-Za-z])", re.I)
 
 
 def _num_key(v: float | Decimal, unit: str | None = None) -> str:
     value = Decimal(str(v))
+    if unit == "bcf":
+        return f"bcf:{format(value.normalize(), 'f')}"
     if unit in _PERCENT_WORDS or unit == "%":
         return f"percent:{format(value.normalize(), 'f')}"
     if unit:
@@ -318,7 +321,7 @@ def _num_key(v: float | Decimal, unit: str | None = None) -> str:
 
 def _shared_range_unit(value: Decimal, other: str, unit: str) -> str | None:
     other_value = Decimal(other.replace(",", ""))
-    scale = _MAGNITUDE_SCALE.get(unit)
+    scale = _MAGNITUDE_SCALE.get("billion" if unit == "bcf" else unit)
     if scale and value >= 1000 > other_value and value < other_value * scale:
         return None
     return unit
@@ -331,7 +334,7 @@ def cite_numbers(text: str) -> list[tuple[str, str]]:
     matches = list(_CITE_NUMBER.finditer(text))
     for i, match in enumerate(matches):
         token = match.group("number")
-        unit = (match.group("unit") or match.group("suffix") or "").strip().lower()
+        unit = "bcf" if match.group("volume") else (match.group("unit") or match.group("suffix") or "").strip().lower()
         if not unit:
             for j in (i - 1, i + 1):
                 if not 0 <= j < len(matches):
@@ -359,10 +362,38 @@ def cite_numbers(text: str) -> list[tuple[str, str]]:
     return out
 
 
+def _bcf_width(words: list[tuple[str, float]], start: int) -> int:
+    if start < len(words) and words[start][0] == "bcf":
+        return 1
+    if [word for word, _ in words[start:start + 3]] in (
+        ["billion", "cubic", "feet"], ["billion", "cubic", "foot"]
+    ):
+        return 3
+    return 0
+
+
+def _range_separator(words: list[tuple[str, float]], first: int, separator: int) -> bool:
+    if separator >= len(words):
+        return False
+    word = words[separator][0]
+    return word in {"to", "through", "or"} or (word == "and" and first > 0 and words[first - 1][0] == "between")
+
+
 def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
     """Every number in a (word, timestamp) stream as (timestamp, key): digits, and spelled out ones
     (one..nineteen, twenty..ninety, hundred, 'twenty five', 'two hundred', 'one point four') as digits."""
     out, i, n = [], 0, len(words)
+    range_start = None
+
+    def add_bcf(value: Decimal, timestamp: float, abbreviated: bool) -> None:
+        if range_start is not None:
+            second, lower, lower_timestamp = range_start
+            if second == i and _shared_range_unit(lower, str(value), "bcf"):
+                out.insert(len(out) - 1, (lower_timestamp, _num_key(lower, "bcf")))
+        if abbreviated:
+            out.append((timestamp, _num_key(value)))
+        out.append((timestamp, _num_key(value, "bcf")))
+
     while i < n:
         w, ts = words[i]
         if w == "a" and i + 4 < n and words[i + 1][0] in _MAGNITUDES and \
@@ -379,16 +410,19 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             value = Decimal(w.replace(",", ""))
             nxt = i + 2 if i + 2 < n and words[i + 1][0] == "plus" and words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             unit = words[nxt][0] if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else None
-            if unit is None and i + 3 < n and words[i + 1][0] in {"to", "through", "or"} and \
-                    words[i + 2][0][:1].isdigit() and words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
-            if unit is None and i > 0 and words[i - 1][0] == "between" and i + 3 < n and \
-                    words[i + 1][0] == "and" and words[i + 2][0][:1].isdigit() and \
-                    words[i + 3][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 2][0], words[i + 3][0])
-            if unit is None and i + 2 < n and words[i + 1][0][:1].isdigit() and \
-                    words[i + 2][0] in _MAGNITUDES | _PERCENT_WORDS:
-                unit = _shared_range_unit(value, words[i + 1][0], words[i + 2][0])
+            volume_width = _bcf_width(words, nxt)
+            if volume_width:
+                add_bcf(value, ts, abbreviated=volume_width == 1)
+                i = nxt + volume_width
+                continue
+            if unit is None:
+                separated = _range_separator(words, i, i + 1)
+                second = i + (2 if separated else 1)
+                if second + 1 < n and words[second][0][:1].isdigit():
+                    if not _bcf_width(words, second + 1) and words[second + 1][0] in _MAGNITUDES | _PERCENT_WORDS:
+                        unit = _shared_range_unit(value, words[second][0], words[second + 1][0])
+                if unit is None and second < n and (separated or words[second][0][:1].isdigit()):
+                    range_start = (second, value, ts)
             out.append((ts, _num_key(value, unit)))
             i = nxt + 1 if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             continue
@@ -436,10 +470,18 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                 magnitude = words[j][0]
                 j += 1
             unit = magnitude
+            volume_width = _bcf_width(words, j - 1 if unit == "billion" else j) if unit in {None, "billion"} else 0
+            value = Decimal(val)
+            if volume_width:
+                add_bcf(value, ts, abbreviated=volume_width == 1)
+                i = j + (2 if volume_width == 3 else 1)
+                continue
             if unit is None and j < n and words[j][0] in _PERCENT_WORDS:
                 unit = words[j][0]
                 j += 1
-            out.append((ts, _num_key(Decimal(val), unit)))
+            if unit is None and _range_separator(words, i, j):
+                range_start = (j + 1, value, ts)
+            out.append((ts, _num_key(value, unit)))
             i = j
             continue
         i += 1

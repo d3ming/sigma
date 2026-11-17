@@ -41,6 +41,17 @@ Follow [source-reading](../source-reading/SKILL.md) for each source: speaker or 
 URL, locator, what the source says, what corroborates it, and your inference, kept apart. Save them in the data root's
 private notes beside the request.
 
+For an episode editorial headed to the site, have the existing independent reviewer check what the edit leaves
+out. Start from the source's strongest conclusion, concrete evidence and material caveat. Compare them with
+the homepage insights and the chronology. Restore important omissions at their source timestamps and rerun
+editor validation. Keep the review with the private request.
+
+For a requested episode deep dive, add researched references to the public episode's editor entry. Link each original
+work, name its author or publisher when helpful, and explain what it adds to the write-up. Set each relationship to
+`discussed`, `related`, or `inferred` and give the episode timestamp when the discussion supports one. Ask the same
+reviewer to verify the links, context, and attribution. Keep the speaker's claims in the episode summary and external
+findings in the references.
+
 ## 4. Report or post
 
 Write from the notes only. Every sourced sentence names its speaker and links its locator; an opinion is labelled as one.

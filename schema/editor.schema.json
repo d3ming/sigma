@@ -23,6 +23,36 @@
     }
   },
   "$defs": {
+    "reference_url": {
+      "type": "string",
+      "pattern": "^https?://[^\\s\\x00-\\x1f\\x7f<>\"\\\\]+$"
+    },
+    "reference_link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url"],
+      "properties": {
+        "title": {"type": "string", "pattern": "\\S"},
+        "url": {"$ref": "#/$defs/reference_url"}
+      }
+    },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "url", "context", "relationship"],
+      "properties": {
+        "title": {"type": "string", "pattern": "\\S"},
+        "url": {"$ref": "#/$defs/reference_url"},
+        "context": {"type": "string", "pattern": "\\S"},
+        "relationship": {"enum": ["discussed", "related", "inferred"]},
+        "source": {"type": "string", "pattern": "\\S"},
+        "start": {"type": "integer", "minimum": 0},
+        "supporting_urls": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reference_link"}
+        }
+      }
+    },
     "insight": {
       "type": "object",
       "additionalProperties": false,
@@ -139,6 +169,10 @@
           "items": {
             "$ref": "#/$defs/section"
           }
+        },
+        "references": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/reference"}
         },
         "topics": {
           "type": "array",
