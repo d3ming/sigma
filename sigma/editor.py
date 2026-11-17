@@ -94,6 +94,8 @@ def validate(run_dir: Path, data: dict) -> dict[str, dict]:
             where = f"editor: {eid} references[{i}]"
             if reference.get("start", 0) > last + report.TS_SLACK:
                 raise ValueError(f"{where}: timestamp is outside the transcript")
+            if copied := report._longest_copy(reference["context"], grams):
+                raise ValueError(f"{where}: {len(copied)} consecutive source words copied")
             _check_reference_url(reference["url"], where)
             for link in reference.get("supporting_urls", []):
                 _check_reference_url(link["url"], where)

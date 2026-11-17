@@ -74,6 +74,13 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path,
         published.export(run, tmp_path / "published", resolver=lambda rows: {})
     assert (pub / "episodes.json").read_bytes() == prior
     support["url"] = "https://example.invalid/methods"
+    original_context = edit["references"][0]["context"]
+    edit["references"][0]["context"] = "A good organization rewards people for finding mistakes and makes it safe to discuss uncertainty before decisions."
+    path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
+    with pytest.raises(ValueError, match="references.*copied"):
+        published.export(run, tmp_path / "published", resolver=lambda rows: {})
+    assert (pub / "episodes.json").read_bytes() == prior
+    edit["references"][0]["context"] = original_context
     edit["topics"] = ["unknown-topic"]
     path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
     with pytest.raises(ValueError, match="unknown topic"):
