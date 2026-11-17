@@ -33,16 +33,32 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path,
                                "start": 0, "end": 310}]}
     edit["topics"] = []
     edit["dense_summary"].append({"title": "Later discussion", "text": "A practical treatment of debugging workflows.", "start": 320, "end": 400})
+    edit["references"] = [{
+        "title": "Process survey", "url": "https://example.invalid/survey",
+        "context": "A separate survey of 600 companies. The guest's position applies to a narrower setting.",
+        "relationship": "related", "source": "Survey publisher", "start": 300,
+        "supporting_urls": [{"title": "Survey methods", "url": "https://example.invalid/methods"}],
+    }]
     path = run / "editor.json"
     path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
     pub, _ = published.export(run, tmp_path / "published", resolver=lambda rows: {})
     exported = json.loads((pub / "episodes.json").read_text())[0]
     assert exported["key_insights"] == edit["key_insights"] and exported["dense_summary"] == edit["dense_summary"]
+    assert exported["references"] == edit["references"]
     assert exported["show_image_url"] == row["show_image_url"]
     registry = site.build_episodes(site.load_runs(tmp_path / "published"))
     assert registry[row["episode_id"]]["show_image_url"] == row["show_image_url"]
-    site.build(tmp_path / "published", tmp_path / "site", entities_file=vocabulary)
-    index = json.loads((tmp_path / "site" / "find-index.json").read_text())["eps"][0]
+    site_dir = tmp_path / "site"
+    site.build(tmp_path / "published", site_dir, entities_file=vocabulary)
+    detail = registry[row["episode_id"]]["page"].lstrip("/")
+    html = (site_dir / detail).read_text()
+    markdown = (site_dir / detail).with_suffix(".md").read_text()
+    assert '<h2>References</h2>' in html and '## References' in markdown
+    for file in (html, markdown):
+        assert "survey of 600 companies" in file and "Survey publisher" in file
+        assert "https://example.invalid/survey" in file and "https://example.invalid/methods" in file
+    assert json.loads((site_dir / "episodes.json").read_text())["episodes"][0]["references"] == edit["references"]
+    index = json.loads((site_dir / "find-index.json").read_text())["eps"][0]
     assert index["o"] == []
     assert all(word in index["x"] for word in ("correction", "hidden", "demand", "debugging", "workflows"))
     assert (pub / "ranked.json").read_bytes() == ranked_bytes and not (pub / "claims.jsonl").read_text()
@@ -51,6 +67,13 @@ def test_stated_rule_editorial_fields_are_grounded_separate_and_frozen(tmp_path,
     assert (frozen / "runs" / run.name / source.name).read_bytes() == source.read_bytes()
     assert (frozen / "runs" / run.name / "editor.json").read_bytes() == path.read_bytes()
     prior = (pub / "episodes.json").read_bytes()
+    support = edit["references"][0]["supporting_urls"][0]
+    support["url"] = "https://private:token@example.invalid/methods"
+    path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
+    with pytest.raises(ValueError, match="references.*without credentials"):
+        published.export(run, tmp_path / "published", resolver=lambda rows: {})
+    assert (pub / "episodes.json").read_bytes() == prior
+    support["url"] = "https://example.invalid/methods"
     edit["topics"] = ["unknown-topic"]
     path.write_text(json.dumps({"version": 1, "episodes": [edit]}))
     with pytest.raises(ValueError, match="unknown topic"):

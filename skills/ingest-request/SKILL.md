@@ -46,6 +46,12 @@ out. Start from the source's strongest conclusion, concrete evidence and materia
 the homepage insights and the chronology. Restore important omissions at their source timestamps and rerun
 editor validation. Keep the review with the private request.
 
+For a requested episode deep dive, add researched references to the public episode's editor entry. Link each original
+work, name its author or publisher when helpful, and explain what it adds to the write-up. Set each relationship to
+`discussed`, `related`, or `inferred` and give the episode timestamp when the discussion supports one. Ask the same
+reviewer to verify the links, context, and attribution. Keep the speaker's claims in the episode summary and external
+findings in the references.
+
 ## 4. Report or post
 
 Write from the notes only. Every sourced sentence names its speaker and links its locator; an opinion is labelled as one.

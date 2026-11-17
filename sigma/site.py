@@ -201,7 +201,7 @@ min-height:34px;padding:6px 13px;cursor:pointer}
 .epc-t[aria-expanded=true]::after{transform:rotate(45deg)}
 .epc-t:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
 .copy-llm{display:inline-flex;align-items:center;min-height:36px;margin:.9em 0 0;padding:0 12px;color:var(--text);background:var(--surface-2);border:var(--line-1) solid var(--border);border-radius:var(--radius-md);font:500 var(--text-caption) var(--font-mono);cursor:pointer}.copy-llm:hover{color:var(--accent);border-color:var(--accent)}.copy-status{display:inline;margin-left:10px;color:var(--text-muted);font:400 var(--text-detail) var(--font-mono)}
-.episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-head.show-identity{grid-template-columns:90px minmax(0,1fr)}.show-identity .episode-image{width:90px;height:90px;object-fit:contain}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}.episode-head.show-identity{grid-template-columns:64px minmax(0,1fr)}.show-identity .episode-image{width:64px;height:64px}}.key-insights,.dense-summary{clear:both;margin-top:1.8em}.key-insights li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
+.episode-image-link{display:block;margin:0 0 14px}.episode-image{display:block;max-width:160px;height:90px;object-fit:cover;border-radius:6px}.episode-head{display:grid;grid-template-columns:160px minmax(0,1fr);gap:16px;align-items:start}.episode-head .episode-image-link{margin:0}.episode-head.show-identity{grid-template-columns:90px minmax(0,1fr)}.show-identity .episode-image{width:90px;height:90px;object-fit:contain}.episode-image-link.hero{max-width:640px}.hero .episode-image{width:100%;max-width:100%;height:auto;aspect-ratio:16/9}@media(max-width:600px){.episode-head{grid-template-columns:96px minmax(0,1fr);gap:12px}.episode-head .episode-image{width:96px;height:54px}.episode-head.show-identity{grid-template-columns:64px minmax(0,1fr)}.show-identity .episode-image{width:64px;height:64px}}.key-insights,.dense-summary,.episode-references{clear:both;margin-top:1.8em}.key-insights li,.episode-references li{margin-bottom:1.5em}.dense-summary>section{margin:1.8em 0}.dense-summary h3 .ts{white-space:nowrap;font:500 var(--text-small)/1.4 var(--font-mono)}.epb{clear:both;margin-top:.2em}.epb .claims{margin-top:.6em}.epb .meta{margin-top:.8em}
 .eps{margin-top:.6em}.eps:empty{margin:0}
 .eps.busy::before{content:"";display:inline-block;width:.9em;height:.9em;margin-right:.5em;vertical-align:-.12em;border:2px solid var(--border);border-top-color:var(--text-muted);border-radius:50%;animation:epspin .8s linear infinite}
 @keyframes epspin{to{transform:rotate(360deg)}}
@@ -874,6 +874,24 @@ def dense_summary_html(e: dict) -> str:
     return '<section class="dense-summary"><h2>Dense summary</h2>' + "".join(sections) + '</section>'
 
 
+REFERENCE_LABELS = {"related": "Related reading", "inferred": "Identification inferred"}
+
+
+def references_html(e: dict) -> str:
+    items = []
+    for reference in e.get("references") or []:
+        title = ext_link(reference["url"], reference["title"])
+        meta = [esc(reference.get("source")), REFERENCE_LABELS.get(reference["relationship"], "")]
+        if "start" in reference:
+            start = reference["start"]
+            meta.append(ext_link(editor_timestamp_url(e, start), fmt_ts(start), "ts") or fmt_ts(start))
+        meta.extend(ext_link(link["url"], link["title"]) for link in reference.get("supporting_urls", []))
+        details = " · ".join(filter(None, meta))
+        foot = f'<div class="meta">{details}</div>' if details else ""
+        items.append(f'<li><h3>{title}</h3><p>{esc(reference["context"])}</p>{foot}</li>')
+    return '<section class="episode-references"><h2>References</h2><ul class="claims">' + "".join(items) + '</ul></section>' if items else ""
+
+
 def claims_fragment(e: dict) -> str:
     """What an opened home-page row shows: the episode's summaries with their timestamps, then the way to its own page."""
     cls = "claims influencer" if e.get("influencer") else "claims"
@@ -1315,7 +1333,7 @@ def enrich(runs: list[dict]) -> dict:
     return people
 
 
-EDITOR_FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source")
+EDITOR_FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source", "references")
 CLAIM_IDENTITY = ("title", "show", "published", "url", "youtube_url", "transcript_url")
 
 
@@ -1467,6 +1485,8 @@ def build_episodes(runs: list[dict]) -> dict:
                         entry(eid)["runs"].append(r["name"])
                 if "topics" in m and "topics" not in entry(eid):
                     entry(eid)["topics"] = m["topics"]
+                if m.get("key_insights") and not entry(eid).get("key_insights") and m.get("references"):
+                    entry(eid)["references"] = m["references"]
                 fill(entry(eid), title=m.get("title"), show=m.get("show") or m.get("source"), published=m.get("published"),
                      url=safe_url(m.get("url")), youtube_url=safe_url(m.get("youtube_url")), apple_url=safe_url(m.get("apple_url")),
                      spotify_url=safe_url(m.get("spotify_url")), spotify_kind=m.get("spotify_kind"),
@@ -1979,6 +1999,14 @@ b.addEventListener('click',async()=>{
  const sections=document.querySelectorAll('.key-insights,.dense-summary');
  if(sections.length)sections.forEach(s=>lines.push('',s.innerText.trim()));
  else {const claims=document.querySelector('main .claims');if(claims&&claims.innerText.trim())lines.push('','Claims',claims.innerText.trim())}
+ const references=document.querySelector('.episode-references');
+ if(references){
+  lines.push('','## References');
+  references.querySelectorAll('li').forEach(item=>{
+   lines.push('',item.innerText.trim());
+   item.querySelectorAll('a').forEach(link=>lines.push(link.textContent.trim()+': '+link.href));
+  });
+ }
  try{if(!navigator.clipboard||!navigator.clipboard.writeText)throw new Error();await navigator.clipboard.writeText(lines.join('\\n').trim()+'\\n');status.textContent='Copied.'}
  catch(e){status.textContent='Copy failed. Select and copy the text on this page.'}
 })})();</script>"""
@@ -2018,7 +2046,7 @@ def episode_page(e: dict, ent: ents.Entities | None = None, cos: dict | None = N
     source = episode_source_link(e)
     source_action = f'<p class="meta">{source}</p>' if source else ""
     content = (key_insights_html(e) + dense_summary_html(e)) if e.get("key_insights") else f'<ul class="claims{" influencer" if e.get("influencer") else ""}" style="margin-top:1.6em">{"".join(claim_li(c) for c in e["claims"])}</ul>'
-    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{source_action}{kind}{speakers_html(e, people)}{take}{about}{episode_copy_control(e)}{context}{content}',
+    return page(f"{title} · {SITE}", f'{episode_image(e, large=True)}<h1>{t}</h1><div class="meta">{meta} {pick_badge(e)}</div>{source_action}{kind}{speakers_html(e, people)}{take}{about}{episode_copy_control(e)}{context}{content}{references_html(e)}',
                 "podcasts", md=md_of(e["page"]), updated=e["date"])
 
 
@@ -2269,8 +2297,20 @@ def episode_md(e: dict) -> str:
         for item in e.get("dense_summary") or []:
             url = editor_timestamp_url(e, item["start"])
             out += [f'### {mlink(fmt_ts(item["start"]), url)} {mt(item["title"])}', "", mt(item["text"]), ""]
-        return doc(out)
-    return doc(out + [claim_md(c) for c in e["claims"]])
+    else:
+        out += [claim_md(c) for c in e["claims"]]
+    if references := e.get("references"):
+        out += ["", "## References", ""]
+        for reference in references:
+            meta = [ml(reference.get("source")), REFERENCE_LABELS.get(reference["relationship"], "")]
+            if "start" in reference:
+                start = reference["start"]
+                meta.append(mlink(fmt_ts(start), editor_timestamp_url(e, start)))
+            meta.extend(mlink(link["title"], link["url"]) for link in reference.get("supporting_urls", []))
+            details = " · ".join(filter(None, meta))
+            title = mlink(reference["title"], reference["url"])
+            out.append(f'- {title} — {ml(reference["context"])}' + (f' ({details})' if details else ""))
+    return doc(out)
 
 
 def tickers_lines(pub: dict, h: int = 1) -> list[str]:
@@ -2435,6 +2475,7 @@ def episode_json(e: dict) -> dict:
             "user_pick": bool(e.get("user_pick")), "score": e["score"], "reason": e["reason"], "topics": e.get("topics", []), "companies": list(e.get("edges", {})),
             "lenses": e.get("lenses", []), "image_url": e.get("image_url"), "show_image_url": e.get("show_image_url"),
             "key_insights": e.get("key_insights", []), "dense_summary": e.get("dense_summary", []),
+            **({"references": e["references"]} if e.get("references") else {}),
             "context": e.get("context"), "overview": e.get("overview"), "transcript_source": e.get("transcript_source"), "editor_source": e.get("editor_source"),
             "page": absu(e["page"]) if e["page"] else None, "md": absu(md_of(e["page"])) if e["page"] else None}
 

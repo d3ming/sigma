@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import jsonschema
 
@@ -13,7 +14,18 @@ from .ranked import private_hits
 FILE = "editor.json"
 MIN_SCORE = 7
 PROMPT_VERSION = "edit-2026-11-02"
-FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source", "topics")
+FIELDS = ("key_insights", "dense_summary", "context", "overview", "editor_source", "topics", "references")
+
+
+def _check_reference_url(url: str, where: str) -> None:
+    message = f"{where}: expected a valid web URL without credentials"
+    try:
+        parsed = urlsplit(url)
+        valid = parsed.hostname and parsed.username is None and parsed.port != 0
+    except ValueError as exc:
+        raise ValueError(message) from exc
+    if not valid:
+        raise ValueError(message)
 
 
 def load(run_dir: str | Path) -> dict[str, dict]:
@@ -78,6 +90,13 @@ def validate(run_dir: Path, data: dict) -> dict[str, dict]:
                 for key, number in report.cite_numbers(text):
                     if key not in near:
                         raise ValueError(f"{where}: number {number} is not spoken in the cited source interval")
+        for i, reference in enumerate(episode.get("references", [])):
+            where = f"editor: {eid} references[{i}]"
+            if reference.get("start", 0) > last + report.TS_SLACK:
+                raise ValueError(f"{where}: timestamp is outside the transcript")
+            _check_reference_url(reference["url"], where)
+            for link in reference.get("supporting_urls", []):
+                _check_reference_url(link["url"], where)
         out[eid] = {field: episode[field] for field in FIELDS if field in episode}
         out[eid]["editor_source"] = row.get("transcript_source") or ""
     return out
@@ -104,4 +123,5 @@ if __name__ == "__main__":
     checked = load(args.run)
     print(f"[editor] {len(checked)} episodes; "
           f"{sum(len(e['key_insights']) for e in checked.values())} key insights; "
-          f"{sum(len(e['dense_summary']) for e in checked.values())} chronological sections validated")
+          f"{sum(len(e['dense_summary']) for e in checked.values())} chronological sections; "
+          f"{sum(len(e.get('references', [])) for e in checked.values())} references validated")
