@@ -186,13 +186,15 @@ def test_report_checks_numbers_against_captions(day, capsys, monkeypatch):
     gas_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25 billion cubic feet per day", "timestamp": 284}], "sections": []}
     money_claim = {"episode_id": "synthetic", "signal": [{"text": "Spending is $25 billion", "timestamp": 284}], "sections": []}
     assert report_mod._number_warnings(gas_claim, bcf_source) == []
-    for range_text in ("25 to 35 BCF a day", "25 to 35 billion cubic feet per day"):
+    for range_text in ("25 to 35 BCF a day", "25 to 35 billion cubic feet per day",
+                       "twenty five to thirty five BCF", "twenty five to thirty five billion cubic feet"):
         range_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": range_text}]))
         assert report_mod._number_warnings(gas_claim, range_source) == []
         assert len(report_mod._number_warnings(money_claim, range_source)) == 1
-    mixed_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": "100,000 to 1 billion cubic feet"}]))
     mixed_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 100,000 BCF", "timestamp": 284}], "sections": []}
-    assert len(report_mod._number_warnings(mixed_claim, mixed_source)) == 1
+    for text in ("100,000 to 1 billion cubic feet", "a hundred thousand to one billion cubic feet"):
+        mixed_source = report_mod.spoken_numbers(report_mod._stream([{"start": 284, "text": text}]))
+        assert len(report_mod._number_warnings(mixed_claim, mixed_source)) == 1
     bare_claim = {"episode_id": "synthetic", "signal": [{"text": "Demand is 25", "timestamp": 284}], "sections": []}
     assert report_mod._number_warnings(bare_claim, bcf_source) == []
     assert len(report_mod._number_warnings(money_claim, bcf_source)) == 1

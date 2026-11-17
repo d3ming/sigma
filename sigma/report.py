@@ -372,10 +372,28 @@ def _bcf_width(words: list[tuple[str, float]], start: int) -> int:
     return 0
 
 
+def _range_separator(words: list[tuple[str, float]], first: int, separator: int) -> bool:
+    if separator >= len(words):
+        return False
+    word = words[separator][0]
+    return word in {"to", "through", "or"} or (word == "and" and first > 0 and words[first - 1][0] == "between")
+
+
 def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
     """Every number in a (word, timestamp) stream as (timestamp, key): digits, and spelled out ones
     (one..nineteen, twenty..ninety, hundred, 'twenty five', 'two hundred', 'one point four') as digits."""
     out, i, n = [], 0, len(words)
+    range_start = None
+
+    def add_bcf(value: Decimal, timestamp: float, abbreviated: bool) -> None:
+        if range_start is not None:
+            second, lower, lower_timestamp = range_start
+            if second == i and _shared_range_unit(lower, str(value), "bcf"):
+                out.insert(len(out) - 1, (lower_timestamp, _num_key(lower, "bcf")))
+        if abbreviated:
+            out.append((timestamp, _num_key(value)))
+        out.append((timestamp, _num_key(value, "bcf")))
+
     while i < n:
         w, ts = words[i]
         if w == "a" and i + 4 < n and words[i + 1][0] in _MAGNITUDES and \
@@ -394,23 +412,17 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
             unit = words[nxt][0] if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else None
             volume_width = _bcf_width(words, nxt)
             if volume_width:
-                if volume_width == 1:
-                    out.append((ts, _num_key(value)))
-                out.append((ts, _num_key(value, "bcf")))
+                add_bcf(value, ts, abbreviated=volume_width == 1)
                 i = nxt + volume_width
                 continue
             if unit is None:
-                second = i + 1
-                if second < n and (words[second][0] in {"to", "through", "or"} or
-                                   (i > 0 and words[i - 1][0] == "between" and words[second][0] == "and")):
-                    second += 1
+                separated = _range_separator(words, i, i + 1)
+                second = i + (2 if separated else 1)
                 if second + 1 < n and words[second][0][:1].isdigit():
-                    shared = _bcf_width(words, second + 1)
-                    if shared:
-                        if _shared_range_unit(value, words[second][0], "bcf"):
-                            out.append((ts, _num_key(value, "bcf")))
-                    elif words[second + 1][0] in _MAGNITUDES | _PERCENT_WORDS:
+                    if not _bcf_width(words, second + 1) and words[second + 1][0] in _MAGNITUDES | _PERCENT_WORDS:
                         unit = _shared_range_unit(value, words[second][0], words[second + 1][0])
+                if unit is None and second < n and (separated or words[second][0][:1].isdigit()):
+                    range_start = (second, value, ts)
             out.append((ts, _num_key(value, unit)))
             i = nxt + 1 if nxt < n and words[nxt][0] in _MAGNITUDES | _PERCENT_WORDS else i + 1
             continue
@@ -459,17 +471,17 @@ def spoken_numbers(words: list[tuple[str, float]]) -> list[tuple[float, str]]:
                 j += 1
             unit = magnitude
             volume_width = _bcf_width(words, j - 1 if unit == "billion" else j) if unit in {None, "billion"} else 0
-            if volume_width == 3:
-                unit = "bcf"
-                j += 2
-            elif volume_width == 1 and unit is None:
-                out.append((ts, _num_key(Decimal(val))))
-                unit = "bcf"
-                j += 1
+            value = Decimal(val)
+            if volume_width:
+                add_bcf(value, ts, abbreviated=volume_width == 1)
+                i = j + (2 if volume_width == 3 else 1)
+                continue
             if unit is None and j < n and words[j][0] in _PERCENT_WORDS:
                 unit = words[j][0]
                 j += 1
-            out.append((ts, _num_key(Decimal(val), unit)))
+            if unit is None and _range_separator(words, i, j):
+                range_start = (j + 1, value, ts)
+            out.append((ts, _num_key(value, unit)))
             i = j
             continue
         i += 1
