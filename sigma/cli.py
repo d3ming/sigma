@@ -873,7 +873,8 @@ def _main(argv=None):
     stp.add_argument("--record", action="store_true", help="also stamp select/report start/end timing the code can observe (the only write)")
     sa = sub.add_parser("score-audit", help="list stored scores whose transcript is partial, short of the media, superseded by a fuller copy, missing or changed since scoring; changes nothing")
     sa.add_argument("--json", action="store_true")
-    tx = sub.add_parser("transcript", help="the fullest complete transcript of an episode under the data root's runs/, and the copies passed over with why; exit 1 when there is none")
+    tx = sub.add_parser("transcript", help="find the fullest complete transcript of an episode",
+                        description="Searches SIGMA_DATA_ROOT/runs (default: this checkout's data/runs). Reports the selected root and why copies were skipped. Exits 1 if no complete transcript was found.")
     tx.add_argument("episode_id")
     tx.add_argument("--json", action="store_true")
     ed = sub.add_parser("edit", help="write the full editor.json entry (prompts/edit.md) for each ranked episode scoring --min-score or more that has none: one Codex run each, checked alone, then merged",

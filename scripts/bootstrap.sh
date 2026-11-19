@@ -72,6 +72,8 @@ if config.get("runtime") != runtime:
     path.write_text(json.dumps(config, indent=2) + "\n")
 print(f"Runtime bound to {checkout}")
 print(f"Private data: {root}")
-print(f"Next: SIGMA_DATA_ROOT={shlex.quote(str(root))} {shlex.quote(sys.executable)} -m sigma.cli doctor")
+command = f"SIGMA_DATA_ROOT={shlex.quote(str(root))} {shlex.quote(sys.executable)} -m sigma.cli"
+print(f"Next: {command} doctor")
+print(f"Find a transcript: {command} transcript EPISODE_ID")
 print("Then follow skills/daily-update/SKILL.md for ingestion and edition checks.")
 PY

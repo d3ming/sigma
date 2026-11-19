@@ -78,6 +78,12 @@ git fetch -q origin main || { echo "[data] could not fetch private origin/main" 
 MAIN=$(git rev-parse --verify refs/remotes/origin/main^{commit}) || { echo "[data] private origin/main is missing" >&2; exit 1; }
 BASE=$(git merge-base HEAD "$MAIN") || { echo "[data] source branch and private main have no common history" >&2; exit 1; }
 
+check_saved_transcripts() {
+  local python=${SIGMA_PYTHON:-$SIGMA/.venv/bin/python}
+  if [[ -z ${SIGMA_PYTHON:-} && ! -x "$python" ]]; then python=python3; fi
+  PYTHONPATH="$SIGMA" "$python" "$SIGMA/scripts/check_saved_transcripts.py" "$DATA" "$REL" "$MAIN" "$1"
+}
+
 INDEX=$(mktemp "${TMPDIR:-/tmp}/sigma-data-index.XXXXXX")
 PATCH=$(mktemp "${TMPDIR:-/tmp}/sigma-data-patch.XXXXXX")
 WORK=""
@@ -109,6 +115,7 @@ git -c core.quotepath=false diff --binary --full-index "$BASE" "$SNAPSHOT" -- "$
 
 [[ ! -s "$PATCH" ]] || echo "[data] to save: $(git diff --name-only "$BASE" "$SNAPSHOT" -- "$REL" | sed "s|^$REL/||" | cut -d/ -f1-2 | sort -u | paste -sd, -)"
 if [[ ! -s "$PATCH" ]]; then
+  check_saved_transcripts "$MAIN" || exit 1
   if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$(git rev-parse "$MAIN:$REL")" ]]; then
     echo "[data] candidate data tree does not match the approved tree" >&2
     exit 1
@@ -128,6 +135,7 @@ if ! git -C "$WORK" apply --3way --index "$PATCH"; then
   exit 1
 fi
 CANDIDATE_TREE=$(git -C "$WORK" write-tree)
+check_saved_transcripts "$CANDIDATE_TREE" || exit 1
 OWNED_TREE=$(git -C "$WORK" rev-parse "$CANDIDATE_TREE:$REL")
 if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$OWNED_TREE" ]]; then
   echo "[data] candidate data tree does not match the approved tree" >&2
