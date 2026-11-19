@@ -91,4 +91,4 @@ Choose proof with [verify](skills/verify/SKILL.md) and its feature map.
 
 - **Write no comments.** Explain why in the commit message; the one exception is a single line an agent would otherwise "fix" wrongly (no measurements).
 - Updating a document cuts what code, config or `--help` already says, never adding current state.
-- Removed features get an entry in `docs/REMOVED_FEATURES.md` (what it did, why it went, where its last copy lives); accepted limits get a `Known limit:` paragraph in the commit body.
+- Deleted features live in Git history (state what went and why in the commit body); accepted limits get a `Known limit:` paragraph in the commit body.
