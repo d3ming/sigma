@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Public opinion or article post",
+  "title": "Public research post",
   "type": "object",
   "required": ["title", "date", "summary", "body"],
   "additionalProperties": false,
   "properties": {
+    "kind": {"enum": ["article", "special-report"], "description": "Research library category. Omitted means article."},
     "title": {"type": "string", "minLength": 1, "maxLength": 140},
     "date": {"type": "string", "format": "date"},
     "summary": {"type": "string", "minLength": 1, "maxLength": 300},
