@@ -100,7 +100,7 @@ Keep score-band comparisons internal. The viewer-facing summary describes the ep
 - `speakers`: who speaks in the episode, as `{name, role}`: the host, co-host, guest or panelist whose voice you read in the
   transcript. A person the episode is about, quoted, or named only in the title or description is not a speaker. `name` is the
   full name as the title, description or transcript writes it; `role` only the words they use for that person, left out when
-  none. `rank-merge` stops on a name those texts do not contain. An empty list is valid. This is identity only and does not
-  change the score.
+  none. Leave out a speaker the texts name only by first name or not at all. `rank-merge` stops on a name those texts do not
+  contain. An empty list is valid. This is identity only and does not change the score.
 - Order by score, then by tier, then by recency. `rank` starts at 1.
 - Never include the owner's holdings, weights or portfolio data in `ranked.json`, and never add a holdings-style field (`holdings`, `weight`, `market_pct`). A guest's public statement about their own portfolio is a claim to attribute in prose.

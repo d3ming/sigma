@@ -44,7 +44,7 @@ and status commands. This records a user pick without adding a source or schedul
 independent rating; Find's picks filter includes episodes below the homepage rating floor. Set `picks_label` in private
 `site.json` to name that filter and its episode badges. `--picks` still accepts a candidate JSON list.
 
-Posts (opinions and articles curated with the maintainer) are explicitly allowed in the data root and checked before the site build. A post joins `research/index.json` only after the maintainer's yes to that draft. A refused post stops the build. Nothing is published just because it exists in the data folder.
+Research lists special reports and articles. Set `"kind": "special-report"` in `research/posts/<slug>.json` to put a post in the report library. Add the slug to `research/index.json` only after the maintainer approves that draft. An invalid listed post stops the build.
 
 The site is built locally from private data and uploaded prebuilt. Push source changes to `develop`, then review a
 release PR into `main`. A passing release PR authorizes `make publish` (a post still needs the maintainer's yes): it checks the frozen build, saves private data

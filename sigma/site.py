@@ -2766,21 +2766,30 @@ def research_index_page(posts: list[dict], trading_link: bool = False) -> tuple[
     if not posts:
         body += "<p>No research is published yet.</p>"
         lines.append("No research is published yet.")
-    else:
+    reports = [p for p in posts if public_research.is_special_report(p)]
+    articles = [p for p in posts if not public_research.is_special_report(p)]
+    for section_id, heading, group in (("special-reports", "Special reports", reports), ("articles", "Articles", articles)):
+        if not group:
+            continue
+        body += f'<section aria-labelledby="{section_id}"><h2 id="{section_id}">{heading}</h2>'
         rows = "".join(f'<li><span class="d">{esc(p["date"])}</span><a href="{public_research.post_path(p["slug"])}">{esc(p["title"])}</a>'
-                       f'<p class="lede">{esc(p["summary"])}</p></li>' for p in posts)
-        body += f'<ul class="archive articles">{rows}</ul>'
-        lines += [f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in posts]
+                       f'<p class="lede">{esc(p["summary"])}</p></li>' for p in group)
+        body += f'<ul class="archive articles">{rows}</ul></section>'
+        lines += [f"## {heading}", ""]
+        lines += [f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in group]
+        lines.append("")
     md = doc(lines)
-    return page(f"Research · {SITE}", body, "research", "Opinions and articles.", md=md_of("/research/")), md
+    return page(f"Research · {SITE}", body, "research", "Special reports and articles.", md=md_of("/research/")), md
 
 
 def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]) -> None:
     public = []
     for post in posts:
         path = public_research.post_path(post["slug"])
-        body = f'<p class="date">{esc(post["date"])}</p><h1>{esc(post["title"])}</h1><p class="lede">{esc(post["summary"])}</p>{article.render(post["body"])}'
+        body = f'<h1>{esc(post["title"])}</h1><p class="date">{esc(post["date"])}</p><p class="lede">{esc(post["summary"])}</p>{article.render(post["body"])}'
         markdown = doc([f"# {post['title']}", "", post["date"], "", post["summary"], "", *post["body"].strip().splitlines()])
+        if public_research.is_special_report(post):
+            body += '<p class="meta"><a href="/research/#special-reports">All special reports</a></p>'
         emit(path, page(f"{post['title']} · {SITE}", body, "research", post["summary"], md=md_of(path), updated=post["date"]), markdown, post["date"])
         public.append({**post, "path": absu(path), "markdown": absu(md_of(path))})
         write(out / "research" / f"{post['slug']}.json", json.dumps(post, ensure_ascii=False, indent=1) + "\n")
