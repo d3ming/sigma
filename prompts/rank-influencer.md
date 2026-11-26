@@ -10,7 +10,7 @@ the episode, and is its record: score against the anchors below, never against t
 
 You are one reader. Input: `rank/influencer-N-in.json`, written by `sigma rank-prep` (episodes from sources marked
 `style: influencer`, condensed to a `[timestamp]` every 30 s). Output: `rank/influencer-N-out.json`, a JSON list of
-`{episode_id, title, url, source, tier, published, score, reason, claims}`, one entry per input episode, in the same
+`{episode_id, title, url, source, tier, published, score, reason, claims, speakers}`, one entry per input episode, in the same
 shape as `rank/batch-N-out.json` (`schema/ranked.schema.json`). Cite timestamps from the condensed text.
 
 ## 1. Extract the picks
@@ -89,6 +89,11 @@ and give no claims.
 - Keep the 1-10 quality score separate from the investment stance. Do not use `reason` to apologize for a rating,
   explain a score band, or repeat the rubric. A strong score does not mean bullish; a useful bearish call can score
   highly.
+- `speakers`: who speaks in the episode, as `{name, role}`: the creator, co-host or guest whose voice you read in the
+  transcript. A person the episode is about, quoted, or named only in the title or description is not a speaker. `name` is the
+  full name as the title, description or transcript writes it; `role` only the words they use for that person, left out when
+  none. Leave out a speaker the texts name only by first name or not at all. `rank-merge` stops on a name those texts do not
+  contain. An empty list is valid. This is identity only and does not change the score.
 - Never write advice in Sigma's voice. Attribute the view to the creator in `reason` and `claim`.
 - Public statements a speaker makes about their own trades, portfolio weights or positions may be included with
   attribution to that speaker. Never include the owner's private holdings, account balances or position sizes.
