@@ -204,23 +204,43 @@ def minutes(seconds: float | None) -> float | None:
 def locate(root: Path, episode_id: str) -> dict:
     """`sigma transcript`: the fullest complete copy under <data root>/runs of the media the newest run lists, and every
     other copy with why it was not chosen."""
+    root = root.resolve()
     rows = rows_of(root / "runs", episode_id)
-    best, skipped = choose(runs_copies(rows), rows[-1][1] if rows else None)
+    copies = runs_copies(rows)
+    available = {c.path for c in copies}
+    unavailable = []
+    for directory, row in rows:
+        path = directory / row["file"] if row.get("file") else None
+        if path not in available:
+            reason = "no transcript path in manifest"
+            if path:
+                reason = "no timestamped transcript" if path.is_file() else "missing transcript file"
+            unavailable.append({"path": str(path) if path else None, "run": directory.name,
+                                "minutes": None, "media_minutes": minutes(media_seconds(row)),
+                                "transcript_source": row.get("transcript_source"), "reason": reason})
+    best, skipped = choose(copies, rows[-1][1] if rows else None)
     for legacy in legacy_roots(root):
         skipped += [(c, LEGACY) for c in runs_copies(rows_of(legacy, episode_id), legacy=True)]
-    every = ([best] if best else []) + [c for c, _ in skipped]
+    title = rows[-1][1].get("title") if rows else None
+    if best:
+        title = best.row.get("title")
+    elif not rows and skipped:
+        title = skipped[0][0].row.get("title")
 
     def item(c: Copy, why: str | None = None) -> dict:
         return {"path": str(c.path), "run": c.run, "minutes": minutes(c.end), "media_minutes": minutes(media_seconds(c.row)),
                 "transcript_source": c.row.get("transcript_source"), **({"reason": why} if why else {})}
 
-    return {"episode_id": episode_id, "title": every[0].row.get("title") if every else None,
-            "chosen": item(best) if best else None, "skipped": [item(c, why) for c, why in skipped]}
+    return {"episode_id": episode_id, "title": title, "data_root": str(root),
+            "chosen": item(best) if best else None, "skipped": [item(c, why) for c, why in skipped] + unavailable}
 
 
 def render(found: dict) -> str:
     c = found["chosen"]
     lines = [f"{found['episode_id']}  {found['title'] or 'no copy in runs/'}",
              f"use: {c['path']}  {c['minutes']} of {c['media_minutes'] or '?'} min" if c else "no complete transcript in runs/"]
-    lines += [f"skipped: {s['path']}  {s['minutes']} min  {s['reason']}" for s in found["skipped"]]
+    lines.append(f"data root: {found['data_root']} (set SIGMA_DATA_ROOT to select another)")
+    for s in found["skipped"]:
+        length = f"  {s['minutes']} min" if s["minutes"] is not None else ""
+        lines.append(f"skipped: {s['path'] or s['run']}{length}  {s['reason']}")
     return "\n".join(lines)
