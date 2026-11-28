@@ -46,6 +46,14 @@ esac
 
 cd "$REPO"
 
+owned_tree() {
+  local revision=$1 checkout=$2
+  case "$REL" in
+    .) git -C "$checkout" rev-parse --verify "$revision^{tree}";;
+    *) git -C "$checkout" rev-parse --verify "$revision:$REL";;
+  esac
+}
+
 level_checkout() {
   git fetch -q origin main 2>/dev/null || { echo "[data] checkout left as is: could not fetch origin/main"; return 0; }
   local branch upstream
@@ -113,17 +121,18 @@ DELETED=$(git diff --name-only --diff-filter=D "$BASE" "$SNAPSHOT" -- "$REL")
 [[ -z "$DELETED" ]] || { echo "[data] refusing to delete private data without a saved copy" >&2; exit 1; }
 git -c core.quotepath=false diff --binary --full-index "$BASE" "$SNAPSHOT" -- "$REL" > "$PATCH"
 
-[[ ! -s "$PATCH" ]] || echo "[data] to save: $(git diff --name-only "$BASE" "$SNAPSHOT" -- "$REL" | sed "s|^$REL/||" | cut -d/ -f1-2 | sort -u | paste -sd, -)"
+[[ ! -s "$PATCH" ]] || echo "[data] to save: $(git -C "$DATA" diff --relative --name-only "$BASE" "$SNAPSHOT" -- . | cut -d/ -f1-2 | sort -u | paste -sd, -)"
 if [[ ! -s "$PATCH" ]]; then
   check_saved_transcripts "$MAIN" || exit 1
-  if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$(git rev-parse "$MAIN:$REL")" ]]; then
+  MAIN_TREE=$(owned_tree "$MAIN" "$REPO")
+  if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$MAIN_TREE" ]]; then
     echo "[data] candidate data tree does not match the approved tree" >&2
     exit 1
   fi
   [[ $PLAN_ONLY == 1 ]] || echo "[data] private main already has the current owned data"
   [[ $PLAN_ONLY == 1 ]] || level_checkout
   echo "[data] main: $MAIN"
-  echo "[data] owned tree: $(git rev-parse "$MAIN:$REL")"
+  echo "[data] owned tree: $MAIN_TREE"
   exit 0
 fi
 
@@ -136,7 +145,7 @@ if ! git -C "$WORK" apply --3way --index "$PATCH"; then
 fi
 CANDIDATE_TREE=$(git -C "$WORK" write-tree)
 check_saved_transcripts "$CANDIDATE_TREE" || exit 1
-OWNED_TREE=$(git -C "$WORK" rev-parse "$CANDIDATE_TREE:$REL")
+OWNED_TREE=$(owned_tree "$CANDIDATE_TREE" "$WORK")
 if [[ -n "$EXPECT_TREE" && "$EXPECT_TREE" != "$OWNED_TREE" ]]; then
   echo "[data] candidate data tree does not match the approved tree" >&2
   exit 1
@@ -154,9 +163,10 @@ while IFS= read -r -d '' owned_path; do
 done < <(git -C "$WORK" diff --cached --name-only -z)
 git -C "$WORK" diff --cached --quiet && {
   echo "[data] private main already has the current owned data"
+  OWNED_TREE=$(owned_tree HEAD "$WORK")
   level_checkout
   echo "[data] main: $MAIN"
-  echo "[data] owned tree: $(git -C "$WORK" rev-parse "HEAD:$REL")"
+  echo "[data] owned tree: $OWNED_TREE"
   exit 0
 }
 git -C "$WORK" commit -q -m "$MSG"

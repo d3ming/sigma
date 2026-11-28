@@ -54,5 +54,9 @@ def load(root: Path | None = None) -> list[dict]:
     return sorted(out, key=lambda x: (x["date"], x["slug"]), reverse=True)
 
 
+def is_special_report(post: dict) -> bool:
+    return post.get("kind") == "special-report"
+
+
 def post_path(slug: str) -> str:
     return f"/research/{slug}/"

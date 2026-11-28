@@ -20,7 +20,7 @@ from .links import yt_id
 from .tickers import normalize as norm_ticker
 from . import signals_sentiment
 from .publication_policy import MIN_SCORE
-from . import article
+from . import article, trading
 from . import research as public_research
 from .paths import data_root
 from .site_config import load as load_site_identity
@@ -2728,24 +2728,68 @@ def sitemap_xml(entries: list[tuple]) -> str:
             + "\n".join(rows) + "\n</urlset>\n")
 
 
-def research_index_page(posts: list[dict]) -> tuple[str, str]:
+def trading_page(catalog: dict) -> tuple[str, str]:
+    sections = catalog["sections"]
+    body = [f"<h1>{trading.TITLE}</h1>", '<div class="article"><h2>Review digest</h2><ul class="al">']
+    md = [f"# {trading.TITLE}", "", "## Review digest", ""]
+    for section in sections:
+        sources = [(c["label"], trading.watch(c["video"], c["seconds"])) for c in section["clips"]]
+        links = " · ".join(f'<a href="{esc(url)}">{esc(label)}</a>' for label, url in sources)
+        md_links = " · ".join(mlink(label, url) for label, url in sources)
+        body.append(f'<li><b><a href="#technique-{section["id"]}">{esc(section["title"])}</a>.</b> '
+                    f'{esc(section["digest"])} {links}</li>')
+        md.append(f'- **{ml(section["title"])}.** {ml(section["digest"])} {md_links}.')
+    body.append('</ul><h2 id="video-library">Video library</h2>')
+    md.extend(["", "## Video library", ""])
+    playlists = [(p["title"], trading.playlist_url(p["id"])) for p in catalog["playlists"]]
+    body.append("<p>" + " · ".join(f'<a href="{esc(url)}">{esc(title)}</a>' for title, url in playlists) + "</p>")
+    md.extend([" · ".join(mlink(title, url) for title, url in playlists), ""])
+    for section in sections:
+        body.append(f'<h3 id="technique-{section["id"]}">{esc(section["title"])}</h3><ul class="al">')
+        md.extend([f'### {ml(section["title"])}', ""])
+        for video in section["videos"]:
+            url = trading.watch(video["id"])
+            minutes = (video["duration"] + 30) // 60
+            body.append(f'<li><a href="{esc(url)}">{esc(video["title"])}</a> <span class="mut">{minutes} min</span></li>')
+            md.append(f'- {mlink(video["title"], url)} · {minutes} min')
+        body.append("</ul>")
+        md.append("")
+    body.append("</div>")
+    return page(f"{trading.TITLE} · {SITE}", "".join(body), "research", md=md_of(trading.PATH)), doc(md)
+
+
+def research_index_page(posts: list[dict], trading_link: bool = False) -> tuple[str, str]:
+    body, lines = "<h1>Research</h1>", ["# Research", ""]
+    if trading_link:
+        body += f'<p><a href="{trading.PATH}">{trading.TITLE}</a></p>'
+        lines += [f"- {mlink(trading.TITLE, absu(md_of(trading.PATH)))}", ""]
     if not posts:
-        body = "<h1>Research</h1><p>No research is published yet.</p>"
-        md = doc(["# Research", "", "No research is published yet."])
-    else:
+        body += "<p>No research is published yet.</p>"
+        lines.append("No research is published yet.")
+    reports = [p for p in posts if public_research.is_special_report(p)]
+    articles = [p for p in posts if not public_research.is_special_report(p)]
+    for section_id, heading, group in (("special-reports", "Special reports", reports), ("articles", "Articles", articles)):
+        if not group:
+            continue
+        body += f'<section aria-labelledby="{section_id}"><h2 id="{section_id}">{heading}</h2>'
         rows = "".join(f'<li><span class="d">{esc(p["date"])}</span><a href="{public_research.post_path(p["slug"])}">{esc(p["title"])}</a>'
-                       f'<p class="lede">{esc(p["summary"])}</p></li>' for p in posts)
-        body = f'<h1>Research</h1><ul class="archive articles">{rows}</ul>'
-        md = doc(["# Research", "", *[f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in posts]])
-    return page(f"Research · {SITE}", body, "research", "Opinions and articles.", md=md_of("/research/")), md
+                       f'<p class="lede">{esc(p["summary"])}</p></li>' for p in group)
+        body += f'<ul class="archive articles">{rows}</ul></section>'
+        lines += [f"## {heading}", ""]
+        lines += [f"- {p['date']}: [{ml(p['title'])}]({absu(public_research.post_path(p['slug']))}) — {ml(p['summary'])}" for p in group]
+        lines.append("")
+    md = doc(lines)
+    return page(f"Research · {SITE}", body, "research", "Special reports and articles.", md=md_of("/research/")), md
 
 
 def research_post_pages(posts: list[dict], emit, out: Path, sitemap: list[tuple]) -> None:
     public = []
     for post in posts:
         path = public_research.post_path(post["slug"])
-        body = f'<p class="date">{esc(post["date"])}</p><h1>{esc(post["title"])}</h1><p class="lede">{esc(post["summary"])}</p>{article.render(post["body"])}'
+        body = f'<h1>{esc(post["title"])}</h1><p class="date">{esc(post["date"])}</p><p class="lede">{esc(post["summary"])}</p>{article.render(post["body"])}'
         markdown = doc([f"# {post['title']}", "", post["date"], "", post["summary"], "", *post["body"].strip().splitlines()])
+        if public_research.is_special_report(post):
+            body += '<p class="meta"><a href="/research/#special-reports">All special reports</a></p>'
         emit(path, page(f"{post['title']} · {SITE}", body, "research", post["summary"], md=md_of(path), updated=post["date"]), markdown, post["date"])
         public.append({**post, "path": absu(path), "markdown": absu(md_of(path))})
         write(out / "research" / f"{post['slug']}.json", json.dumps(post, ensure_ascii=False, indent=1) + "\n")
@@ -2790,6 +2834,7 @@ def show_styles(path: Path = SOURCES_FILE) -> dict[str, str]:
 def _build(published: Path, out: Path, entities_file: Path, research_posts: list[dict] | None = None) -> dict:
     global SITE_YEAR
     from . import signals_site  # imports this module, so not at the top
+    trading_catalog = trading.load(published)
     runs = load_runs(published)
     merged = merge_same_episodes(runs)
     social_merged = merge_same_episodes([r["influencer"] for r in runs])
@@ -2865,9 +2910,11 @@ def _build(published: Path, out: Path, entities_file: Path, research_posts: list
     eds = load_editions(published)
     emit("/", index_page(runs, reg, ent, side=signals_site.panel(adays), ireg=ireg), index_md(runs, reg, pub, people, ireg, eds, adays))
     signals_site.build(published, out, emit, sm, newest)
-    research_html, research_markdown = research_index_page(research_posts)
+    research_html, research_markdown = research_index_page(research_posts, trading_catalog is not None)
     emit("/research/", research_html, research_markdown, research_posts[0]["date"] if research_posts else newest)
     research_post_pages(research_posts, emit, out, sm)
+    if trading_catalog is not None:
+        emit(trading.PATH, *trading_page(trading_catalog))
     sm.append(("/research/index.json", research_posts[0]["date"] if research_posts else newest))
     write(out / file_of("/alpha/"), redirect_page("/signals/", "Signals", md_of("/alpha/")))
     write(out / file_of(md_of("/alpha/")), doc(["# Signals", "", f"Moved to [Signals]({absu('/signals.md')})."]))

@@ -648,6 +648,21 @@ def test_research_posts_are_allowlisted_safe_and_fail_before_replacing_site(tmp_
     assert json.loads((out / "research/agent-workflows.json").read_text()) == {"slug": "agent-workflows", **post}
     assert sitemap == [("/research/agent-workflows.json", "2026-10-01")]
 
+    special = {**post, "kind": "special-report", "title": "A survey of error correction"}
+    (posts_dir / "error-correction.json").write_text(json.dumps(special))
+    allowlist = data / "research" / "index.json"
+    allowlist.write_text(json.dumps({"posts": ["agent-workflows", "error-correction"]}))
+    published = research.load(data)
+    index, markdown = site.research_index_page(published)
+    reports, articles = index.split('<h2 id="articles">', 1)
+    assert 'id="special-reports"' in reports and '/research/error-correction/' in reports
+    assert '/research/agent-workflows/' not in reports and '/research/agent-workflows/' in articles
+    assert '## Special reports' in markdown and '## Articles' in markdown
+    site.research_post_pages(published, lambda path, page, md, updated="": pages.update({path: (page, md)}), out, [])
+    assert 'href="/research/#special-reports"' in pages["/research/error-correction/"][0]
+    assert json.loads((out / "research/error-correction.json").read_text()) == {"slug": "error-correction", **special}
+    allowlist.write_text(json.dumps({"posts": ["agent-workflows"]}))
+
     monkeypatch.setenv("SIGMA_DATA_ROOT", str(data))
     (out / "index.html").write_text("previous valid site")
     key_markers = ("PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "OPENSSH PRIVATE KEY", "ENCRYPTED PRIVATE KEY", "DSA PRIVATE KEY")
