@@ -1,6 +1,8 @@
+import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -82,7 +84,7 @@ def private_source(tmp_path, private_template):
 
 def invoke(source, data, code, *args):
     return subprocess.run(["zsh", str(code / "deploy/mac/data-commit.sh"), *args], cwd=source,
-                          env={**os.environ, "SIGMA_DATA_ROOT": str(data)}, capture_output=True, text=True)
+                          env={**os.environ, "SIGMA_DATA_ROOT": str(data), "SIGMA_PYTHON": sys.executable}, capture_output=True, text=True)
 
 
 def edit_branch_delta(source, data):
@@ -136,6 +138,30 @@ def test_a_plan_names_the_main_and_tree_a_landing_would_make_and_writes_nothing(
     assert f"[data] owned tree: {expected}" in plan.stdout
     assert git("rev-parse", "refs/heads/main", cwd=origin) == remote_main_before
     assert checkout_state(source) == state_before
+
+
+def test_ignored_published_transcript_cannot_be_left_out_of_private_main(private_source):
+    """Failure seen: Git can successfully save the publication while ignoring its referenced transcript."""
+    origin, source, data, code = private_source
+    (data / ".gitignore").write_text("*.sqlite\n.env*\n.private-words\n")
+    run = data / "runs" / "one-off"
+    run.mkdir()
+    episode = {"episode_id": "yt:abcdefghijk", "has_transcript": True}
+    (run / "manifest.json").write_text(json.dumps({"episodes": [{**episode, "file": "source.md"}]}))
+    transcript = run / "source.md"
+    transcript.write_bytes(b"## Transcript\n[0:00] Start.\n[0:30] End.\n")
+    published = data / "published" / run.name
+    published.mkdir(parents=True)
+    (published / "episodes.json").write_text(json.dumps([episode]))
+    owned_path = transcript.relative_to(source).as_posix()
+    (source / ".git/info/exclude").write_text(f"/{owned_path}\n")
+    original_main = git("rev-parse", "main", cwd=origin)
+    before = checkout_state(source)
+
+    refused = invoke(source, data, code)
+    assert refused.returncode == 1 and "one-off/source.md" in refused.stderr
+    assert git("rev-parse", "main", cwd=origin) == original_main
+    assert checkout_state(source) == before
 
 
 def test_conflict_with_new_private_main_stops_without_changing_source(private_source, tmp_path):
